@@ -130,7 +130,7 @@ export const ensureSharedAudioContext = async (): Promise<void> => {
 // When the app is backgrounded (or the screen locks) the WebView page becomes
 // hidden, and Chromium throttles — then outright freezes — a hidden page's
 // timers and task queues. A page that is emitting audio is exempt: that is
-// precisely why Edge TTS keeps reading with the screen off (its speech is
+// precisely why WebAudio speech keeps reading with the screen off (its speech is
 // audible WebAudio output) while system TTS stops after a page. Merely having a
 // running-but-idle context does NOT earn the exemption — Chromium keys off
 // actual, non-silent output — so we play a continuous 40 Hz tone at ~-62 dBFS:

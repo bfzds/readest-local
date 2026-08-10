@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MdArrowBack, MdChevronRight, MdSettings, MdVolumeUp } from 'react-icons/md';
+import { MdArrowBack, MdSettings, MdVolumeUp } from 'react-icons/md';
 import clsx from 'clsx';
 import { openUrl } from '@tauri-apps/plugin-opener';
 
@@ -12,16 +12,8 @@ import { useCustomDictionaryStore } from '@/store/customDictionaryStore';
 import { getEnabledProviders } from '@/services/dictionaries/registry';
 import { buildLookupCandidates } from '@/services/dictionaries/lookupCandidates';
 import { isTauriAppPlatform } from '@/services/environment';
-import { cancelWordPronounce, pronounceWord, warmWordAudio } from '@/services/tts/wordPronouncer';
-import {
-  getBuiltinWebSearch,
-  substituteUrlTemplate,
-} from '@/services/dictionaries/webSearchTemplates';
-import type {
-  DictionaryLookupOutcome,
-  DictionaryProvider,
-  WebSearchEntry,
-} from '@/services/dictionaries/types';
+import { cancelWordPronounce, pronounceWord } from '@/services/tts/wordPronouncer';
+import type { DictionaryLookupOutcome, DictionaryProvider } from '@/services/dictionaries/types';
 
 const isTauri = isTauriAppPlatform();
 
@@ -42,21 +34,16 @@ export interface DictionaryResultsState {
   canGoBack: boolean;
   goBack: () => void;
   visibleDefinitionProviders: DictionaryProvider[];
-  webSearchProviders: DictionaryProvider[];
-  /** Whether the web-search section renders above the dictionaries one (#5083). */
-  webSearchFirst: boolean;
   cards: Record<string, CardState>;
   setContainerRef: (id: string) => (el: HTMLDivElement | null) => void;
   handleContainerClick: (e: React.MouseEvent) => void;
   toggleExpanded: (id: string) => void;
-  resolveWebSearchUrl: (id: string) => string | undefined;
-  onWebSearchClickTauri: (e: React.MouseEvent<HTMLAnchorElement>, id: string) => void;
   noProvidersAtAll: boolean;
   /** Dictionary popup font-size multiplier (#4443); `1` = default sizes. */
   fontScale: number;
   /** Whether the current word is being fetched/spoken by the TTS engine (#4876). */
   isSpeaking: boolean;
-  /** Pronounce the current word via Edge TTS (falling back to platform speech). */
+  /** Pronounce the current word via the platform speech engine. */
   speakWord: () => void;
 }
 
@@ -66,8 +53,7 @@ export interface DictionaryResultsState {
  *   - the in-component history stack (for in-content link navigation),
  *   - the per-provider lookup fan-out + abort wiring,
  *   - per-card expand/collapse with the ≤ 3-results auto-expand default,
- *   - external-link delegation (Tauri vs web target="_blank"),
- *   - web-search URL resolution.
+ *   - external-link delegation (Tauri vs web target="_blank").
  *
  * Both wrappers mount this hook and feed its return value into
  * {@link DictionaryResultsHeader} (sticky title + back + manage gear) and
@@ -91,13 +77,7 @@ export function useDictionaryResults({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const providers = useMemo<DictionaryProvider[]>(() => computedProviders, [providersSignature]);
 
-  const definitionProviders = useMemo(() => providers.filter((p) => p.kind !== 'web'), [providers]);
-  const webSearchProviders = useMemo(() => providers.filter((p) => p.kind === 'web'), [providers]);
-  // Web entries live in their own section, so `providerOrder` alone can't lift
-  // one above the dictionary cards (#5083). Let the top-most enabled provider
-  // decide which section leads. Derived from the full enabled list rather than
-  // the visible one so the sections don't reshuffle as lookups settle.
-  const webSearchFirst = providers[0]?.kind === 'web';
+  const definitionProviders = providers;
 
   const [historyStack, setHistoryStack] = useState<string[]>([word.trim()]);
   const currentWord = historyStack[historyStack.length - 1] ?? word.trim();
@@ -137,13 +117,10 @@ export function useDictionaryResults({
   }, []);
 
   // Pronounce the current headword (#4876). `isSpeaking` covers both the
-  // Edge fetch and playback so the header button can show one active state.
+  // speech request and playback so the header button can show one active state.
   const [isSpeaking, setIsSpeaking] = useState(false);
   const langCode = typeof lang === 'string' ? lang : Array.isArray(lang) ? lang[0] : undefined;
   const speakWord = useCallback(() => {
-    // Warm the audio context synchronously inside the click gesture; the
-    // synth/play happens after a network await, outside the gesture window.
-    warmWordAudio();
     setIsSpeaking(true);
     void pronounceWord(currentWord, langCode, { appService }, (status) => {
       if (status !== 'playing') setIsSpeaking(false);
@@ -307,33 +284,6 @@ export function useDictionaryResults({
     return card.state === 'loading' || card.state === 'loaded';
   });
 
-  const resolveWebSearchUrl = useCallback(
-    (id: string): string | undefined => {
-      if (id.startsWith('web:builtin:')) {
-        const tpl = getBuiltinWebSearch(id);
-        return tpl ? substituteUrlTemplate(tpl.urlTemplate, currentWord) : undefined;
-      }
-      const list: WebSearchEntry[] = settings.webSearches ?? [];
-      const tpl = list.find((t) => t.id === id);
-      if (!tpl || tpl.deletedAt) return undefined;
-      return substituteUrlTemplate(tpl.urlTemplate, currentWord);
-    },
-    [currentWord, settings.webSearches],
-  );
-
-  const onWebSearchClickTauri = useCallback(
-    (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
-      if (!isTauri) return;
-      e.preventDefault();
-      const url = resolveWebSearchUrl(id);
-      if (!url) return;
-      void openUrl(url).catch((err) => {
-        console.warn('Failed to open external URL', url, err);
-      });
-    },
-    [resolveWebSearchUrl],
-  );
-
   const canGoBack = historyStack.length > 1;
   const noProvidersAtAll = providers.length === 0;
 
@@ -342,14 +292,10 @@ export function useDictionaryResults({
     canGoBack,
     goBack,
     visibleDefinitionProviders,
-    webSearchProviders,
-    webSearchFirst,
     cards,
     setContainerRef,
     handleContainerClick,
     toggleExpanded,
-    resolveWebSearchUrl,
-    onWebSearchClickTauri,
     noProvidersAtAll,
     fontScale: settings.fontScale ?? 1,
     isSpeaking,
@@ -436,14 +382,10 @@ interface DictionaryResultsBodyProps extends DictionaryResultsState {}
 
 export const DictionaryResultsBody: React.FC<DictionaryResultsBodyProps> = ({
   visibleDefinitionProviders,
-  webSearchProviders,
-  webSearchFirst,
   cards,
   setContainerRef,
   handleContainerClick,
   toggleExpanded,
-  resolveWebSearchUrl,
-  onWebSearchClickTauri,
   noProvidersAtAll,
   fontScale,
 }) => {
@@ -527,33 +469,6 @@ export const DictionaryResultsBody: React.FC<DictionaryResultsBodyProps> = ({
     </section>
   );
 
-  const webSearchSection = webSearchProviders.length > 0 && (
-    <section className={sectionClassName}>
-      <h3 className='not-eink:opacity-60 mb-2 text-xs font-medium uppercase tracking-wide'>
-        {_('Search the web')}
-      </h3>
-      <ul className='flex flex-col'>
-        {webSearchProviders.map((p) => {
-          const url = resolveWebSearchUrl(p.id);
-          return (
-            <li key={p.id}>
-              <a
-                href={url ?? '#'}
-                target={isTauri ? undefined : '_blank'}
-                rel='noopener noreferrer'
-                onClick={(e) => onWebSearchClickTauri(e, p.id)}
-                className='hover:bg-base-200/40 flex w-full items-center justify-between rounded-md px-2 py-3 text-left text-sm no-underline'
-              >
-                <span>{_(p.label)}</span>
-                <MdChevronRight className='not-eink:opacity-60' size={18} />
-              </a>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
-  );
-
   return (
     <div className='flex h-full flex-col'>
       <div className='flex-1 overflow-y-auto'>
@@ -564,16 +479,8 @@ export const DictionaryResultsBody: React.FC<DictionaryResultsBodyProps> = ({
               {_('Enable a dictionary in Settings → Language → Dictionaries.')}
             </p>
           </div>
-        ) : webSearchFirst ? (
-          <>
-            {webSearchSection}
-            {definitionsSection}
-          </>
         ) : (
-          <>
-            {definitionsSection}
-            {webSearchSection}
-          </>
+          definitionsSection
         )}
       </div>
     </div>

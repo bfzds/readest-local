@@ -159,14 +159,6 @@ export async function loadSettings(ctx: Context): Promise<SystemSettings> {
 
   settings.localBooksDir = await ctx.fs.getPrefix('Books');
 
-  // Coerce stale `'wikipedia'` quick-action to `'dictionary'`. The Wikipedia
-  // annotation tool was removed; Wikipedia is now reachable as a tab inside
-  // the unified dictionary popup. Without this guard, users who had set the
-  // quick action to wikipedia would get a no-op.
-  if ((settings.globalViewSettings.annotationQuickAction as string) === 'wikipedia') {
-    settings.globalViewSettings.annotationQuickAction = 'dictionary';
-  }
-
   migrateLibraryThenSort(settings);
 
   if (!settings.kosync.deviceId) {

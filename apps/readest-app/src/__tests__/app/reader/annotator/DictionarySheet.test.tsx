@@ -20,7 +20,6 @@ import {
 import type { ReactNode } from 'react';
 
 import type { DictionaryProvider, DictionaryLookupOutcome } from '@/services/dictionaries/types';
-import { BUILTIN_WEB_SEARCH_IDS } from '@/services/dictionaries/types';
 import type { ImportedDictionary } from '@/services/dictionaries/types';
 import type { BaseDir } from '@/types/system';
 import { createStarDictProvider } from '@/services/dictionaries/providers/starDictProvider';
@@ -83,7 +82,6 @@ vi.mock('@/hooks/useTranslation', () => ({
 // button can be exercised without real audio. (#4876)
 vi.mock('@/services/tts/wordPronouncer', () => ({
   pronounceWord: vi.fn().mockResolvedValue(undefined),
-  warmWordAudio: vi.fn(),
   cancelWordPronounce: vi.fn(),
 }));
 
@@ -235,7 +233,7 @@ const buildExactProvider = (storedHeadword: string): DictionaryProvider => {
 // ---------------------------------------------------------------------------
 
 import DictionarySheet from '@/app/reader/components/annotator/DictionarySheet';
-import { pronounceWord, warmWordAudio } from '@/services/tts/wordPronouncer';
+import { pronounceWord } from '@/services/tts/wordPronouncer';
 
 const renderSheet = (
   props: Partial<{
@@ -260,7 +258,6 @@ const resetStoreToEmpty = () => {
     settings: {
       providerOrder: [],
       providerEnabled: {},
-      webSearches: [],
     },
   });
 };
@@ -298,7 +295,6 @@ describe('DictionarySheet — speak button', () => {
     const speak = await waitFor(() => screen.getByLabelText('Speak'));
     fireEvent.click(speak);
 
-    expect(warmWordAudio).toHaveBeenCalledTimes(1);
     expect(pronounceWord).toHaveBeenCalledWith(
       'hello',
       'en',
@@ -465,81 +461,6 @@ describe('DictionarySheet — in-content navigation', () => {
     fireEvent.click(screen.getByLabelText('Back'));
     await waitFor(() => expect(screen.getByTestId('dict-title').textContent).toBe('hello'));
     expect(screen.queryByLabelText('Back')).toBeNull();
-  });
-});
-
-describe('DictionarySheet — web search row', () => {
-  it('renders a link with the resolved URL and target="_blank" on the web build', async () => {
-    // Real built-in Google web-search provider, via the registry mock.
-    const googleEntry: DictionaryProvider = {
-      id: BUILTIN_WEB_SEARCH_IDS.google,
-      kind: 'web',
-      label: 'Google',
-      async lookup() {
-        return { ok: true };
-      },
-    };
-    // Enable the google entry in the store so the sheet can resolve its
-    // urlTemplate from BUILTIN_WEB_SEARCHES.
-    useCustomDictionaryStore.setState({
-      dictionaries: [],
-      settings: {
-        providerOrder: [BUILTIN_WEB_SEARCH_IDS.google],
-        providerEnabled: { [BUILTIN_WEB_SEARCH_IDS.google]: true },
-        webSearches: [],
-      },
-    });
-    providersForNextRender.push(googleEntry);
-
-    renderSheet({ word: 'hello world' });
-
-    // The test setup mocks `isTauriAppPlatform: () => false`, so we
-    // exercise the web-build path: anchor with href + target="_blank",
-    // openUrl untouched.
-    const link = (await waitFor(() =>
-      screen.getByRole('link', { name: /Google/i }),
-    )) as HTMLAnchorElement;
-    expect(link.getAttribute('target')).toBe('_blank');
-    expect(link.getAttribute('rel')).toContain('noopener');
-    const url = link.getAttribute('href') ?? '';
-    expect(url.startsWith('https://www.google.com/search')).toBe(true);
-    expect(url).toContain(encodeURIComponent('hello world'));
-
-    fireEvent.click(link);
-    expect(mockOpenUrl).not.toHaveBeenCalled();
-  });
-});
-
-describe('DictionarySheet — section order', () => {
-  // The registry hands the sheet its providers already sorted by
-  // `settings.providerOrder`, so the first entry of `providersForNextRender`
-  // is whatever the user dragged to the top in settings.
-  const buildWebEntry = (): DictionaryProvider => ({
-    id: BUILTIN_WEB_SEARCH_IDS.google,
-    kind: 'web',
-    label: 'Google',
-    async lookup() {
-      return { ok: true };
-    },
-  });
-
-  const sectionHeadings = (container: HTMLElement) =>
-    Array.from(container.querySelectorAll('section > h3')).map((h) => h.textContent);
-
-  it('puts the web-search section first when a web entry is top of the configured order (#5083)', async () => {
-    providersForNextRender.push(buildWebEntry(), buildRealStarDictProvider());
-    const { container } = renderSheet({ word: 'hello' });
-
-    await waitFor(() => screen.getByText('CMU American English spelling'));
-    expect(sectionHeadings(container)).toEqual(['Search the web', 'Dictionaries']);
-  });
-
-  it('keeps the dictionaries section first when a dictionary is top of the configured order', async () => {
-    providersForNextRender.push(buildRealStarDictProvider(), buildWebEntry());
-    const { container } = renderSheet({ word: 'hello' });
-
-    await waitFor(() => screen.getByText('CMU American English spelling'));
-    expect(sectionHeadings(container)).toEqual(['Dictionaries', 'Search the web']);
   });
 });
 

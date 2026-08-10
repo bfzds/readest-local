@@ -13,23 +13,14 @@
  * runtime-only and non-serializable; storing them alongside metadata would
  * pollute the synced settings shape.
  */
-import type {
-  DictionaryProvider,
-  DictionarySettings,
-  ImportedDictionary,
-  WebSearchEntry,
-} from './types';
+import type { DictionaryProvider, DictionarySettings, ImportedDictionary } from './types';
 import { BUILTIN_PROVIDER_IDS } from './types';
 import { isSystemDictionarySupported } from './systemDictionary';
-import { wiktionaryProvider } from './providers/wiktionaryProvider';
-import { wikipediaProvider } from './providers/wikipediaProvider';
 import { createStarDictProvider, type DictionaryFileOpener } from './providers/starDictProvider';
 import { createMdictProvider } from './providers/mdictProvider';
 import { createDictProvider } from './providers/dictProvider';
 import { createSlobProvider } from './providers/slobProvider';
 import { createBglProvider } from './providers/bglProvider';
-import { createWebSearchProvider } from './providers/webSearchProvider';
-import { getBuiltinWebSearch } from './webSearchTemplates';
 
 const instanceCache = new Map<string, DictionaryProvider>();
 
@@ -44,47 +35,13 @@ interface RegistryArgs {
   fs?: DictionaryFileOpener;
 }
 
-const builtinFor = (id: string): DictionaryProvider | undefined => {
-  if (id === BUILTIN_PROVIDER_IDS.wiktionary) return wiktionaryProvider;
-  if (id === BUILTIN_PROVIDER_IDS.wikipedia) return wikipediaProvider;
-  // System dictionary is a sentinel — it has no in-popup UI. The
-  // annotator handles it before reaching the popup; the registry
-  // filters it out of `getEnabledProviders` so no empty tab appears.
-  return undefined;
-};
-
-/**
- * Resolve a `web:*` id to its template — built-in if id starts with
- * `web:builtin:`, else look it up in `settings.webSearches`.
- */
-const findWebTemplate = (id: string, settings: DictionarySettings): WebSearchEntry | undefined => {
-  if (id.startsWith('web:builtin:')) return getBuiltinWebSearch(id);
-  const list = settings.webSearches ?? [];
-  const tpl = list.find((t) => t.id === id);
-  if (!tpl || tpl.deletedAt) return undefined;
-  return tpl;
-};
-
 const getOrCreate = (
   id: string,
   dict: ImportedDictionary | undefined,
   fs: DictionaryFileOpener | undefined,
-  settings: DictionarySettings,
 ): DictionaryProvider | undefined => {
   const cached = instanceCache.get(id);
   if (cached) return cached;
-  const builtin = builtinFor(id);
-  if (builtin) {
-    instanceCache.set(id, builtin);
-    return builtin;
-  }
-  if (id.startsWith('web:')) {
-    const tpl = findWebTemplate(id, settings);
-    if (!tpl) return undefined;
-    const provider = createWebSearchProvider({ template: tpl });
-    instanceCache.set(id, provider);
-    return provider;
-  }
   if (!dict) return undefined;
   if (!fs) return undefined;
   if (dict.kind === 'stardict') {
@@ -138,19 +95,14 @@ export const getEnabledProviders = ({
     // annotator's "Dictionary" button.
     if (id === BUILTIN_PROVIDER_IDS.systemDictionary) continue;
     if (id.startsWith('builtin:')) {
-      const provider = getOrCreate(id, undefined, undefined, settings);
-      if (provider) out.push(provider);
-      continue;
-    }
-    if (id.startsWith('web:')) {
-      const provider = getOrCreate(id, undefined, undefined, settings);
+      const provider = getOrCreate(id, undefined, undefined);
       if (provider) out.push(provider);
       continue;
     }
     const dict = dictById.get(id);
     if (!dict) continue;
     if (dict.deletedAt || dict.unavailable || dict.unsupported) continue;
-    const provider = getOrCreate(id, dict, fs, settings);
+    const provider = getOrCreate(id, dict, fs);
     if (provider) out.push(provider);
   }
   return out;

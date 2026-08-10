@@ -39,22 +39,9 @@ const makeMockClient = (name: string): TTSClient => ({
 
 vi.mock('@/services/tts/WebSpeechClient', () => ({
   WebSpeechClient: vi.fn().mockImplementation(function (this: Record<string, unknown>) {
-    Object.assign(this, makeMockClient('web-speech'), {
-      // Faithful to the real client: the OS renders the audio, so there is no
-      // media clock — which is what gates the timeline and the scrubber.
-      getCapabilities: vi.fn().mockReturnValue({
-        wordBoundaries: false,
-        mediaClock: false,
-        gapControl: false,
-        liveRateChange: false,
-      }),
-    });
-  }),
-}));
-
-vi.mock('@/services/tts/EdgeTTSClient', () => ({
-  EdgeTTSClient: vi.fn().mockImplementation(function (this: Record<string, unknown>) {
-    Object.assign(this, makeMockClient('edge-tts'));
+    // The mock reports a media clock so the timeline path is exercised without
+    // a real audio engine.
+    Object.assign(this, makeMockClient('web-speech'));
   }),
 }));
 
@@ -66,7 +53,7 @@ vi.mock('@/services/tts/NativeTTSClient', () => ({
 
 vi.mock('@/services/tts/TTSUtils', () => ({
   TTSUtils: {
-    getPreferredClient: vi.fn().mockReturnValue('edge-tts'),
+    getPreferredClient: vi.fn().mockReturnValue('web-speech'),
     setPreferredClient: vi.fn(),
     setPreferredVoice: vi.fn(),
     getPreferredVoice: vi.fn().mockReturnValue(null),
@@ -168,7 +155,7 @@ describe('TTSController section timeline', () => {
     await controller.initViewTTS(0);
   });
 
-  test('ensureTimeline builds lazily for the edge client and caches per section', async () => {
+  test('ensureTimeline builds lazily for the media-clock client and caches per section', async () => {
     const timeline = await controller.ensureTimeline();
     expect(timeline).not.toBeNull();
     expect(timeline!.length).toBe(3);
@@ -192,8 +179,16 @@ describe('TTSController section timeline', () => {
   });
 
   test('getPlaybackInfo is null for clients without a media clock', async () => {
-    await controller.setVoice('', 'en'); // empty voice id: falls through to web client
-    controller.ttsClient = controller.ttsWebClient;
+    const noClockClient: TTSClient = {
+      ...controller.ttsClient,
+      getCapabilities: vi.fn().mockReturnValue({
+        wordBoundaries: false,
+        mediaClock: false,
+        gapControl: false,
+        liveRateChange: false,
+      }),
+    };
+    controller.ttsClient = noClockClient;
     expect(await controller.ensureTimeline()).toBeNull();
     expect(controller.getPlaybackInfo()).toBeNull();
   });

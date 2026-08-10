@@ -36,8 +36,7 @@ import { UserStorageQuota, UserDailyTranslationQuota } from '@/types/quota';
 import { getDefaultMaxBlockSize, getDefaultMaxInlineSize } from '@/utils/config';
 import { stubTranslation as _ } from '@/utils/misc';
 import { DEFAULT_ANNOTATION_TOOLBAR_ITEMS } from '@/utils/annotationToolbar';
-import { DEFAULT_SENTENCE_GAP_SEC } from './tts/EdgeTTSClient';
-import { DEFAULT_PARAGRAPH_GAP_SEC } from './tts/TTSController';
+import { DEFAULT_SENTENCE_GAP_SEC, DEFAULT_PARAGRAPH_GAP_SEC } from './tts/TTSController';
 
 export const DATA_SUBDIR = 'Readest';
 export const LOCAL_BOOKS_SUBDIR = `${DATA_SUBDIR}/Books`;
@@ -216,11 +215,8 @@ export const DEFAULT_SYSTEM_SETTINGS: Partial<SystemSettings> = {
 
   customDictionaries: [],
   dictionarySettings: {
-    providerOrder: ['builtin:wiktionary', 'builtin:wikipedia'],
-    providerEnabled: {
-      'builtin:wiktionary': true,
-      'builtin:wikipedia': true,
-    },
+    providerOrder: [],
+    providerEnabled: {},
   },
 
   kosync: DEFAULT_KOSYNC_SETTINGS,

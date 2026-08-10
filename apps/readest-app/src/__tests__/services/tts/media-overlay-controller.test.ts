@@ -40,12 +40,6 @@ vi.mock('@/services/tts/WebSpeechClient', () => ({
     Object.assign(this, makeMockClient('web-speech', false));
   }),
 }));
-vi.mock('@/services/tts/EdgeTTSClient', () => ({
-  DEFAULT_SENTENCE_GAP_SEC: 0.15,
-  EdgeTTSClient: vi.fn().mockImplementation(function (this: Record<string, unknown>) {
-    Object.assign(this, makeMockClient('edge-tts', true));
-  }),
-}));
 vi.mock('@/services/tts/NativeTTSClient', () => ({
   NativeTTSClient: vi.fn().mockImplementation(function (this: Record<string, unknown>) {
     Object.assign(this, makeMockClient('native-tts', false));
@@ -53,7 +47,7 @@ vi.mock('@/services/tts/NativeTTSClient', () => ({
 }));
 vi.mock('@/services/tts/TTSUtils', () => ({
   TTSUtils: {
-    getPreferredClient: vi.fn().mockReturnValue('edge-tts'),
+    getPreferredClient: vi.fn().mockReturnValue('web-speech'),
     setPreferredClient: vi.fn(),
     setPreferredVoice: vi.fn(),
     getPreferredVoice: vi.fn().mockReturnValue(null),
@@ -153,7 +147,7 @@ describe('narration selection', () => {
 
     expect(controller.narrationAvailable).toBe(true);
     expect(controller.narrationActive).toBe(false);
-    expect(controller.ttsClient).toBe(controller.ttsEdgeClient);
+    expect(controller.ttsClient).toBe(controller.ttsWebClient);
   });
 
   test('a book without overlays is unaffected and keeps the preferred client', async () => {
@@ -162,7 +156,7 @@ describe('narration selection', () => {
 
     expect(controller.narrationAvailable).toBe(false);
     expect(controller.narrationActive).toBe(false);
-    expect(controller.ttsClient).toBe(controller.ttsEdgeClient);
+    expect(controller.ttsClient).toBe(controller.ttsWebClient);
   });
 
   test('a format that cannot read its own container offers no narration', async () => {
@@ -170,7 +164,7 @@ describe('narration selection', () => {
     await controller.init();
 
     expect(controller.narrationAvailable).toBe(false);
-    expect(controller.ttsClient).toBe(controller.ttsEdgeClient);
+    expect(controller.ttsClient).toBe(controller.ttsWebClient);
   });
 
   test('the narrator leads the voice list, and only for narrated books', async () => {
@@ -195,7 +189,7 @@ describe('narration selection', () => {
 
     const invalidate = vi.spyOn(controller.ttsMediaOverlayClient, 'invalidatePlayback');
 
-    await controller.setVoice('edge-tts', 'en');
+    await controller.setVoice('web-speech', 'en');
     expect(controller.narrationActive).toBe(false);
     expect(controller.useNarration).toBe(false);
     expect(invalidate).toHaveBeenCalled();
@@ -204,7 +198,7 @@ describe('narration selection', () => {
     await controller.setVoice(MEDIA_OVERLAY_VOICE_ID, 'en');
     expect(controller.narrationActive).toBe(true);
     expect(controller.useNarration).toBe(true);
-    // Returning must invalidate again: Edge may have aborted the shared player.
+    // Returning must invalidate again: the synthetic engine may have aborted the shared player.
     expect(invalidate).toHaveBeenCalled();
   });
 });

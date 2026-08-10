@@ -12,7 +12,7 @@
 //
 // On iOS Tauri the clock is an in-process AVPlayer (NativeNarrationPlayer):
 // HTMLAudioElement is interrupted when TTSMediaBridge claims the app's
-// non-mixable .playback session — the same constraint that moved Edge TTS to
+// non-mixable .playback session — the same constraint that moved synthesized TTS to
 // NativeAudioPlayer. Everywhere else a plain HTMLAudioElement is enough.
 
 import type { BookDoc } from '@/libs/document';
@@ -127,7 +127,7 @@ export class MediaOverlayClient implements TTSClient {
 
   async init(): Promise<boolean> {
     if (this.#native) {
-      // Re-entering narration after Edge/system must not orphan the existing
+      // Re-entering narration after the synthetic engine/system must not orphan the existing
       // player (and its staged chapter file / event listener).
       if (!this.#player) this.#player = new NativeNarrationPlayer();
       this.initialized = true;
@@ -232,7 +232,7 @@ export class MediaOverlayClient implements TTSClient {
   }
 
   // Drop the cached clock without tearing the client down. Needed when another
-  // TTS engine takes the shared iOS playout AVPlayer (Edge abort): otherwise
+  // TTS engine takes the shared iOS playout AVPlayer (synthetic abort): otherwise
   // speak() reuses a dead session and plays silence after switching back.
   invalidatePlayback(): void {
     this.#cancelHandover();

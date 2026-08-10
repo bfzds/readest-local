@@ -3,7 +3,7 @@
  *
  * Wraps {@link SlobReader} for the popup. Renders entries based on their
  * content type:
- *   - `text/html*` → set as `innerHTML` (Wikipedia/Wiktionary slobs)
+ *   - `text/html*` → set as `innerHTML` (encyclopedia-style slobs)
  *   - `text/plain` → wrapped `<pre>` with newlines preserved
  *   - everything else → flagged as unsupported (e.g. CSS/JS resources, which
  *     belong to the slob's bundled stylesheet, not lookup results)

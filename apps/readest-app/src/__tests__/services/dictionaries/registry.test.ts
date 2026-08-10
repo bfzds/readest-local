@@ -1,136 +1,84 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { getEnabledProviders, __resetRegistryForTests } from '@/services/dictionaries/registry';
-import { BUILTIN_PROVIDER_IDS, BUILTIN_WEB_SEARCH_IDS } from '@/services/dictionaries/types';
-import type {
-  DictionarySettings,
-  ImportedDictionary,
-  WebSearchEntry,
-} from '@/services/dictionaries/types';
+import type { DictionarySettings, ImportedDictionary } from '@/services/dictionaries/types';
+
+const baseDicts: ImportedDictionary[] = [
+  {
+    id: 'mdict:first',
+    kind: 'mdict',
+    name: 'First',
+    bundleDir: 'f',
+    files: { mdx: 'f.mdx' },
+    addedAt: 1,
+  },
+  {
+    id: 'stardict:second',
+    kind: 'stardict',
+    name: 'Second',
+    bundleDir: 's',
+    files: { ifo: 's.ifo' },
+    addedAt: 2,
+  },
+];
 
 const baseSettings: DictionarySettings = {
-  providerOrder: [BUILTIN_PROVIDER_IDS.wiktionary, BUILTIN_PROVIDER_IDS.wikipedia],
-  providerEnabled: {
-    [BUILTIN_PROVIDER_IDS.wiktionary]: true,
-    [BUILTIN_PROVIDER_IDS.wikipedia]: true,
-  },
+  providerOrder: ['mdict:first', 'stardict:second'],
+  providerEnabled: { 'mdict:first': true, 'stardict:second': true },
 };
+
+const fs = { openFile: async () => new File([], '') };
 
 describe('dictionary registry', () => {
   beforeEach(() => {
     __resetRegistryForTests();
   });
 
-  it('returns builtin providers in order, both enabled', () => {
-    const providers = getEnabledProviders({ settings: baseSettings, dictionaries: [] });
-    expect(providers.map((p) => p.id)).toEqual([
-      BUILTIN_PROVIDER_IDS.wiktionary,
-      BUILTIN_PROVIDER_IDS.wikipedia,
-    ]);
+  it('returns enabled imported providers in order', () => {
+    const providers = getEnabledProviders({ settings: baseSettings, dictionaries: baseDicts, fs });
+    expect(providers.map((p) => p.id)).toEqual(['mdict:first', 'stardict:second']);
   });
 
   it('skips providers explicitly disabled', () => {
     const providers = getEnabledProviders({
       settings: {
         ...baseSettings,
-        providerEnabled: {
-          ...baseSettings.providerEnabled,
-          [BUILTIN_PROVIDER_IDS.wikipedia]: false,
-        },
+        providerEnabled: { ...baseSettings.providerEnabled, 'stardict:second': false },
       },
-      dictionaries: [],
+      dictionaries: baseDicts,
+      fs,
     });
-    expect(providers.map((p) => p.id)).toEqual([BUILTIN_PROVIDER_IDS.wiktionary]);
+    expect(providers.map((p) => p.id)).toEqual(['mdict:first']);
   });
 
   it('honors providerOrder regardless of declaration order', () => {
     const providers = getEnabledProviders({
       settings: {
         ...baseSettings,
-        providerOrder: [BUILTIN_PROVIDER_IDS.wikipedia, BUILTIN_PROVIDER_IDS.wiktionary],
+        providerOrder: ['stardict:second', 'mdict:first'],
       },
-      dictionaries: [],
+      dictionaries: baseDicts,
+      fs,
     });
-    expect(providers.map((p) => p.id)).toEqual([
-      BUILTIN_PROVIDER_IDS.wikipedia,
-      BUILTIN_PROVIDER_IDS.wiktionary,
-    ]);
+    expect(providers.map((p) => p.id)).toEqual(['stardict:second', 'mdict:first']);
   });
 
   it('caches the same provider instance across calls', () => {
-    const a = getEnabledProviders({ settings: baseSettings, dictionaries: [] });
-    const b = getEnabledProviders({ settings: baseSettings, dictionaries: [] });
+    const a = getEnabledProviders({ settings: baseSettings, dictionaries: baseDicts, fs });
+    const b = getEnabledProviders({ settings: baseSettings, dictionaries: baseDicts, fs });
     expect(a[0]).toBe(b[0]);
   });
 
-  it('dispatches built-in web-search ids to a web provider', () => {
-    const settings: DictionarySettings = {
-      providerOrder: [BUILTIN_WEB_SEARCH_IDS.google, BUILTIN_WEB_SEARCH_IDS.urban],
-      providerEnabled: {
-        [BUILTIN_WEB_SEARCH_IDS.google]: true,
-        [BUILTIN_WEB_SEARCH_IDS.urban]: true,
-      },
-    };
-    const providers = getEnabledProviders({ settings, dictionaries: [] });
-    expect(providers.map((p) => p.id)).toEqual([
-      BUILTIN_WEB_SEARCH_IDS.google,
-      BUILTIN_WEB_SEARCH_IDS.urban,
-    ]);
-    expect(providers.every((p) => p.kind === 'web')).toBe(true);
-  });
-
-  it('resolves custom web-search ids from settings.webSearches', () => {
-    const customEntry: WebSearchEntry = {
-      id: 'web:custom123',
-      name: 'My Site',
-      urlTemplate: 'https://example.com/?q=%WORD%',
-    };
-    const settings: DictionarySettings = {
-      providerOrder: ['web:custom123'],
-      providerEnabled: { 'web:custom123': true },
-      webSearches: [customEntry],
-    };
-    const providers = getEnabledProviders({ settings, dictionaries: [] });
-    expect(providers).toHaveLength(1);
-    expect(providers[0]!.label).toBe('My Site');
-    expect(providers[0]!.kind).toBe('web');
-  });
-
-  it('drops custom web-search ids whose entries are missing or soft-deleted', () => {
-    const settings: DictionarySettings = {
-      providerOrder: ['web:gone', 'web:dead'],
-      providerEnabled: { 'web:gone': true, 'web:dead': true },
-      webSearches: [
-        {
-          id: 'web:dead',
-          name: 'Dead',
-          urlTemplate: 'https://example.com/?q=%WORD%',
-          deletedAt: 1,
-        },
-      ],
-    };
-    const providers = getEnabledProviders({ settings, dictionaries: [] });
-    expect(providers).toEqual([]);
-  });
-
   it('skips imported dictionaries that are unavailable, deleted, or unsupported', () => {
-    const fs = { openFile: async () => new File([], '') };
     const dicts: ImportedDictionary[] = [
-      {
-        id: 'mdict:available',
-        kind: 'mdict',
-        name: 'Available',
-        bundleDir: 'a',
-        files: { mdx: 'a.mdx' },
-        addedAt: 1,
-      },
+      ...baseDicts,
       {
         id: 'mdict:gone',
         kind: 'mdict',
         name: 'Gone',
         bundleDir: 'g',
         files: { mdx: 'g.mdx' },
-        addedAt: 2,
-        unavailable: true,
+        addedAt: 3,
+        deletedAt: 1,
       },
       {
         id: 'stardict:nope',
@@ -138,28 +86,36 @@ describe('dictionary registry', () => {
         name: 'Nope',
         bundleDir: 'n',
         files: { ifo: 'n.ifo' },
-        addedAt: 3,
+        addedAt: 4,
+        unavailable: true,
+      },
+      {
+        id: 'mdict:unsupported',
+        kind: 'mdict',
+        name: 'Unsupported',
+        bundleDir: 'u',
+        files: { mdx: 'u.mdx' },
+        addedAt: 5,
         unsupported: true,
       },
     ];
     const settings: DictionarySettings = {
       providerOrder: [
-        BUILTIN_PROVIDER_IDS.wiktionary,
-        'mdict:available',
+        'mdict:first',
+        'stardict:second',
         'mdict:gone',
         'stardict:nope',
+        'mdict:unsupported',
       ],
       providerEnabled: {
-        [BUILTIN_PROVIDER_IDS.wiktionary]: true,
-        'mdict:available': true,
+        'mdict:first': true,
+        'stardict:second': true,
         'mdict:gone': true,
         'stardict:nope': true,
+        'mdict:unsupported': true,
       },
     };
     const providers = getEnabledProviders({ settings, dictionaries: dicts, fs });
-    expect(providers.map((p) => p.id)).toEqual([
-      BUILTIN_PROVIDER_IDS.wiktionary,
-      'mdict:available',
-    ]);
+    expect(providers.map((p) => p.id)).toEqual(['mdict:first', 'stardict:second']);
   });
 });

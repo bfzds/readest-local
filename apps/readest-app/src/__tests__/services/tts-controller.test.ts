@@ -14,12 +14,6 @@ vi.mock('@/services/tts/WebSpeechClient', () => ({
   }),
 }));
 
-vi.mock('@/services/tts/EdgeTTSClient', () => ({
-  EdgeTTSClient: vi.fn().mockImplementation(function (this: Record<string, unknown>) {
-    Object.assign(this, createMockTTSClient('edge'), { setSentenceGap: vi.fn() });
-  }),
-}));
-
 vi.mock('@/services/tts/NativeTTSClient', () => ({
   NativeTTSClient: vi.fn().mockImplementation(function (this: Record<string, unknown>) {
     Object.assign(this, createMockTTSClient('native'));
@@ -109,9 +103,9 @@ function createMockTTSClient(name: string): TTSClient {
     getVoices: vi.fn().mockResolvedValue([]),
     getGranularities: vi.fn().mockReturnValue(['word', 'sentence'] as TTSGranularity[]),
     getCapabilities: vi.fn().mockImplementation(() => ({
-      wordBoundaries: name === 'edge',
-      mediaClock: name === 'edge',
-      gapControl: name === 'edge',
+      wordBoundaries: name === 'web',
+      mediaClock: name === 'web',
+      gapControl: name === 'web',
       liveRateChange: false,
     })),
     getVoiceId: vi.fn().mockReturnValue('voice-1'),
@@ -278,24 +272,22 @@ describe('TTSController', () => {
   });
 
   describe('init', () => {
-    test('initialises edge and web clients', async () => {
+    test('initialises the web client', async () => {
       await controller.init();
 
-      expect(controller.ttsEdgeClient.init).toHaveBeenCalled();
       expect(controller.ttsWebClient.init).toHaveBeenCalled();
     });
 
-    test('sets ttsClient to first available client (edge)', async () => {
+    test('sets ttsClient to the first available client (web)', async () => {
       await controller.init();
-      // edge inits first and succeeds, so it becomes the active client
-      expect(controller.ttsClient.name).toBe('edge');
+      // web inits and succeeds, so it becomes the active client
+      expect(controller.ttsClient.name).toBe('web');
     });
 
-    test('fetches voices from web and edge clients', async () => {
+    test('fetches voices from the web client', async () => {
       await controller.init();
 
       expect(controller.ttsWebClient.getAllVoices).toHaveBeenCalled();
-      expect(controller.ttsEdgeClient.getAllVoices).toHaveBeenCalled();
     });
 
     test('respects preferred client from TTSUtils', async () => {
@@ -304,11 +296,11 @@ describe('TTSController', () => {
       expect(controller.ttsClient.name).toBe('web');
     });
 
-    test('falls back to web client when preferred client not found', async () => {
+    test('falls back to the first available client when preferred client not found', async () => {
       vi.mocked(TTSUtils.getPreferredClient).mockReturnValue('nonexistent');
       await controller.init();
-      // first available is edge
-      expect(controller.ttsClient.name).toBe('edge');
+      // web is the only available client
+      expect(controller.ttsClient.name).toBe('web');
     });
 
     test('also initializes native client on Android', async () => {
@@ -334,98 +326,95 @@ describe('TTSController', () => {
   });
 
   describe('supportsGapControl', () => {
-    test('returns true when ttsClient is the edge client', () => {
-      controller.ttsClient = controller.ttsEdgeClient;
+    test('returns true when ttsClient is the web client', () => {
+      controller.ttsClient = controller.ttsWebClient;
       expect(controller.supportsGapControl()).toBe(true);
     });
 
-    test('returns false when ttsClient is not the edge client', () => {
-      controller.ttsClient = controller.ttsWebClient;
-      expect(controller.supportsGapControl()).toBe(false);
+    test('returns false when ttsClient is the native client', () => {
+      const androidService = createMockAppService(true);
+      const c = new TTSController(androidService, mockView);
+      c.ttsClient = c.ttsNativeClient!;
+      expect(c.supportsGapControl()).toBe(false);
     });
   });
 
   describe('setSentenceGap', () => {
-    test('delegates to ttsEdgeClient.setSentenceGap with the given value', () => {
-      controller.setSentenceGap(0.5);
-      expect(controller.ttsEdgeClient.setSentenceGap).toHaveBeenCalledWith(0.5);
+    test('accepts the value without throwing', () => {
+      expect(() => controller.setSentenceGap(0.5)).not.toThrow();
     });
   });
 
   describe('setVoice', () => {
-    test('switches to edge client when voice found in edge voices', async () => {
-      controller.ttsEdgeVoices = [{ id: 'edge-voice-1', name: 'Edge Voice', lang: 'en-US' }];
-      await controller.setVoice('edge-voice-1', 'en');
-
-      expect(controller.ttsClient.name).toBe('edge');
-      expect(controller.state).toBe('setvoice-paused');
-      expect(TTSUtils.setPreferredClient).toHaveBeenCalledWith('edge');
-      expect(TTSUtils.setPreferredVoice).toHaveBeenCalledWith('edge', 'en', 'edge-voice-1');
-    });
-
-    test('switches to web client when voice not in edge or native', async () => {
-      controller.ttsEdgeVoices = [{ id: 'edge-voice-1', name: 'Edge Voice', lang: 'en-US' }];
-      await controller.setVoice('unknown-voice', 'en');
-
-      expect(controller.ttsClient.name).toBe('web');
-    });
-
     test('switches to native client when voice found in native voices', async () => {
       const androidService = createMockAppService(true);
       const c = new TTSController(androidService, mockView);
       await c.init();
-      c.ttsNativeVoices = [{ id: 'native-v', name: 'Native', lang: 'en-US' }];
-      await c.setVoice('native-v', 'en');
+      c.ttsNativeVoices = [{ id: 'native-voice-1', name: 'Native Voice', lang: 'en-US' }];
+      await c.setVoice('native-voice-1', 'en');
 
       expect(c.ttsClient.name).toBe('native');
+      expect(c.state).toBe('setvoice-paused');
+      expect(TTSUtils.setPreferredClient).toHaveBeenCalledWith('native');
+      expect(TTSUtils.setPreferredVoice).toHaveBeenCalledWith('native', 'en', 'native-voice-1');
+    });
+
+    test('switches to web client when voice not in native voices', async () => {
+      const androidService = createMockAppService(true);
+      const c = new TTSController(androidService, mockView);
+      await c.init();
+      c.ttsNativeVoices = [{ id: 'native-voice-1', name: 'Native Voice', lang: 'en-US' }];
+      await c.setVoice('unknown-voice', 'en');
+
+      expect(c.ttsClient.name).toBe('web');
     });
 
     test('throws when native voice found but native client unavailable', async () => {
       // non-android, ttsNativeClient is null, but we force nativeVoices
       controller.ttsNativeVoices = [{ id: 'native-v', name: 'Native', lang: 'en-US' }];
-      controller.ttsEdgeVoices = [];
 
       await expect(controller.setVoice('native-v', 'en')).rejects.toThrow(
         'Native TTS client is not available',
       );
     });
 
-    test('skips disabled voices', async () => {
-      controller.ttsEdgeVoices = [
-        { id: 'edge-voice-1', name: 'Edge Voice', lang: 'en-US', disabled: true },
+    test('skips disabled native voices', async () => {
+      const androidService = createMockAppService(true);
+      const c = new TTSController(androidService, mockView);
+      await c.init();
+      c.ttsNativeVoices = [
+        { id: 'native-voice-1', name: 'Native Voice', lang: 'en-US', disabled: true },
       ];
-      await controller.setVoice('edge-voice-1', 'en');
-      // Should fall through to web since edge voice is disabled
-      expect(controller.ttsClient.name).toBe('web');
+      await c.setVoice('native-voice-1', 'en');
+      // Should fall through to web since the native voice is disabled
+      expect(c.ttsClient.name).toBe('web');
     });
 
-    test('uses empty voiceId to match any non-disabled voice', async () => {
-      controller.ttsEdgeVoices = [{ id: 'edge-v', name: 'Edge', lang: 'en-US' }];
-      await controller.setVoice('', 'en');
-      expect(controller.ttsClient.name).toBe('edge');
+    test('uses empty voiceId to match any non-disabled native voice', async () => {
+      const androidService = createMockAppService(true);
+      const c = new TTSController(androidService, mockView);
+      await c.init();
+      c.ttsNativeVoices = [{ id: 'native-v', name: 'Native', lang: 'en-US' }];
+      await c.setVoice('', 'en');
+      expect(c.ttsClient.name).toBe('native');
     });
 
     test('sets rate on newly selected client', async () => {
       controller.ttsRate = 1.8;
-      controller.ttsEdgeVoices = [{ id: 'ev', name: 'E', lang: 'en-US' }];
-      await controller.setVoice('ev', 'en');
+      await controller.setVoice('unknown-web-voice', 'en');
       expect(controller.ttsClient.setRate).toHaveBeenCalledWith(1.8);
     });
   });
 
   describe('getVoices', () => {
-    test('aggregates voices from all clients', async () => {
-      const edgeVoices: TTSVoicesGroup[] = [
-        { id: 'eg', name: 'Edge', voices: [{ id: 'e1', name: 'E1', lang: 'en-US' }] },
-      ];
+    test('returns web voices by default', async () => {
       const webVoices: TTSVoicesGroup[] = [
         { id: 'wg', name: 'Web', voices: [{ id: 'w1', name: 'W1', lang: 'en-US' }] },
       ];
-      vi.mocked(controller.ttsEdgeClient.getVoices).mockResolvedValue(edgeVoices);
       vi.mocked(controller.ttsWebClient.getVoices).mockResolvedValue(webVoices);
 
       const result = await controller.getVoices('en');
-      expect(result).toEqual([...edgeVoices, ...webVoices]);
+      expect(result).toEqual(webVoices);
     });
 
     test('includes native voices when available', async () => {
@@ -437,7 +426,6 @@ describe('TTSController', () => {
         { id: 'ng', name: 'Native', voices: [{ id: 'n1', name: 'N1', lang: 'en-US' }] },
       ];
       vi.mocked(c.ttsNativeClient!.getVoices).mockResolvedValue(nativeVoices);
-      vi.mocked(c.ttsEdgeClient.getVoices).mockResolvedValue([]);
       vi.mocked(c.ttsWebClient.getVoices).mockResolvedValue([]);
 
       const result = await c.getVoices('en');
@@ -478,22 +466,18 @@ describe('TTSController', () => {
   describe('setPrimaryLang', () => {
     test('calls setPrimaryLang on initialized clients', async () => {
       // Mark clients as initialized
-      controller.ttsEdgeClient.initialized = true;
       controller.ttsWebClient.initialized = true;
 
       await controller.setPrimaryLang('fr');
 
-      expect(controller.ttsEdgeClient.setPrimaryLang).toHaveBeenCalledWith('fr');
       expect(controller.ttsWebClient.setPrimaryLang).toHaveBeenCalledWith('fr');
     });
 
     test('skips uninitialised clients', async () => {
-      controller.ttsEdgeClient.initialized = false;
       controller.ttsWebClient.initialized = false;
 
       await controller.setPrimaryLang('de');
 
-      expect(controller.ttsEdgeClient.setPrimaryLang).not.toHaveBeenCalled();
       expect(controller.ttsWebClient.setPrimaryLang).not.toHaveBeenCalled();
     });
   });
@@ -545,7 +529,7 @@ describe('TTSController', () => {
     });
 
     test('error preserves state for our internal Aborted message', () => {
-      // EdgeTTSClient and NativeTTSClient resolve the inner promise with
+      // WebSpeechClient and NativeTTSClient resolve the inner promise with
       // { code: 'error', message: 'Aborted' } on signal abort; if that bubbles
       // through any catch path it must not flip state to 'stopped'.
       controller.state = 'playing';
@@ -1195,14 +1179,12 @@ describe('TTSController', () => {
     test('stops playback and clears tts', async () => {
       const stopSpy = vi.spyOn(controller, 'stop').mockResolvedValue();
       controller.ttsWebClient.initialized = true;
-      controller.ttsEdgeClient.initialized = true;
 
       await controller.shutdown();
 
       expect(stopSpy).toHaveBeenCalled();
       expect(mockView.tts).toBeNull();
       expect(controller.ttsWebClient.shutdown).toHaveBeenCalled();
-      expect(controller.ttsEdgeClient.shutdown).toHaveBeenCalled();
     });
 
     test('shuts down native client when initialized', async () => {
@@ -1220,12 +1202,10 @@ describe('TTSController', () => {
     test('skips shutdown of uninitialized clients', async () => {
       vi.spyOn(controller, 'stop').mockResolvedValue();
       controller.ttsWebClient.initialized = false;
-      controller.ttsEdgeClient.initialized = false;
 
       await controller.shutdown();
 
       expect(controller.ttsWebClient.shutdown).not.toHaveBeenCalled();
-      expect(controller.ttsEdgeClient.shutdown).not.toHaveBeenCalled();
     });
   });
 
@@ -1420,9 +1400,9 @@ describe('TTSController', () => {
       expect(stopKeepAlive).not.toHaveBeenCalled();
     });
 
-    test('does not keep the WebView awake for a buffered (Edge) engine — it emits its own audio', async () => {
+    test('does not keep the WebView awake for a media-clock engine — it emits its own audio', async () => {
       const c = await makeAndroidNativeController();
-      c.ttsClient = c.ttsEdgeClient; // mediaClock === true
+      c.ttsClient = c.ttsWebClient; // mediaClock === true
       vi.spyOn(c, 'forward').mockResolvedValue();
 
       c.speak('<speak>hello</speak>');
@@ -1464,9 +1444,9 @@ describe('TTSController', () => {
     // Buffered engines earn the exemption for free only while they are actually
     // speaking; a paused WebAudio session emits nothing either, so it needs the
     // tone exactly as the direct-speak engines do.
-    test('starts the keep-alive when a buffered (Edge) session is paused', async () => {
+    test('starts the keep-alive when a media-clock session is paused', async () => {
       const c = await makeAndroidNativeController();
-      c.ttsClient = c.ttsEdgeClient; // mediaClock === true
+      c.ttsClient = c.ttsWebClient; // mediaClock === true
       vi.spyOn(c, 'forward').mockResolvedValue();
       c.speak('<speak>hello</speak>');
       await vi.waitFor(() => expect(c.state).toBe('playing'), { timeout: 5000 });
