@@ -1,5 +1,4 @@
 import withSerwistInit from '@serwist/next';
-import withBundleAnalyzer from '@next/bundle-analyzer';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -7,11 +6,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const isDev = process.env['NODE_ENV'] === 'development';
 const appPlatform = process.env['NEXT_PUBLIC_APP_PLATFORM'];
-
-if (isDev) {
-  const { initOpenNextCloudflareForDev } = await import('@opennextjs/cloudflare');
-  initOpenNextCloudflareForDev();
-}
 
 const exportOutput = appPlatform !== 'web' && !isDev;
 // Opt-in standalone output, set only by the Docker production build
@@ -80,12 +74,6 @@ const nextConfig = {
     },
   },
   transpilePackages: [
-    'ai',
-    'ai-sdk-ollama',
-    '@ai-sdk/react',
-    '@assistant-ui/react',
-    '@assistant-ui/react-ai-sdk',
-    '@assistant-ui/react-markdown',
     'streamdown',
     ...(isDev
       ? []
@@ -147,8 +135,4 @@ const withPWA = pwaDisabled
       scope: '/',
     });
 
-const withAnalyzer = withBundleAnalyzer({
-  enabled: process.env.ANALYZE === 'true',
-});
-
-export default withPWA(withAnalyzer(nextConfig));
+export default withPWA(nextConfig);

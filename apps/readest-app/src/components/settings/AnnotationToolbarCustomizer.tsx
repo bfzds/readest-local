@@ -150,12 +150,12 @@ const AnnotationToolbarCustomizer: React.FC<AnnotationToolbarCustomizerProps> = 
   onBack,
 }) => {
   const _ = useTranslation();
-  const { envConfig, appService } = useEnv();
+  const { envConfig } = useEnv();
   const { getViewSettings } = useReaderStore();
   const { settings } = useSettingsStore();
   const viewSettings = getViewSettings(bookKey) || settings.globalViewSettings;
 
-  const canShare = canShareText(appService);
+  const canShare = canShareText();
 
   // `share` is hidden on platforms that can't share (Windows/Linux desktop).
   // If the user enabled it on a share-capable device (e.g. their phone) and it

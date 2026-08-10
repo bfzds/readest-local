@@ -73,6 +73,12 @@ describe('ImageViewer save/share button', () => {
 
   it('shares via saveFile without a toast on a share-capable platform', async () => {
     const saveFile = vi.fn().mockResolvedValue(true);
+    const navShare = vi.fn().mockResolvedValue(undefined);
+    // jsdom does not expose the Web Share API by default.
+    Object.defineProperty(globalThis.navigator, 'share', {
+      configurable: true,
+      value: navShare,
+    });
     h.appService = { isMobileApp: true, isMacOSApp: false, saveFile };
 
     const { getByLabelText } = render(

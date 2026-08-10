@@ -5,7 +5,6 @@ const writeTextFileMock = vi.fn().mockResolvedValue(undefined);
 const writeFileMock = vi.fn().mockResolvedValue(undefined);
 const mkdirMock = vi.fn().mockResolvedValue(undefined);
 const saveDialogMock = vi.fn().mockResolvedValue('/tmp/exported.md');
-const shareFileMock = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('@tauri-apps/plugin-os', () => ({
   type: () => osTypeMock(),
@@ -46,10 +45,6 @@ vi.mock('@tauri-apps/api/path', () => ({
   tempDir: () => Promise.resolve('/tmp'),
 }));
 
-vi.mock('@choochmeque/tauri-plugin-sharekit-api', () => ({
-  shareFile: (...args: unknown[]) => shareFileMock(...args),
-}));
-
 vi.mock('@/utils/bridge', () => ({
   copyURIToPath: vi.fn().mockResolvedValue({ path: '' }),
   getStorefrontRegionCode: vi.fn().mockResolvedValue({ regionCode: null }),
@@ -78,78 +73,47 @@ async function loadServiceWithOS(os: 'macos' | 'windows' | 'linux' | 'ios' | 'an
   return new mod.NativeAppService();
 }
 
-describe('NativeAppService.saveFile share gating', () => {
+describe('NativeAppService.saveFile local export', () => {
   beforeEach(() => {
     writeTextFileMock.mockClear();
     writeFileMock.mockClear();
     mkdirMock.mockClear();
     saveDialogMock.mockClear();
-    shareFileMock.mockClear();
   });
 
-  test('uses native share on macOS when share=true', async () => {
+  test('always uses the save dialog even when share=true', async () => {
     const service = await loadServiceWithOS('macos');
     await service.saveFile('notes.md', 'hello', { share: true, mimeType: 'text/markdown' });
-    expect(shareFileMock).toHaveBeenCalledTimes(1);
-    expect(saveDialogMock).not.toHaveBeenCalled();
+    expect(saveDialogMock).toHaveBeenCalledTimes(1);
+    expect(writeTextFileMock).toHaveBeenCalledWith('/tmp/exported.md', 'hello');
   });
 
-  // Regression: on Windows the sharekit plugin's share UI blocks the main
-  // thread waiting on cancel/complete callbacks that may never fire, freezing
-  // the app. See issue #4343. Windows must fall through to the save dialog.
-  test('falls through to save dialog on Windows when share=true', async () => {
+  test('uses the save dialog on every desktop and mobile platform', async () => {
+    for (const os of ['windows', 'linux', 'ios', 'android'] as const) {
+      saveDialogMock.mockClear();
+      const service = await loadServiceWithOS(os);
+      await service.saveFile('notes.md', 'hello', { share: true });
+      expect(saveDialogMock).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  test('writes binary content to the chosen path', async () => {
     const service = await loadServiceWithOS('windows');
-    await service.saveFile('notes.md', 'hello', { share: true, mimeType: 'text/markdown' });
-    expect(shareFileMock).not.toHaveBeenCalled();
-    expect(saveDialogMock).toHaveBeenCalledTimes(1);
-  });
-
-  test('falls through to save dialog on Linux when share=true', async () => {
-    const service = await loadServiceWithOS('linux');
-    await service.saveFile('notes.md', 'hello', { share: true, mimeType: 'text/markdown' });
-    expect(shareFileMock).not.toHaveBeenCalled();
-    expect(saveDialogMock).toHaveBeenCalledTimes(1);
-  });
-
-  // Regression (#4680): Tauri's Temp dir IS the Android cache dir, and the
-  // sharekit plugin copies the shared file to `<cacheDir>/<name>` before
-  // sharing. Writing the shareable file to the Temp ROOT makes that copy a
-  // self-copy whose output stream truncates the source to 0 bytes (the shared
-  // image came out 0 KB). The shareable file must live in a Temp SUBDIRECTORY.
-  test('writes the shareable file to a Temp subdirectory to avoid self-copy truncation', async () => {
-    const service = await loadServiceWithOS('android');
     const bytes = new Uint8Array([1, 2, 3]).buffer;
     await service.saveFile('image.png', bytes, { share: true, mimeType: 'image/png' });
-
-    expect(shareFileMock).toHaveBeenCalledTimes(1);
-    const sharedPath = shareFileMock.mock.calls[0]![0] as string;
-    // Must NOT be `<tempDir>/image.png` — that collides with the plugin's
-    // `File(cacheDir, "image.png")` destination and truncates to 0 bytes.
-    expect(sharedPath).not.toBe('/tmp/image.png');
-    expect(sharedPath).toContain('/shared/');
-    expect(writeFileMock).toHaveBeenCalledWith(sharedPath, expect.any(Uint8Array));
-    // The subdirectory is created before writing.
-    expect(mkdirMock).toHaveBeenCalled();
+    expect(saveDialogMock).toHaveBeenCalledTimes(1);
+    expect(writeFileMock).toHaveBeenCalledWith('/tmp/exported.md', expect.any(Uint8Array));
   });
 
-  // The book "Send" flow hands an already-on-disk file straight to the share
-  // sheet via `filePath` and passes `null` content so nothing gets re-buffered
-  // into memory. The file at `filePath` must be shared verbatim without any
-  // write happening first.
-  test('shares the file at filePath without buffering when content is null', async () => {
+  test('ignores filePath when share=true and saves through the dialog', async () => {
     const service = await loadServiceWithOS('macos');
     await service.saveFile('book.epub', null, {
       share: true,
       mimeType: 'application/epub+zip',
       filePath: '/abs/path/book.epub',
     });
-    expect(shareFileMock).toHaveBeenCalledTimes(1);
-    expect(shareFileMock).toHaveBeenCalledWith(
-      '/abs/path/book.epub',
-      expect.objectContaining({ mimeType: 'application/epub+zip' }),
-    );
+    expect(saveDialogMock).toHaveBeenCalledTimes(1);
     expect(writeFileMock).not.toHaveBeenCalled();
     expect(writeTextFileMock).not.toHaveBeenCalled();
-    expect(saveDialogMock).not.toHaveBeenCalled();
   });
 });

@@ -55,7 +55,6 @@ export abstract class BaseAppService implements AppService {
   hasRoundedWindow = false;
   hasSafeAreaInset = false;
   hasHaptics = false;
-  hasUpdater = false;
   hasOrientationLock = false;
   hasScreenBrightness = false;
   hasAmbientLightSensor = false;

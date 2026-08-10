@@ -181,7 +181,6 @@ describe('BaseAppService', () => {
       expect(service.hasTrafficLight).toBe(false);
       expect(service.hasWindow).toBe(false);
       expect(service.hasHaptics).toBe(false);
-      expect(service.hasUpdater).toBe(false);
       expect(service.isEink).toBe(false);
       expect(service.localBooksDir).toBe('');
     });

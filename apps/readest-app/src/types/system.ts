@@ -87,7 +87,6 @@ export interface AppService {
   hasRoundedWindow: boolean;
   hasSafeAreaInset: boolean;
   hasHaptics: boolean;
-  hasUpdater: boolean;
   hasOrientationLock: boolean;
   hasScreenBrightness: boolean;
   /** True when a hardware ambient light sensor can drive Ambient Mode. */

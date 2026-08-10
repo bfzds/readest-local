@@ -68,12 +68,10 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
   const [screenWakeLock, setScreenWakeLock] = useState(settings.screenWakeLock);
   const [autohideCursor, setAutohideCursor] = useState(settings.autohideCursor);
   const [allowScript, setAllowScript] = useState(viewSettings.allowScript);
-  const [isAutoCheckUpdates, setIsAutoCheckUpdates] = useState(settings.autoCheckUpdates);
-  const [isNightlyChannel, setIsNightlyChannel] = useState(settings.updateChannel === 'nightly');
 
   const resetToDefaults = useResetViewSettings();
   const pageTurnerResetRef = useRef<() => void>(() => {});
-  const canShare = canShareText(appService);
+  const canShare = canShareText();
 
   // The layered styles need an engine with full View Transitions support or
   // the Tauri captured-turn fallback; engines like iOS 18 WebKit crash on
@@ -295,18 +293,6 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [copyToNotebook]);
 
-  const toggleAutoCheckUpdates = () => {
-    const newValue = !isAutoCheckUpdates;
-    saveSysSettings(envConfig, 'autoCheckUpdates', newValue);
-    setIsAutoCheckUpdates(newValue);
-  };
-
-  const toggleNightlyChannel = () => {
-    const newValue = !isNightlyChannel;
-    saveSysSettings(envConfig, 'updateChannel', newValue ? 'nightly' : 'stable');
-    setIsNightlyChannel(newValue);
-  };
-
   const getQuickActionOptions = () => {
     return [
       {
@@ -521,23 +507,6 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
           />
         )}
       </BoxedList>
-
-      {appService?.hasUpdater && (
-        <BoxedList title={_('Update')} data-setting-id='settings.control.checkUpdates'>
-          <SettingsSwitchRow
-            label={_('Check Updates on Start')}
-            checked={isAutoCheckUpdates}
-            onChange={toggleAutoCheckUpdates}
-          />
-          <SettingsSwitchRow
-            label={_('Nightly Builds')}
-            description={isNightlyChannel ? _('Early daily builds') : ''}
-            checked={isNightlyChannel}
-            onChange={toggleNightlyChannel}
-            data-setting-id='settings.control.nightlyChannel'
-          />
-        </BoxedList>
-      )}
 
       <BoxedList title={_('Security')} data-setting-id='settings.control.allowJavascript'>
         <SettingsSwitchRow

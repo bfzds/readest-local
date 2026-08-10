@@ -25,7 +25,6 @@ import {
   tempDir,
 } from '@tauri-apps/api/path';
 import { type as osType } from '@tauri-apps/plugin-os';
-import { shareFile } from '@choochmeque/tauri-plugin-sharekit-api';
 
 import {
   FileSystem,
@@ -64,7 +63,6 @@ declare global {
   interface Window {
     __READEST_IS_EINK?: boolean;
     __READEST_IS_APPIMAGE?: boolean;
-    __READEST_UPDATER_DISABLED?: boolean;
   }
 }
 
@@ -574,10 +572,6 @@ export class NativeAppService extends BaseAppService {
   override hasRoundedWindow = false;
   override hasSafeAreaInset = OS_TYPE === 'ios' || OS_TYPE === 'android';
   override hasHaptics = OS_TYPE === 'ios' || OS_TYPE === 'android';
-  override hasUpdater =
-    OS_TYPE !== 'ios' &&
-    !process.env['NEXT_PUBLIC_DISABLE_UPDATER'] &&
-    !window.__READEST_UPDATER_DISABLED;
   // orientation lock is not supported on iPad
   override hasOrientationLock =
     (OS_TYPE === 'ios' && getOSPlatform() === 'ios') || OS_TYPE === 'android';
@@ -615,25 +609,6 @@ export class NativeAppService extends BaseAppService {
   override async init() {
     const execDir = await invoke<string>('get_executable_dir');
     this.execDir = execDir;
-    // Report the WebView User-Agent so Sentry can tag crashes with the
-    // engine/version (the injected browser SDK's UA context isn't forwarded).
-    try {
-      await invoke('set_webview_info', { userAgent: navigator.userAgent });
-    } catch (err) {
-      console.warn('[nativeAppService] set_webview_info failed:', err);
-    }
-    // Ask Rust whether the in-app updater must stay hidden (READEST_DISABLE_UPDATER,
-    // Flatpak, or a Linux deb/rpm/pacman install that Tauri can't self-update). The
-    // command is the reliable source of truth; the `__READEST_UPDATER_DISABLED`
-    // init-script global isn't dependable on every Linux/WebKitGTK setup (#4874).
-    if (this.isDesktopApp) {
-      try {
-        const updaterDisabled = await invoke<boolean>('is_updater_disabled');
-        this.hasUpdater = this.hasUpdater && !updaterDisabled;
-      } catch (err) {
-        console.warn('[nativeAppService] is_updater_disabled failed:', err);
-      }
-    }
     if (
       process.env['NEXT_PUBLIC_PORTABLE_APP'] ||
       (await this.fs.exists(`${execDir}/${SETTINGS_FILENAME}`, 'None'))
@@ -789,7 +764,7 @@ export class NativeAppService extends BaseAppService {
   async saveFile(
     filename: string,
     content: string | ArrayBuffer | null,
-    options?: {
+    _options?: {
       filePath?: string;
       mimeType?: string;
       share?: boolean;
@@ -798,51 +773,6 @@ export class NativeAppService extends BaseAppService {
   ): Promise<boolean> {
     try {
       const ext = filename.split('.').pop() || '';
-      // Linux desktop has no system share sheet; Windows WebView2's native
-      // share UI (via tauri-plugin-sharekit) blocks the main thread waiting
-      // on complete/cancel callbacks that may never fire when the user
-      // dismisses the picker, freezing the app (issue #4343). Both fall
-      // through to saveDialog instead.
-      const wantShare = !this.isLinuxApp && !this.isWindowsApp && (this.isIOSApp || options?.share);
-      if (wantShare) {
-        let shareablePath = options?.filePath;
-        if (!shareablePath) {
-          // Write into a Temp SUBDIRECTORY, never the Temp root. On Android the
-          // sharekit plugin copies the shared file to `<cacheDir>/<name>` before
-          // sharing, and Tauri's Temp dir IS `<cacheDir>` — writing to the root
-          // makes that a copy onto itself, whose output stream truncates the
-          // source to 0 bytes (the shared image came out 0 KB). A subdirectory
-          // gives the plugin's copy a distinct source path. (#4680)
-          const shareDir = await this.resolveFilePath('shared', 'Temp');
-          await mkdir(shareDir, { recursive: true });
-          shareablePath = await this.resolveFilePath(`shared/${filename}`, 'Temp');
-          if (typeof content === 'string') {
-            await writeTextFile(shareablePath, content);
-          } else if (content) {
-            await writeFile(shareablePath, new Uint8Array(content));
-          }
-        }
-        try {
-          await shareFile(shareablePath, {
-            mimeType: options?.mimeType || 'application/octet-stream',
-            // Anchor the macOS NSSharingServicePicker / iPad popover to
-            // the trigger button. Without this, the picker pops at the
-            // WebView's top-left corner.
-            ...(options?.sharePosition ? { position: options.sharePosition } : {}),
-          });
-        } catch (error) {
-          // The plugin throws on user cancellation (e.g. dismissing the
-          // Android share sheet returns "Share cancelled"). That's not a
-          // failure — the user explicitly chose not to share, so we must
-          // NOT fall back to saveDialog and pop a "Save As..." prompt.
-          // Same goes for any other share error: the caller asked for a
-          // share sheet, fulfilled or not, the saveDialog flow is a
-          // completely different user intent.
-          console.warn('shareFile did not complete:', error);
-        }
-        return true;
-      }
-
       const filePath = await saveDialog({
         defaultPath: filename,
         filters: [{ name: ext.toUpperCase(), extensions: [ext] }],

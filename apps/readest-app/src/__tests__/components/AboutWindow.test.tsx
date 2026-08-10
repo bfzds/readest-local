@@ -1,5 +1,5 @@
 /**
- * AboutWindow — the version label doubles as a copy-to-clipboard control.
+ * AboutWindow - the version label doubles as a copy-to-clipboard control.
  *
  * On mobile there is no way to select the version string to paste it into a
  * bug report (issue #5285), so tapping the label copies it. The label must
@@ -20,16 +20,7 @@ vi.mock('@/hooks/useTranslation', () => ({
 }));
 
 vi.mock('@/context/EnvContext', () => ({
-  useEnv: () => ({ appService: { hasUpdater: true } }),
-}));
-
-vi.mock('@/store/settingsStore', () => ({
-  useSettingsStore: () => ({ settings: { updateChannel: 'stable' } }),
-}));
-
-vi.mock('@/helpers/updater', () => ({
-  checkForAppUpdates: vi.fn(),
-  checkAppReleaseNotes: vi.fn(),
+  useEnv: () => ({ appService: {} }),
 }));
 
 vi.mock('@/utils/ua', () => ({
@@ -109,8 +100,6 @@ describe('AboutWindow version label', () => {
   it('keeps the plain-text look of the label', async () => {
     const label = await openDialog();
 
-    // Same typography classes as the non-clickable label it replaces, and no
-    // daisyUI button chrome that would change how it renders.
     expect(label.className).toContain('text-neutral-content');
     expect(label.className).toContain('text-center');
     expect(label.className).toContain('text-sm');
