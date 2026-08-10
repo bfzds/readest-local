@@ -8,6 +8,10 @@ vi.mock('@/hooks/useTranslation', () => ({
   useTranslation: () => (key: string) => key,
 }));
 
+vi.mock('@/context/EnvContext', () => ({
+  useEnv: () => ({ envConfig: {}, appService: {} }),
+}));
+
 const renderPopup = (props: Partial<React.ComponentProps<typeof ImportMenuPopup>> = {}) => {
   const anchor = document.createElement('button');
   document.body.appendChild(anchor);

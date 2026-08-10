@@ -7,7 +7,6 @@ import { Insets } from '@/types/misc';
 import { useEnv } from '@/context/EnvContext';
 import { useThemeStore } from '@/store/themeStore';
 import { useReaderStore } from '@/store/readerStore';
-import { useBookDataStore } from '@/store/bookDataStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -22,16 +21,13 @@ import { saveViewSettings } from '@/helpers/settings';
 import { getHeaderTriggerHeight } from '@/utils/insets';
 import { HighlighterIcon } from '@/components/HighlighterIcon';
 import Dropdown from '@/components/Dropdown';
-import ModalPortal from '@/components/ModalPortal';
 import WindowButtons from '@/components/WindowButtons';
 import QuickActionMenu from './annotator/QuickActionMenu';
 import SidebarToggler from './SidebarToggler';
 import BookmarkToggler from './BookmarkToggler';
 import NotebookToggler from './NotebookToggler';
 import SettingsToggler from './SettingsToggler';
-import TranslationToggler from './TranslationToggler';
 import ViewMenu from './ViewMenu';
-import SyncInfoDialog from './SyncInfoDialog';
 
 interface HeaderBarProps {
   bookKey: string;
@@ -66,15 +62,9 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
   const { isDarkMode, systemUIVisible, statusBarHeight } = useThemeStore();
   const { isSideBarVisible, getIsSideBarVisible } = useSidebarStore();
   const { getView, getViewSettings, setHoveredBookKey } = useReaderStore();
-  const { getBookData, getConfig } = useBookDataStore();
   const viewSettings = getViewSettings(bookKey);
-  const bookData = getBookData(bookKey);
-  const bookConfig = getConfig(bookKey);
-  const lastSyncedAt =
-    Math.max(bookConfig?.lastSyncedAtConfig || 0, bookConfig?.lastSyncedAtNotes || 0) || undefined;
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [isMetaHashDialogOpen, setIsMetaHashDialogOpen] = useState(false);
   const [headerWidth, setHeaderWidth] = useState(0);
   const view = getView(bookKey);
   const iconSize18 = useResponsiveSize(18);
@@ -246,7 +236,6 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
               <VscLibrary size={iconSize18} className='fill-base-content' />
             </button>
             <BookmarkToggler bookKey={bookKey} />
-            <TranslationToggler bookKey={bookKey} />
           </div>
           {enableAnnotationQuickActions && (
             <Dropdown
@@ -316,22 +305,8 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
             toggleButton={<MdOutlineMenu />}
             onToggle={handleToggleDropdown}
           >
-            <ViewMenu
-              bookKey={bookKey}
-              onShowMetaHashDialog={() => setIsMetaHashDialogOpen(true)}
-            />
+            <ViewMenu bookKey={bookKey} />
           </Dropdown>
-          {isMetaHashDialogOpen && (
-            <ModalPortal showOverlay={false}>
-              <SyncInfoDialog
-                isOpen={isMetaHashDialogOpen}
-                metadata={bookData?.bookDoc?.metadata ?? bookData?.book?.metadata}
-                storedMetaHash={bookData?.book?.metaHash}
-                lastSyncedAt={lastSyncedAt}
-                onClose={() => setIsMetaHashDialogOpen(false)}
-              />
-            </ModalPortal>
-          )}
           <WindowButtons
             className='window-buttons flex items-center'
             headerRef={headerRef}

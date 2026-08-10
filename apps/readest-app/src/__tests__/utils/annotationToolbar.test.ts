@@ -23,7 +23,6 @@ describe('annotationToolbar helpers', () => {
       'annotate',
       'search',
       'dictionary',
-      'translate',
       'tts',
       'proofread',
     ]);
@@ -61,7 +60,6 @@ describe('annotationToolbar helpers', () => {
       'annotate',
       'search',
       'dictionary',
-      'translate',
       'tts',
       'proofread',
       'share',

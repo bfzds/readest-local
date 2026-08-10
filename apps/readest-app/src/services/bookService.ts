@@ -29,7 +29,6 @@ import { BookDoc, DocumentLoader } from '@/libs/document';
 import { hasMediaOverlays } from '@/services/tts/mediaOverlay';
 import { tryNativeParseEpub } from '@/utils/tauriEpubBridge';
 import { tryNativeParseMobi } from '@/utils/tauriMobiBridge';
-import { isPseStreamFileName, openPseStreamBook, parsePseStreamFileName } from './opds/pseStream';
 import { DEFAULT_BOOK_SEARCH_CONFIG, DEFAULT_FIXED_LAYOUT_VIEW_SETTINGS } from './constants';
 import { isContentURI, isValidURL, makeSafeFilename } from '@/utils/misc';
 import { deserializeConfig, serializeConfig, serializeRawConfig } from '@/utils/serializer';
@@ -408,7 +407,6 @@ export async function importBook(
     lookupIndex,
     osPlatform,
   } = options;
-  const isPseStream = typeof file === 'string' && isPseStreamFileName(file);
 
   let loadedBook: BookDoc | undefined;
   let fileobj: File | undefined;
@@ -425,66 +423,60 @@ export async function importBook(
     }
 
     try {
-      if (isPseStream) {
-        const data = parsePseStreamFileName(file as string);
-        ({ book: loadedBook, format } = await openPseStreamBook(data));
-        filename = file as string;
+      if (typeof file === 'string') {
+        fileobj = await fs.openFile(file, 'None');
+        filename = fileobj.name || getFilename(file);
       } else {
-        if (typeof file === 'string') {
-          fileobj = await fs.openFile(file, 'None');
-          filename = fileobj.name || getFilename(file);
+        fileobj = file;
+        filename = file.name;
+      }
+      if (/\.txt$/i.test(filename)) {
+        const txt2epub = new TxtToEpubConverter();
+        ({ file: fileobj } = await txt2epub.convert({ file: fileobj }));
+      }
+      if (!fileobj || fileobj.size === 0) {
+        throw new Error('Invalid or empty book file');
+      }
+      // Q1 fast path: when running under Tauri with a real file
+      // path, let Rust contribute the mechanical parts of the
+      // import work — partialMD5 over the file, the downscaled
+      // cover, and (for EPUB) the raw OPF bytes. Metadata
+      // extraction itself runs through foliate-js so the import
+      // path produces the same `Book.metadata` shape the reader
+      // path does (`refines` chains / ONIX5 / language maps / EPUB
+      // `belongs-to-collection` for EPUB; PalmDB UID identifier
+      // for MOBI), without any `DocumentLoader.open()` overhead —
+      // the importer never reads sections / toc / fixed-layout
+      // detection, so spending CPU on a zip central-directory
+      // scan, nav/ncx inflate, or PDB record-table walk would be
+      // pure waste here.
+      //
+      // Both bridges are no-ops on web / non-eligible paths, so
+      // the cost when neither matches is just two cheap regex
+      // tests.
+      let nativeBookDoc: BookDoc | undefined;
+      let nativeFormat: BookFormat | undefined;
+      if (typeof file === 'string' && !/\.txt$/i.test(filename)) {
+        const nativeEpub = await tryNativeParseEpub(file);
+        if (nativeEpub) {
+          nativeBookDoc = nativeEpub.bookDoc;
+          nativeFormat = 'EPUB' as BookFormat;
+          nativeHash = nativeEpub.partialMd5;
         } else {
-          fileobj = file;
-          filename = file.name;
-        }
-        if (/\.txt$/i.test(filename)) {
-          const txt2epub = new TxtToEpubConverter();
-          ({ file: fileobj } = await txt2epub.convert({ file: fileobj }));
-        }
-        if (!fileobj || fileobj.size === 0) {
-          throw new Error('Invalid or empty book file');
-        }
-        // Q1 fast path: when running under Tauri with a real file
-        // path, let Rust contribute the mechanical parts of the
-        // import work — partialMD5 over the file, the downscaled
-        // cover, and (for EPUB) the raw OPF bytes. Metadata
-        // extraction itself runs through foliate-js so the import
-        // path produces the same `Book.metadata` shape the reader
-        // path does (`refines` chains / ONIX5 / language maps / EPUB
-        // `belongs-to-collection` for EPUB; PalmDB UID identifier
-        // for MOBI), without any `DocumentLoader.open()` overhead —
-        // the importer never reads sections / toc / fixed-layout
-        // detection, so spending CPU on a zip central-directory
-        // scan, nav/ncx inflate, or PDB record-table walk would be
-        // pure waste here.
-        //
-        // Both bridges are no-ops on web / non-eligible paths, so
-        // the cost when neither matches is just two cheap regex
-        // tests.
-        let nativeBookDoc: BookDoc | undefined;
-        let nativeFormat: BookFormat | undefined;
-        if (typeof file === 'string' && !/\.txt$/i.test(filename)) {
-          const nativeEpub = await tryNativeParseEpub(file);
-          if (nativeEpub) {
-            nativeBookDoc = nativeEpub.bookDoc;
-            nativeFormat = 'EPUB' as BookFormat;
-            nativeHash = nativeEpub.partialMd5;
-          } else {
-            const nativeMobi = await tryNativeParseMobi(file, fileobj);
-            if (nativeMobi) {
-              nativeBookDoc = nativeMobi.bookDoc;
-              nativeFormat = nativeMobi.format;
-              nativeHash = nativeMobi.partialMd5;
-            }
+          const nativeMobi = await tryNativeParseMobi(file, fileobj);
+          if (nativeMobi) {
+            nativeBookDoc = nativeMobi.bookDoc;
+            nativeFormat = nativeMobi.format;
+            nativeHash = nativeMobi.partialMd5;
           }
         }
-        if (nativeBookDoc && nativeFormat) {
-          loadedBook = nativeBookDoc;
-          format = nativeFormat;
-          usedNativeParser = true;
-        } else {
-          ({ book: loadedBook, format } = await new DocumentLoader(fileobj).open());
-        }
+      }
+      if (nativeBookDoc && nativeFormat) {
+        loadedBook = nativeBookDoc;
+        format = nativeFormat;
+        usedNativeParser = true;
+      } else {
+        ({ book: loadedBook, format } = await new DocumentLoader(fileobj).open());
       }
       if (!loadedBook) {
         throw new Error('Unsupported or corrupted book file');
@@ -498,11 +490,7 @@ export async function importBook(
       throw new Error(`Failed to open the book file: ${(error as Error).message || error}`);
     }
 
-    const hash = isPseStream
-      ? md5(file as string)
-      : usedNativeParser
-        ? nativeHash!
-        : await partialMD5(fileobj!);
+    const hash = usedNativeParser ? nativeHash! : await partialMD5(fileobj!);
 
     // PDF metadata is often generic boilerplate (e.g. every PowerPoint export
     // is titled "PowerPoint Presentation" by the same author), so metadata
@@ -697,10 +685,7 @@ export async function importBook(
     }
 
     // update file links with url or path or content uri
-    if (isPseStream) {
-      book.url = file as string;
-      if (existingBook) existingBook.url = file as string;
-    } else if (typeof file === 'string') {
+    if (typeof file === 'string') {
       if (isValidURL(file)) {
         book.url = file;
         if (existingBook) existingBook.url = file;

@@ -10,7 +10,6 @@ import {
 } from '@/types/book';
 import { DBBookConfig, DBBook, DBBookNote } from '@/types/records';
 import { sanitizeString } from './sanitize';
-import { buildFeedBookUrl } from '@/services/rss/feedBookUrl';
 
 export const transformBookConfigToDB = (bookConfig: unknown, userId: string): DBBookConfig => {
   const {
@@ -165,9 +164,6 @@ export const transformBookFromDB = (dbBook: DBBook): Book => {
   };
   // Native cloud DBBook has no `url` column; a feed book carries its feed URL in
   // metadata so the reader can rebuild the feed:// descriptor here.
-  if (!book.url && book.metadata?.feedUrl) {
-    book.url = buildFeedBookUrl(book.metadata.feedUrl);
-  }
   return book;
 };
 

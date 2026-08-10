@@ -13,27 +13,6 @@ const { mockInstallNightlyUpdate } = vi.hoisted(() => ({
   mockInstallNightlyUpdate: vi.fn(),
 }));
 
-// ── Locale + translation controls ────────────────────────────────
-let mockLocale = 'en';
-const mockTranslate = vi.fn(async (input: string[]) => input.map((s) => `[zh] ${s}`));
-
-vi.mock('@/utils/misc', () => ({
-  getLocale: () => mockLocale,
-}));
-
-vi.mock('@/hooks/useTranslation', () => ({
-  useTranslation: () => (s: string) => s,
-}));
-
-vi.mock('@/hooks/useTranslator', () => ({
-  useTranslator: () => ({
-    translate: mockTranslate,
-    translator: null,
-    translators: [],
-    loading: false,
-  }),
-}));
-
 vi.mock('next/navigation', () => ({
   useSearchParams: () => ({ get: () => null }),
 }));
@@ -98,8 +77,6 @@ const RELEASE_NOTES = {
 };
 
 beforeEach(() => {
-  mockLocale = 'en';
-  mockTranslate.mockClear();
   mockInstallNightlyUpdate.mockReset();
   window.fetch = vi.fn(async () => ({
     ok: true,
@@ -136,33 +113,5 @@ describe('UpdaterContent — auto-translated changelog', () => {
       expect(screen.getByText('Failed to download and install update')).toBeTruthy();
     });
     expect(consoleError).toHaveBeenCalledWith('Failed to download and install update:', failure);
-  });
-
-  it('shows a "Show original" toggle that swaps the translation for the source English', async () => {
-    mockLocale = 'zh-CN';
-    render(<UpdaterContent checkUpdate={false} latestVersion='0.11.18' lastVersion='0.11.0' />);
-
-    // The translated notes render by default (current behavior preserved).
-    await waitFor(() => expect(screen.getByText('[zh] First feature')).toBeTruthy());
-    expect(mockTranslate).toHaveBeenCalled();
-    // The original English is hidden until the reader asks for it.
-    expect(screen.queryByText('First feature')).toBeNull();
-
-    const toggle = screen.getByRole('button', { name: 'Show original' });
-    fireEvent.click(toggle);
-
-    // Now the source English is shown, the translation is hidden, label flips.
-    await waitFor(() => expect(screen.getByText('First feature')).toBeTruthy());
-    expect(screen.queryByText('[zh] First feature')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Show translation' })).toBeTruthy();
-  });
-
-  it('renders no toggle when the locale is English (nothing was translated)', async () => {
-    mockLocale = 'en';
-    render(<UpdaterContent checkUpdate={false} latestVersion='0.11.18' lastVersion='0.11.0' />);
-
-    await waitFor(() => expect(screen.getByText('First feature')).toBeTruthy());
-    expect(mockTranslate).not.toHaveBeenCalled();
-    expect(screen.queryByRole('button', { name: 'Show original' })).toBeNull();
   });
 });

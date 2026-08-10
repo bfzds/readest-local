@@ -5,18 +5,16 @@ import { Book } from '@/types/book';
 import { getBookWithUpdatedMetadata } from '@/utils/book';
 import { BookMetadata } from '@/libs/document';
 import { useEnv } from '@/context/EnvContext';
-import { useAuth } from '@/context/AuthContext';
+import { eventDispatcher } from '@/utils/event';
 import { useThemeStore } from '@/store/themeStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useMetadataEdit } from './useMetadataEdit';
 import { DeleteAction } from '@/types/system';
-import { eventDispatcher } from '@/utils/event';
 import { isWebAppPlatform } from '@/services/environment';
 import DeleteConfirmAlert from '@/components/DeleteConfirmAlert';
 import Dialog from '@/components/Dialog';
 import BookDetailView from './BookDetailView';
 import BookDetailEdit from './BookDetailEdit';
-import SourceSelector from './SourceSelector';
 import Spinner from '../Spinner';
 
 interface BookDetailModalProps {
@@ -59,7 +57,6 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
 }) => {
   const _ = useTranslation();
   const { envConfig, appService } = useEnv();
-  const { user } = useAuth();
   const { safeAreaInsets } = useThemeStore();
   const [activeDeleteAction, setActiveDeleteAction] = useState<DeleteMenuAction | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -79,16 +76,10 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
     fieldSources,
     lockedFields,
     fieldErrors,
-    searchLoading,
-    showSourceSelection,
-    availableSources,
     handleFieldChange,
     handleToggleFieldLock,
     handleLockAll,
     handleUnlockAll,
-    handleAutoRetrieve,
-    handleSourceSelection,
-    handleCloseSourceSelection,
     resetToOriginal,
   } = useMetadataEdit(bookMeta, bookTags);
 
@@ -193,14 +184,6 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
   const handleDeleteCloudBackup = () => handleDeleteAction('cloud');
   const handleDeleteLocalCopy = () => handleDeleteAction('local');
 
-  const handleShare = () => {
-    // Close this modal first, then hand off to the share dialog hosted by
-    // Bookshelf (it owns the login gate + ShareBookDialog). Mirrors how the
-    // bookshelf context menu dispatches the same event.
-    handleClose();
-    eventDispatcher.dispatch('show-share-dialog', { book });
-  };
-
   const handleBookExport = async () => {
     setIsLoading(true);
     setTimeout(async () => {
@@ -229,11 +212,6 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
     }
   };
 
-  // Sharing uploads the book to the Readest backend and mints a public link, so
-  // it needs a signed-in user and a resolvable on-disk file. `fileSize` is only
-  // non-null when getBookFileSize could actually open the local file.
-  const shareEnabled = !!user && fileSize !== null;
-
   const currentDeleteConfig = activeDeleteAction ? deleteConfigs[activeDeleteAction] : null;
 
   return (
@@ -258,10 +236,8 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
                 fieldSources={fieldSources}
                 lockedFields={lockedFields}
                 fieldErrors={fieldErrors}
-                searchLoading={searchLoading}
                 onFieldChange={handleFieldChange}
                 onToggleFieldLock={handleToggleFieldLock}
-                onAutoRetrieve={handleAutoRetrieve}
                 onLockAll={handleLockAll}
                 onUnlockAll={handleUnlockAll}
                 onCancel={handleCancelEdit}
@@ -273,7 +249,6 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
                 book={displayBook}
                 metadata={bookMeta}
                 fileSize={fileSize}
-                shareEnabled={shareEnabled}
                 onEdit={handleBookMetadataUpdate ? handleEditMetadata : undefined}
                 onDelete={handleBookDelete ? handleDelete : undefined}
                 onDeleteCloudBackup={
@@ -282,23 +257,12 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
                 onDeleteLocalCopy={handleBookDeleteLocalCopy ? handleDeleteLocalCopy : undefined}
                 onDownload={handleBookDownload ? handleRedownload : undefined}
                 onUpload={handleBookUpload ? handleReupload : undefined}
-                onShare={handleShare}
                 onExport={handleBookExport}
                 onMetadataValueClick={onMetadataValueClick}
               />
             )}
           </div>
         </Dialog>
-
-        {/* Source Selection Modal */}
-        {showSourceSelection && (
-          <SourceSelector
-            sources={availableSources}
-            isOpen={showSourceSelection}
-            onSelect={handleSourceSelection}
-            onClose={handleCloseSourceSelection}
-          />
-        )}
 
         {isLoading && (
           <div className='fixed inset-0 z-50 flex items-center justify-center'>

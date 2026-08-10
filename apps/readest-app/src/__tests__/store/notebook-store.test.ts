@@ -93,13 +93,7 @@ describe('notebookStore', () => {
 
   // ── Active tab ─────────────────────────────────────────────────
   describe('setNotebookActiveTab', () => {
-    test('sets active tab to ai', () => {
-      useNotebookStore.getState().setNotebookActiveTab('ai');
-      expect(useNotebookStore.getState().notebookActiveTab).toBe('ai');
-    });
-
     test('sets active tab to notes', () => {
-      useNotebookStore.getState().setNotebookActiveTab('ai');
       useNotebookStore.getState().setNotebookActiveTab('notes');
       expect(useNotebookStore.getState().notebookActiveTab).toBe('notes');
     });

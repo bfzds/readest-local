@@ -8,20 +8,6 @@ import {
   mountCustomFont,
 } from '@/styles/fonts';
 import { useSettingsStore } from './settingsStore';
-import { getReplicaPersistEnv } from '@/services/sync/replicaPersist';
-import { publishReplicaDelete, publishReplicaUpsert } from '@/services/sync/replicaPublish';
-import { FONT_KIND } from '@/services/sync/adapters/font';
-import { computeFontContentId } from '@/services/fontService';
-import { migrateLegacyReplicas } from '@/services/sync/migrateLegacy';
-
-const publishFontUpsert = (font: CustomFont): void => {
-  if (!font.contentId) return;
-  void publishReplicaUpsert(FONT_KIND, font, font.contentId, font.reincarnation);
-};
-
-const publishFontDelete = (contentId: string): void => {
-  void publishReplicaDelete(FONT_KIND, contentId);
-};
 
 interface FontStoreState {
   fonts: CustomFont[];
@@ -120,7 +106,6 @@ export const useCustomFontStore = create<FontStoreState>((set, get) => ({
         fonts: [...state.fonts],
       }));
       const refreshed = get().getFont(font.id) ?? existingFont;
-      publishFontUpsert(refreshed);
       return refreshed;
     }
 
@@ -133,7 +118,6 @@ export const useCustomFontStore = create<FontStoreState>((set, get) => ({
       fonts: [...state.fonts, newFont],
     }));
 
-    publishFontUpsert(newFont);
     return newFont;
   },
 
@@ -154,7 +138,6 @@ export const useCustomFontStore = create<FontStoreState>((set, get) => ({
     set((state) => ({
       fonts: [...state.fonts],
     }));
-    if (font.contentId) publishFontDelete(font.contentId);
     return result;
   },
 
@@ -185,8 +168,6 @@ export const useCustomFontStore = create<FontStoreState>((set, get) => ({
           : [...state.fonts, font];
       return { fonts };
     });
-    const env = getReplicaPersistEnv();
-    if (env) void get().saveCustomFonts(env);
   },
 
   softDeleteByContentId: (contentId) => {
@@ -198,8 +179,6 @@ export const useCustomFontStore = create<FontStoreState>((set, get) => ({
       ),
     }));
     if (target.blobUrl) URL.revokeObjectURL(target.blobUrl);
-    const env = getReplicaPersistEnv();
-    if (env) void get().saveCustomFonts(env);
   },
 
   markAvailableByContentId: (contentId) => {
@@ -208,8 +187,6 @@ export const useCustomFontStore = create<FontStoreState>((set, get) => ({
         f.contentId === contentId ? { ...f, unavailable: undefined } : f,
       ),
     }));
-    const env = getReplicaPersistEnv();
-    if (env) void get().saveCustomFonts(env);
   },
 
   activateFontByContentId: async (envConfig, contentId) => {
@@ -221,8 +198,6 @@ export const useCustomFontStore = create<FontStoreState>((set, get) => ({
       if (typeof document !== 'undefined') {
         mountCustomFont(document, loaded);
       }
-      const env = getReplicaPersistEnv();
-      if (env) await get().saveCustomFonts(env);
     } catch (err) {
       console.warn('activateFontByContentId failed', contentId, err);
     }
@@ -434,27 +409,6 @@ export const findFontByContentId = (contentId: string): CustomFont | undefined =
   const persisted = useSettingsStore.getState().settings?.customFonts ?? [];
   return persisted.find((f) => f.contentId === contentId && !f.deletedAt);
 };
-
-/**
- * One-time migration: rehash legacy flat-path fonts (imported before
- * replica sync shipped) into the per-bundle layout so they sync
- * across devices without forcing the user to re-import. Idempotent;
- * skips fonts that already carry `contentId`. Implementation lives in
- * `migrateLegacyReplicas` — shared with custom textures.
- */
-export const migrateLegacyFonts = (envConfig: EnvConfigType): Promise<void> =>
-  migrateLegacyReplicas<CustomFont>(envConfig, {
-    kind: FONT_KIND,
-    baseDir: 'Fonts',
-    getCandidates: () =>
-      useCustomFontStore
-        .getState()
-        .fonts.filter((f) => !f.contentId && !f.bundleDir && !f.deletedAt && !f.path.includes('/')),
-    computeContentId: computeFontContentId,
-    updateRecord: (id, next) => useCustomFontStore.getState().updateFont(id, next),
-    saveStore: (env) => useCustomFontStore.getState().saveCustomFonts(env),
-    publishUpsert: publishFontUpsert,
-  });
 
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => {
