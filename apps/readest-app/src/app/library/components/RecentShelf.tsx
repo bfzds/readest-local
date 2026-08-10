@@ -24,8 +24,6 @@ interface RecentShelfProps {
   onOpenBook: (book: Book) => void;
   toggleSelection: (hash: string) => void;
   handleSetSelectMode: (selectMode: boolean) => void;
-  handleBookUpload: (book: Book) => void;
-  handleBookDownload: (book: Book, options?: { redownload?: boolean; queued?: boolean }) => void;
   showBookDetailsModal: (book: Book) => void;
   showTimeRemaining: boolean;
 }
@@ -47,8 +45,6 @@ type RecentSlideProps = Pick<
   | 'onOpenBook'
   | 'toggleSelection'
   | 'handleSetSelectMode'
-  | 'handleBookUpload'
-  | 'handleBookDownload'
   | 'showBookDetailsModal'
   | 'showTimeRemaining'
 > & { book: Book; bookSelected: boolean };
@@ -61,8 +57,6 @@ const RecentSlide: React.FC<RecentSlideProps> = ({
   onOpenBook,
   toggleSelection,
   handleSetSelectMode,
-  handleBookUpload,
-  handleBookDownload,
   showBookDetailsModal,
   showTimeRemaining,
 }) => {
@@ -121,9 +115,6 @@ const RecentSlide: React.FC<RecentSlideProps> = ({
             coverFit={coverFit}
             isSelectMode={isSelectMode}
             bookSelected={bookSelected}
-            transferProgress={null}
-            handleBookUpload={handleBookUpload}
-            handleBookDownload={handleBookDownload}
             showBookDetailsModal={showBookDetailsModal}
             showTimeRemaining={showTimeRemaining}
           />
@@ -150,8 +141,6 @@ const RecentShelf: React.FC<RecentShelfProps> = ({
   onOpenBook,
   toggleSelection,
   handleSetSelectMode,
-  handleBookUpload,
-  handleBookDownload,
   showBookDetailsModal,
   showTimeRemaining,
 }) => {
@@ -239,8 +228,6 @@ const RecentShelf: React.FC<RecentShelfProps> = ({
                 onOpenBook={onOpenBook}
                 toggleSelection={toggleSelection}
                 handleSetSelectMode={handleSetSelectMode}
-                handleBookUpload={handleBookUpload}
-                handleBookDownload={handleBookDownload}
                 showBookDetailsModal={showBookDetailsModal}
                 showTimeRemaining={showTimeRemaining}
               />

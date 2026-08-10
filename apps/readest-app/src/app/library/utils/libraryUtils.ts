@@ -12,7 +12,6 @@ import {
 } from '@/utils/book';
 import { md5Fingerprint } from '@/utils/md5';
 import { SIZE_PER_LOC, SIZE_PER_TIME_UNIT } from '@/services/constants';
-import { isFeedBook } from '@/services/rss/feedBookUrl';
 
 /** Valid sort types for the library */
 const VALID_SORT_TYPES: LibrarySortByType[] = Object.values(LibrarySortByType);
@@ -162,21 +161,6 @@ export const expandBookshelfSelection = (ids: string[], items: (Book | BooksGrou
  * "Download Book" affordance — a feed book has no file to fetch (#5307), and a
  * book that was never uploaded or is already local has nothing to pull down.
  */
-export const selectDownloadableBooks = (
-  ids: string[],
-  items: (Book | BooksGroup)[],
-  books: Book[],
-): Book[] => {
-  const hashes = new Set(expandBookshelfSelection(ids, items));
-  return books.filter(
-    (book) =>
-      hashes.has(book.hash) &&
-      !book.deletedAt &&
-      !isFeedBook(book) &&
-      !!book.uploadedAt &&
-      !book.downloadedAt,
-  );
-};
 
 // Calibre custom column names and values, flattened for searching (#4811).
 const getCalibreColumnsText = (item: Book) =>
@@ -846,9 +830,6 @@ export type BookContextMenuItemId =
   | 'showDetails'
   | 'showInFinder'
   | 'searchGoodreads'
-  | 'download'
-  | 'upload'
-  | 'share'
   | 'delete';
 
 /**
@@ -973,15 +954,6 @@ export const getBookContextMenuItemIds = (book: Book): BookContextMenuItemId[] =
     ids.push('clearStatus');
   }
   ids.push('showDetails', 'showInFinder', 'searchGoodreads');
-  // A feed book has no file to move: every transfer action would fail, and the
-  // share dialog uploads before it can hand out a link (issue #5307).
-  if (!isFeedBook(book)) {
-    if (book.uploadedAt && !book.downloadedAt) ids.push('download');
-    if (!book.uploadedAt && book.downloadedAt) ids.push('upload');
-    // Share is offered for any local-or-uploaded book; the dialog uploads first
-    // if the book hasn't been pushed yet.
-    if (book.downloadedAt || book.uploadedAt) ids.push('share');
-  }
   ids.push('delete');
   return ids;
 };

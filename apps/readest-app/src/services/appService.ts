@@ -1,5 +1,4 @@
 import { SystemSettings } from '@/types/settings';
-import { applySyncBooksAutoEnable } from '@/services/sync/cloudSyncProvider';
 import {
   AppPlatform,
   AppService,
@@ -21,24 +20,17 @@ import { getLibraryFilename, getLibraryBackupFilename } from '@/utils/book';
 
 import { getOSPlatform } from '@/utils/misc';
 import { isStoragePermissionError, requestStoragePermission } from '@/utils/permission';
-import { ProgressHandler } from '@/utils/transfer';
 import { CustomTextureInfo } from '@/styles/textures';
 import { CustomFont, CustomFontInfo } from '@/styles/fonts';
 import type { ImportedDictionary } from './dictionaries/types';
 import type { SelectedFile } from '@/hooks/useFileSelector';
 
 import * as BookSvc from './bookService';
-import * as CloudSvc from './cloudService';
 import * as DictSvc from './dictionaries/dictionaryService';
 import * as FontSvc from './fontService';
 import * as ImageSvc from './imageService';
 import * as LibrarySvc from './libraryService';
 import * as Settings from './settingsService';
-import {
-  loadFeeds as loadFeedsFromDisk,
-  saveFeeds as saveFeedsToDisk,
-} from '@/services/rss/feedPersistence';
-import type { RssFeed } from '@/types/rss';
 
 export abstract class BaseAppService implements AppService {
   osPlatform: OsPlatform = getOSPlatform();
@@ -121,38 +113,13 @@ export abstract class BaseAppService implements AppService {
     await this.fs.removeFile(`${path}-wal`, base).catch(() => {});
   }
 
-  protected async runMigrations(
-    lastMigrationVersion: number,
-    settings?: SystemSettings,
-  ): Promise<void> {
+  protected async runMigrations(lastMigrationVersion: number): Promise<void> {
     if (lastMigrationVersion < 20251124) {
       try {
         await this.migrate20251124();
       } catch (error) {
         console.error('Error migrating to version 20251124:', error);
       }
-    }
-    if (lastMigrationVersion < 20260706 && settings) {
-      try {
-        this.migrate20260706(settings);
-      } catch (error) {
-        console.error('Error migrating to version 20260706:', error);
-      }
-    }
-  }
-
-  /**
-   * Users with WebDAV/Drive already enabled had native Readest Cloud uploads
-   * gated off when cloud sync provider selection shipped; flip syncBooks on
-   * once for every enabled third-party backend so their books keep backing up
-   * somewhere. This force-enables syncBooks a single time even for a user who
-   * had explicitly turned it off — intentional, since the alternative is books
-   * backing up nowhere. Mutates the caller's settings snapshot, which the
-   * caller persists together with migrationVersion.
-   */
-  private migrate20260706(settings: SystemSettings): void {
-    if (applySyncBooksAutoEnable(settings)) {
-      console.log('Migration 20260706: enabled syncBooks for enabled cloud sync backends.');
     }
   }
 
@@ -333,107 +300,7 @@ export abstract class BaseAppService implements AppService {
   }
 
   async deleteBook(book: Book, deleteAction: DeleteAction): Promise<void> {
-    return CloudSvc.deleteBook(this.fs, book, deleteAction);
-  }
-
-  async uploadFileToCloud(
-    lfp: string,
-    cfp: string,
-    base: BaseDir,
-    handleProgress: ProgressHandler,
-    hash: string,
-    temp: boolean = false,
-    media?: string,
-  ) {
-    return CloudSvc.uploadFileToCloud(
-      this.fs,
-      this.resolveFilePath.bind(this),
-      lfp,
-      cfp,
-      base,
-      handleProgress,
-      hash,
-      temp,
-      media,
-    );
-  }
-
-  async uploadReplicaFile(
-    kind: string,
-    replicaId: string,
-    filename: string,
-    lfp: string,
-    base: BaseDir,
-    onProgress: ProgressHandler,
-  ) {
-    return CloudSvc.uploadReplicaFileToCloud(this.fs, this.resolveFilePath.bind(this), {
-      kind,
-      replicaId,
-      filename,
-      lfp,
-      base,
-      onProgress,
-    });
-  }
-
-  async downloadReplicaFile(
-    kind: string,
-    replicaId: string,
-    filename: string,
-    lfp: string,
-    base: BaseDir,
-    onProgress?: ProgressHandler,
-  ) {
-    // Resolve the relative `<bundleDir>/<filename>` lfp against the
-    // replica's base dir before downloading. Mirrors how upload uses
-    // `resolveFilePath(opts.lfp, opts.base)`. Without this, the writer
-    // lands the bytes at the literal lfp (no base prefix) so subsequent
-    // openFile(lfp, base) calls fail with "File not found".
-    const dst = await this.resolveFilePath(lfp, base);
-    return CloudSvc.downloadReplicaFileFromCloud(this, {
-      kind,
-      replicaId,
-      filename,
-      dst,
-      onProgress,
-    });
-  }
-
-  async deleteReplicaBundle(kind: string, replicaId: string, filenames: string[]) {
-    return CloudSvc.deleteReplicaBundleFromCloud(kind, replicaId, filenames);
-  }
-
-  async uploadBook(book: Book, onProgress?: ProgressHandler): Promise<void> {
-    return CloudSvc.uploadBook(this.fs, this.resolveFilePath.bind(this), book, onProgress);
-  }
-
-  async uploadBookCover(book: Book, onProgress?: ProgressHandler): Promise<void> {
-    return CloudSvc.uploadBookCover(this.fs, this.resolveFilePath.bind(this), book, onProgress);
-  }
-
-  async downloadCloudFile(lfp: string, cfp: string, onProgress: ProgressHandler) {
-    return CloudSvc.downloadCloudFile(this, this.localBooksDir, lfp, cfp, onProgress);
-  }
-
-  async downloadBookCovers(books: Book[]): Promise<void> {
-    return CloudSvc.downloadBookCovers(this, this.fs, this.localBooksDir, books);
-  }
-
-  async downloadBook(
-    book: Book,
-    onlyCover = false,
-    redownload = false,
-    onProgress?: ProgressHandler,
-  ): Promise<void> {
-    return CloudSvc.downloadBook(
-      this,
-      this.fs,
-      this.localBooksDir,
-      book,
-      onlyCover,
-      redownload,
-      onProgress,
-    );
+    return BookSvc.deleteBook(this.fs, book, deleteAction);
   }
 
   async exportBook(book: Book): Promise<boolean> {
@@ -471,7 +338,7 @@ export abstract class BaseAppService implements AppService {
   }
 
   async fetchBookDetails(book: Book) {
-    return BookSvc.fetchBookDetails(this.fs, book, this.downloadBook.bind(this));
+    return BookSvc.fetchBookDetails(this.fs, book);
   }
 
   async saveBookConfig(book: Book, config: BookConfig, settings?: SystemSettings) {
@@ -484,14 +351,6 @@ export abstract class BaseAppService implements AppService {
 
   async saveBookNav(book: Book, nav: BookNav) {
     return BookSvc.saveBookNav(this.fs, book, nav);
-  }
-
-  async loadFeeds(): Promise<RssFeed[]> {
-    return loadFeedsFromDisk(this.fs);
-  }
-
-  async saveFeeds(feeds: RssFeed[]): Promise<void> {
-    return saveFeedsToDisk(this.fs, feeds);
   }
 
   async loadLibraryBooks(): Promise<Book[]> {
