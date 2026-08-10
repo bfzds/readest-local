@@ -17,16 +17,12 @@
 
 import * as foliateProgress from 'foliate-js/progress.js';
 import env from '@/services/environment';
-import { SyncClient } from '@/libs/sync';
-import { isSyncCategoryEnabled } from '@/services/sync/syncCategories';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { getBookProgress } from '@/store/readerProgressStore';
 import { DEFAULT_STATS_TRACKING_CONFIG, type StatBook } from '@/types/statistics';
 import type { TTSSession } from '@/services/tts/TTSSessionManager';
 import type { FoliateView } from '@/types/view';
-import { getAccessToken } from '@/utils/access';
 import { StatisticsDb } from './statisticsDb';
-import { pushStats } from './statsSync';
 import { TrackerCore, type FlushedEvent } from './trackerCore';
 
 /** How often playback is sampled. Also the renewal granularity below. */
@@ -37,8 +33,6 @@ export const TTS_STATS_HEARTBEAT_MS = 30_000;
 // Sixty seconds against a 120s cap leaves a full heartbeat of slack, so even a
 // throttled background timer loses nothing.
 const RENEW_AFTER_SEC = 60;
-
-const PUSH_DEBOUNCE_MS = 10_000;
 
 // The same constants foliate's view passes to its own SectionProgress
 // (view.js: `new SectionProgress(book.sections, 1500, 1600)`). Reusing them
@@ -104,7 +98,6 @@ export class TtsStatsRecorder {
   #db: StatisticsDb | null = null;
   #dbPromise: Promise<StatisticsDb | null> | null = null;
   #heartbeat: ReturnType<typeof setInterval> | null = null;
-  #pushTimer: ReturnType<typeof setTimeout> | null = null;
   #playing = false;
   #ticking = false;
   #currentPage: number | null = null;
@@ -149,13 +142,8 @@ export class TtsStatsRecorder {
   async stop(): Promise<void> {
     this.#playing = false;
     this.#stopHeartbeat();
-    if (this.#pushTimer) {
-      clearTimeout(this.#pushTimer);
-      this.#pushTimer = null;
-    }
     this.#currentPage = null;
     await this.#persist(this.#core.onClose(nowSec()));
-    await this.#push();
   }
 
   #stopHeartbeat(): void {
@@ -315,34 +303,10 @@ export class TtsStatsRecorder {
       const idBook = await db.upsertBook(book);
       for (const e of events) await db.insertPageEvent(idBook, e);
       await db.recomputeBookTotals(idBook);
-      this.#schedulePush();
     } catch (err) {
       // The statistics DB can be closed mid-write on app teardown; log and
       // never reject (Sentry READEST-6).
       console.warn('[stats] failed to persist TTS listening events:', err);
-    }
-  }
-
-  #schedulePush(): void {
-    // Trailing debounce that is never restarted: a multi-hour headless session
-    // must reach the server as it goes, not only when playback stops.
-    if (this.#pushTimer) return;
-    this.#pushTimer = setTimeout(() => {
-      this.#pushTimer = null;
-      runBestEffort(this.#push());
-    }, PUSH_DEBOUNCE_MS);
-  }
-
-  async #push(): Promise<void> {
-    const db = this.#db;
-    if (!db || !isSyncCategoryEnabled('stats')) return;
-    // No AuthContext headless, so the session token stands in for `user`.
-    const token = await getAccessToken().catch(() => null);
-    if (!token) return;
-    try {
-      await pushStats(db, new SyncClient());
-    } catch (err) {
-      console.warn('[stats] failed to push TTS listening events:', err);
     }
   }
 }

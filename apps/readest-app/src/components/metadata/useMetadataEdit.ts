@@ -7,9 +7,6 @@ import {
   validateISBN,
   ValidationResult,
 } from '@/utils/validation';
-import { MetadataSource } from './SourceSelector';
-import { searchMetadata } from '@/libs/metadata';
-import { formatAuthors, formatTitle, getPrimaryLanguage } from '@/utils/book';
 
 export const useMetadataEdit = (metadata: BookMetadata | null, tags: string[]) => {
   const [editedMeta, setEditedMeta] = useState<BookMetadata>({} as BookMetadata);
@@ -17,10 +14,6 @@ export const useMetadataEdit = (metadata: BookMetadata | null, tags: string[]) =
   const [fieldSources, setFieldSources] = useState<Record<string, string>>({});
   const [lockedFields, setLockedFields] = useState<Record<string, boolean>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [showSourceSelection, setShowSourceSelection] = useState(false);
-  const [availableSources, setAvailableSources] = useState<MetadataSource[]>([]);
 
   const lockableFields = [
     'title',
@@ -191,67 +184,6 @@ export const useMetadataEdit = (metadata: BookMetadata | null, tags: string[]) =
     setLockedFields(allUnlocked);
   };
 
-  const handleAutoRetrieve = async () => {
-    setSearchLoading(true);
-    try {
-      const isbnValidation = validateISBN(editedMeta.isbn || '');
-      const results = await searchMetadata({
-        title: formatTitle(editedMeta.title),
-        author: formatAuthors(editedMeta.author),
-        isbn: isbnValidation.isValid ? editedMeta.isbn : undefined,
-        language: getPrimaryLanguage(editedMeta.language),
-      });
-      const metadataSources = results.map((result) => ({
-        sourceName: result.providerName,
-        sourceLabel: result.providerLabel,
-        confidence: result.confidence,
-        data: result.metadata as BookMetadata,
-      }));
-      setAvailableSources(metadataSources);
-      setShowSourceSelection(true);
-    } catch (error) {
-      console.error('Failed to retrieve metadata:', error);
-    } finally {
-      setSearchLoading(false);
-    }
-  };
-
-  const handleSourceSelection = (selectedSource: MetadataSource) => {
-    const newMeta = { ...editedMeta } as { [key: string]: unknown };
-    const newSources = { ...fieldSources };
-
-    Object.entries(selectedSource.data).forEach(([key, value]) => {
-      if (lockedFields[key] || !value) {
-        return;
-      }
-      switch (key) {
-        case 'identifier': {
-          const candidate = String(value);
-          const isbnValidation = validateISBN(candidate);
-          if (!lockedFields['isbn'] && isbnValidation.isValid) {
-            newMeta['isbn'] = candidate;
-            newSources['isbn'] = `${selectedSource.sourceName}-${selectedSource.confidence}`;
-          } else {
-            newMeta[key] = value;
-            newSources[key] = `${selectedSource.sourceName}-${selectedSource.confidence}`;
-          }
-          return;
-        }
-        default:
-          newMeta[key] = value;
-      }
-      newSources[key] = `${selectedSource.sourceName}-${selectedSource.confidence}`;
-    });
-
-    setEditedMeta(newMeta as BookMetadata);
-    setFieldSources(newSources);
-    setShowSourceSelection(false);
-  };
-
-  const handleCloseSourceSelection = () => {
-    setShowSourceSelection(false);
-  };
-
   const resetToOriginal = () => {
     if (metadata) {
       setEditedMeta({ ...metadata });
@@ -259,7 +191,6 @@ export const useMetadataEdit = (metadata: BookMetadata | null, tags: string[]) =
     setEditedTags([...tags]);
     setFieldSources({});
     setFieldErrors({});
-    setShowSourceSelection(false);
     handleUnlockAll();
   };
 
@@ -269,17 +200,11 @@ export const useMetadataEdit = (metadata: BookMetadata | null, tags: string[]) =
     fieldSources,
     lockedFields,
     fieldErrors,
-    searchLoading,
-    showSourceSelection,
-    availableSources,
     handleFieldChange,
     handleFieldValidation,
     handleToggleFieldLock,
     handleLockAll,
     handleUnlockAll,
-    handleAutoRetrieve,
-    handleSourceSelection,
-    handleCloseSourceSelection,
     resetToOriginal,
   };
 };

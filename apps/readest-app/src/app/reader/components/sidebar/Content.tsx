@@ -11,7 +11,6 @@ import 'overlayscrollbars/overlayscrollbars.css';
 import TOCView from './TOCView';
 import BooknoteView from './BooknoteView';
 import TabNavigation from './TabNavigation';
-import ChatHistoryView from './ChatHistoryView';
 
 const SidebarContent: React.FC<{
   bookDoc: BookDoc;
@@ -23,7 +22,6 @@ const SidebarContent: React.FC<{
   const config = getConfig(sideBarBookKey);
   const [activeTab, setActiveTab] = useState(config?.viewSettings?.sideBarTab || 'toc');
   const [fade, setFade] = useState(false);
-  const [targetTab, setTargetTab] = useState(activeTab);
   const isMobile = window.innerWidth < 640 || window.innerHeight < 640;
 
   useEffect(() => {
@@ -32,14 +30,6 @@ const SidebarContent: React.FC<{
     setActiveTab(config.viewSettings!.sideBarTab!);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sideBarBookKey]);
-
-  // reset to toc if history tab was active but AI is now disabled
-  useEffect(() => {
-    if (activeTab === 'history' || targetTab === 'history') {
-      setActiveTab('toc');
-      setTargetTab('toc');
-    }
-  }, [activeTab, targetTab]);
 
   const handleTabChange = (tab: string) => {
     if (activeTab === tab) {
@@ -55,13 +45,12 @@ const SidebarContent: React.FC<{
     setSearchBarVisible(false);
     setFade(true);
     const timeout = setTimeout(() => {
-      setTargetTab(tab);
+      setActiveTab(tab);
       setFade(false);
       setConfig(sideBarBookKey!, config);
       clearTimeout(timeout);
     }, 300);
 
-    setActiveTab(tab);
     const config = getConfig(sideBarBookKey!)!;
     config.viewSettings!.sideBarTab = tab;
   };
@@ -74,42 +63,35 @@ const SidebarContent: React.FC<{
           'font-sans text-base font-normal sm:text-sm',
         )}
       >
-        {targetTab === 'history' ? (
-          <ChatHistoryView bookKey={sideBarBookKey} />
-        ) : (
-          <OverlayScrollbarsComponent
-            className='min-h-0 flex-1'
-            options={{
-              // The tab content is width-bound; x stays hidden so oversized
-              // touch-target halos (e.g. the toolbar's dropdown toggle) can't
-              // turn into a horizontal scrollbar.
-              overflow: { x: 'hidden' },
-              scrollbars: { autoHide: 'scroll', clickScroll: true },
-              showNativeOverlaidScrollbars: false,
-            }}
-            defer
+        <OverlayScrollbarsComponent
+          className='min-h-0 flex-1'
+          options={{
+            // The tab content is width-bound; x stays hidden so oversized
+            // touch-target halos (e.g. the toolbar's dropdown toggle) can't
+            // turn into a horizontal scrollbar.
+            overflow: { x: 'hidden' },
+            scrollbars: { autoHide: 'scroll', clickScroll: true },
+            showNativeOverlaidScrollbars: false,
+          }}
+          defer
+        >
+          <div
+            className={clsx('scroll-container h-full transition-opacity duration-300 ease-in-out', {
+              'opacity-0': fade,
+              'opacity-100': !fade,
+            })}
           >
-            <div
-              className={clsx(
-                'scroll-container h-full transition-opacity duration-300 ease-in-out',
-                {
-                  'opacity-0': fade,
-                  'opacity-100': !fade,
-                },
-              )}
-            >
-              {targetTab === 'toc' && bookDoc.toc && (
-                <TOCView toc={bookDoc.toc} bookKey={sideBarBookKey} />
-              )}
-              {targetTab === 'annotations' && (
-                <BooknoteView type='annotation' toc={bookDoc.toc ?? []} bookKey={sideBarBookKey} />
-              )}
-              {targetTab === 'bookmarks' && (
-                <BooknoteView type='bookmark' toc={bookDoc.toc ?? []} bookKey={sideBarBookKey} />
-              )}
-            </div>
-          </OverlayScrollbarsComponent>
-        )}
+            {activeTab === 'toc' && bookDoc.toc && (
+              <TOCView toc={bookDoc.toc} bookKey={sideBarBookKey} />
+            )}
+            {activeTab === 'annotations' && (
+              <BooknoteView type='annotation' toc={bookDoc.toc ?? []} bookKey={sideBarBookKey} />
+            )}
+            {activeTab === 'bookmarks' && (
+              <BooknoteView type='bookmark' toc={bookDoc.toc ?? []} bookKey={sideBarBookKey} />
+            )}
+          </div>
+        </OverlayScrollbarsComponent>
       </div>
       <div
         className='flex-shrink-0'

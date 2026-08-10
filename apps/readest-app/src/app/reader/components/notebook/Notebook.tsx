@@ -6,8 +6,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
-import { useNotebookStore } from '@/store/notebookStore';
-import { useAIChatStore } from '@/store/aiChatStore';
+import { NotebookTab, useNotebookStore } from '@/store/notebookStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useThemeStore } from '@/store/themeStore';
 import { useEnv } from '@/context/EnvContext';
@@ -28,7 +27,6 @@ import {
   removeBookNoteOverlays,
   removeEmptyAnnotationPlaceholder,
 } from '../../utils/annotatorUtil';
-import AIAssistant from './AIAssistant';
 import NotebookHeader from './Header';
 import NoteEditor from './NoteEditor';
 import SearchBar from './SearchBar';
@@ -53,7 +51,6 @@ const Notebook: React.FC = ({}) => {
     useNotebookStore();
   const { setNotebookNewAnnotation, setNotebookNewHighlightId } = useNotebookStore();
   const { setNotebookEditAnnotation, setNotebookActiveTab } = useNotebookStore();
-  const { activeConversationId } = useAIChatStore();
 
   const [isSearchBarVisible, setIsSearchBarVisible] = useState(false);
   const [searchResults, setSearchResults] = useState<BookNote[] | null>(null);
@@ -136,7 +133,7 @@ const Notebook: React.FC = ({}) => {
     saveSysSettings(envConfig, 'globalReadSettings', newGlobalReadSettings);
   };
 
-  const handleTabChange = (tab: 'notes' | 'ai') => {
+  const handleTabChange = (tab: NotebookTab) => {
     setNotebookActiveTab(tab);
     const globalReadSettings = settings.globalReadSettings;
     const newGlobalReadSettings = { ...globalReadSettings, notebookActiveTab: tab };
@@ -423,11 +420,7 @@ const Notebook: React.FC = ({}) => {
             </div>
           )}
         </div>
-        {notebookActiveTab === 'ai' ? (
-          <div className='flex min-h-0 flex-1 flex-col'>
-            <AIAssistant key={activeConversationId ?? 'new'} bookKey={sideBarBookKey} />
-          </div>
-        ) : isNotesTabEmpty ? (
+        {isNotesTabEmpty ? (
           <div className='flex flex-grow items-center justify-center overflow-y-auto px-3'>
             <EmptyState
               Icon={RiQuillPenLine}

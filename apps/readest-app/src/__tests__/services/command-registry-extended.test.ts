@@ -62,7 +62,6 @@ function createMockOptions(
     reloadPage: vi.fn(),
     toggleOpenLastBooks: vi.fn(),
     showAbout: vi.fn(),
-    toggleTelemetry: vi.fn(),
     isDesktop: false,
     ...overrides,
   };
@@ -99,7 +98,6 @@ describe('buildCommandRegistry', () => {
     expect(actionIds).toContain('action.fullscreen');
     expect(actionIds).toContain('action.reload');
     expect(actionIds).toContain('action.about');
-    expect(actionIds).toContain('action.telemetry');
   });
 
   it('should use the provided translation function for localized labels', () => {
@@ -173,13 +171,6 @@ describe('buildCommandRegistry', () => {
     const items = buildCommandRegistry(createMockOptions());
     const ids = items.map((i) => i.id);
     expect(new Set(ids).size).toBe(ids.length);
-  });
-
-  it('should include AI panel items in non-production', () => {
-    const items = buildCommandRegistry(createMockOptions());
-    const aiItems = items.filter((i) => i.panel === 'AI');
-    // In test environment (not production), AI items should be included
-    expect(aiItems.length).toBeGreaterThan(0);
   });
 
   it('should give each settings item keywords and section', () => {

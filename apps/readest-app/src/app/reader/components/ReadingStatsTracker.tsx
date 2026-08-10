@@ -4,17 +4,10 @@ import { useEffect, useRef } from 'react';
 import { getBookProgress, useBookProgress } from '@/store/readerProgressStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useEnv } from '@/context/EnvContext';
-import { useAuth } from '@/context/AuthContext';
 import { StatisticsDb } from '@/services/statistics/statisticsDb';
 import { TrackerCore, type FlushedEvent } from '@/services/statistics/trackerCore';
 import { getBookHashFromKey, ttsSessionManager } from '@/services/tts/TTSSessionManager';
 import { DEFAULT_STATS_TRACKING_CONFIG } from '@/types/statistics';
-import { SyncClient } from '@/libs/sync';
-import { BookOrbitClient } from '@/services/bookorbit/BookOrbitClient';
-import { pushStatsToBookOrbit } from '@/services/bookorbit/statsPush';
-import { pushStats, pullStats } from '@/services/statistics/statsSync';
-import { isSyncCategoryEnabled } from '@/services/sync/syncCategories';
-import { useSettingsStore } from '@/store/settingsStore';
 import { eventDispatcher } from '@/utils/event';
 
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -32,12 +25,9 @@ export default function ReadingStatsTracker({ bookKey }: { bookKey: string }) {
   const progress = useBookProgress(bookKey);
   // booksData is keyed by book id = bookKey.split('-')[0].
   const getBookData = useBookDataStore((s) => s.getBookData);
-  const { user } = useAuth();
   const coreRef = useRef(new TrackerCore(DEFAULT_STATS_TRACKING_CONFIG));
   const dbRef = useRef<StatisticsDb | null>(null);
   const idleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // While this book is being read aloud, TtsStatsRecorder owns the clock and
   // this tracker stands down — otherwise TTS auto-follow's relocations would
   // bill the same wall-clock a second time. Seeded from the manager rather than
   // the event bus alone, so opening the reader from the mini player mid-session
@@ -55,38 +45,6 @@ export default function ReadingStatsTracker({ bookKey }: { bookKey: string }) {
   // Book.author is the single-string author field; upsertBook takes authors: string.
   const authors = book?.author ?? '';
 
-  const syncEnabled = () => !!user && isSyncCategoryEnabled('stats');
-
-  // BookOrbit stats push needs no Readest account — only the integration.
-  const bookOrbitStatsPush = (db: StatisticsDb): Promise<unknown> | undefined => {
-    const { settings } = useSettingsStore.getState();
-    const bookorbit = settings.bookorbit;
-    if (
-      !bookorbit.enabled ||
-      !bookorbit.syncStats ||
-      !bookorbit.serverUrl ||
-      !bookorbit.username ||
-      !bookorbit.userkey
-    ) {
-      return undefined;
-    }
-    return pushStatsToBookOrbit(db, new BookOrbitClient(bookorbit));
-  };
-
-  const pushToAllTargets = (db: StatisticsDb) => {
-    if (syncEnabled()) runBestEffort(pushStats(db, new SyncClient()));
-    const bookOrbitPush = bookOrbitStatsPush(db);
-    if (bookOrbitPush) runBestEffort(bookOrbitPush);
-  };
-
-  const schedulePush = () => {
-    if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
-    pushTimerRef.current = setTimeout(() => {
-      const db = dbRef.current;
-      if (db) pushToAllTargets(db);
-    }, 10_000);
-  };
-
   useEffect(() => {
     if (!appService) return;
     let cancelled = false;
@@ -94,7 +52,6 @@ export default function ReadingStatsTracker({ bookKey }: { bookKey: string }) {
       StatisticsDb.open(appService).then((db) => {
         if (cancelled) return;
         dbRef.current = db;
-        if (syncEnabled()) runBestEffort(pullStats(db, new SyncClient()));
       }),
     );
     return () => {
@@ -111,7 +68,6 @@ export default function ReadingStatsTracker({ bookKey }: { bookKey: string }) {
       const idBook = await db.upsertBook({ bookMd5, title, authors });
       for (const e of events) await db.insertPageEvent(idBook, e);
       await db.recomputeBookTotals(idBook);
-      schedulePush();
     } catch (err) {
       // The statistics DB can be closed mid-write on app/tab teardown
       // ("database ... not loaded", Sentry READEST-6). Best-effort: log and
@@ -182,13 +138,7 @@ export default function ReadingStatsTracker({ bookKey }: { bookKey: string }) {
   useEffect(() => {
     return () => {
       if (idleRef.current) clearTimeout(idleRef.current);
-      if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
-      runBestEffort(
-        persist(coreRef.current.onClose(nowSec())).then(() => {
-          if (dbRef.current) pushToAllTargets(dbRef.current);
-          return undefined;
-        }),
-      );
+      runBestEffort(persist(coreRef.current.onClose(nowSec())));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookMd5]);
