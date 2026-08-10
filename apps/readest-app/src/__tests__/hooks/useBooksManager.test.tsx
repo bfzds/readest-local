@@ -3,7 +3,7 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { eventDispatcher } from '@/utils/event';
 
 // initViewState rejects with "Book not found" when a library reload drops the
-// in-memory entry (readerStore). appendBook / openBookInReader call it
+// in-memory entry (readerStore). openBookInReader calls it
 // fire-and-forget, so the rejection surfaced as an unhandled rejection
 // (READEST-1V). The hook must catch it and surface a toast instead.
 const h = vi.hoisted(() => ({
@@ -44,9 +44,6 @@ vi.mock('@/store/readerStore', () => ({
 vi.mock('@/store/sidebarStore', () => ({
   useSidebarStore: () => ({ sideBarBookKey: null, setSideBarBookKey: h.setSideBarBookKeyMock }),
 }));
-vi.mock('@/store/parallelViewStore', () => ({
-  useParallelViewStore: () => ({ setParallel: vi.fn() }),
-}));
 vi.mock('@/utils/nav', () => ({ navigateToReader: vi.fn() }));
 
 import useBooksManager from '@/app/reader/hooks/useBooksManager';
@@ -65,10 +62,10 @@ describe('useBooksManager open-failure handling', () => {
     h.initViewStateMock.mockReturnValueOnce(Promise.reject(new Error('Book not found')));
     const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
 
-    const { result } = renderHook(() => useBooksManager());
+    renderHook(() => useBooksManager());
 
     await act(async () => {
-      result.current.appendBook('missing-hash', true, false);
+      eventDispatcher.dispatch('open-book-in-reader', { bookHash: 'missing-hash' });
       // Flush the rejected initViewState microtask chain.
       await Promise.resolve();
       await Promise.resolve();

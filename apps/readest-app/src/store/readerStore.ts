@@ -410,8 +410,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
     }
 
     // Only the primary view persists progress into the shared bookData
-    // config — secondary views in a parallel layout shouldn't overwrite
-    // it. Skip the bookDataStore write entirely when not primary to spare
+    // config. Skip the bookDataStore write entirely when not primary to spare
     // its subscribers a re-render.
     if (viewState.isPrimary) {
       useBookDataStore.setState((state) => {

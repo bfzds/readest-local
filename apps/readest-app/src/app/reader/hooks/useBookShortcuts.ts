@@ -16,7 +16,6 @@ import { extendSelectionFromContents, KeyModifiers } from '@/utils/sel';
 import { getReadingAreaRect, keyboardTurnDirection } from './useAutoPageTurn';
 import { viewPagination } from './usePagination';
 import useShortcuts from '@/hooks/useShortcuts';
-import useBooksManager from './useBooksManager';
 import { getReadingRulerMoveDirection, isReadingRulerMoveKey } from '../utils/readingRuler';
 
 interface UseBookShortcutsProps {
@@ -26,11 +25,10 @@ interface UseBookShortcutsProps {
 
 const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) => {
   const { getView, getViewState, getViewSettings, setViewSettings } = useReaderStore();
-  const { toggleSideBar, setSideBarBookKey } = useSidebarStore();
+  const { toggleSideBar } = useSidebarStore();
   const { setSettingsDialogOpen } = useSettingsStore();
   const { getBookData } = useBookDataStore();
   const { toggleNotebook } = useNotebookStore();
-  const { getNextBookKey } = useBooksManager();
   const { open: openCommandPalette } = useCommandPalette();
   const lastParagraphToggleRef = useRef(0);
   const viewSettings = getViewSettings(sideBarBookKey ?? '');
@@ -67,10 +65,6 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
       getView(sideBarBookKey)?.renderer.setAttribute('flow', flowMode);
     }
     return true;
-  };
-
-  const switchSideBar = () => {
-    if (sideBarBookKey) setSideBarBookKey(getNextBookKey(sideBarBookKey));
   };
 
   // Standard desktop selection shortcuts (#4728). After a selection the reader
@@ -394,7 +388,6 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
       // Listed first so an active selection intercepts Shift+←/→ before the
       // page-navigation actions below can turn the page (#4728).
       onAdjustTextSelection: adjustTextSelection,
-      onSwitchSideBar: switchSideBar,
       onToggleSideBar: toggleSideBar,
       onToggleNotebook: toggleNotebook,
       onToggleScrollMode: toggleScrollMode,

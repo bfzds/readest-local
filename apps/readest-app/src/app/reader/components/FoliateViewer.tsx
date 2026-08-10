@@ -12,7 +12,6 @@ import { useReaderStore } from '@/store/readerStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useCustomFontStore } from '@/store/customFontStore';
-import { useParallelViewStore } from '@/store/parallelViewStore';
 import { useMouseEvent, useTouchEvent, useOpenMediaEvent } from '../hooks/useIframeEvents';
 import { useCapturedTurn, applyPageTurnAttributes } from '../hooks/useCapturedTurn';
 import { useBrightnessGesture } from '../hooks/useBrightnessGesture';
@@ -117,7 +116,6 @@ const FoliateViewer: React.FC<{
   const getProgress = useReaderStore((s) => s.getProgress);
   const getViewSettings = useReaderStore((s) => s.getViewSettings);
   const setViewSettings = useReaderStore((s) => s.setViewSettings);
-  const getParallels = useParallelViewStore((s) => s.getParallels);
   const getBookData = useBookDataStore((s) => s.getBookData);
   const { applyBackgroundTexture } = useBackgroundTexture();
   const { applyEinkMode } = useEinkMode();
@@ -494,18 +492,6 @@ const FoliateViewer: React.FC<{
     // the preview into the real reading position. Subsequent progress writes
     // can flow normally.
     setPreviewMode(bookKey, false);
-
-    const parallelViews = getParallels(bookKey);
-    if (parallelViews && parallelViews.size > 0) {
-      parallelViews.forEach((key) => {
-        if (key !== bookKey) {
-          const target = getView(key)?.renderer;
-          if (target) {
-            target.goTo?.({ index: detail.index, anchor: detail.fraction });
-          }
-        }
-      });
-    }
   };
 
   const { handlePageFlip } = usePagination(bookKey, viewRef, containerRef);
@@ -729,8 +715,7 @@ const FoliateViewer: React.FC<{
 
       // If the URL carries ?cfi=... (e.g. opened from a deep link / annotation
       // export link), use it as the initial location instead of the saved one.
-      // Only applies to the primary book — first id in the route's `ids` —
-      // so parallel views don't all jump to the same CFI.
+      // Only applies to the primary book (first id in the route's `ids`).
       const cfiParam = searchParams?.get('cfi');
       const idsParam =
         searchParams?.get('ids') ?? window.location.pathname.split('/reader/')[1] ?? '';

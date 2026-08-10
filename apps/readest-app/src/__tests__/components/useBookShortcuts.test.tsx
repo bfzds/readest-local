@@ -107,12 +107,6 @@ vi.mock('@/services/constants', () => ({
   ZOOM_STEP: 10,
 }));
 
-vi.mock('@/app/reader/hooks/useBooksManager', () => ({
-  default: () => ({
-    getNextBookKey: () => 'book-1',
-  }),
-}));
-
 const Harness = () => {
   useBookShortcuts({ sideBarBookKey: 'book-1', bookKeys: ['book-1'] });
   return null;

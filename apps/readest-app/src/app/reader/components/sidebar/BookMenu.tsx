@@ -5,19 +5,15 @@ import { MdCheck } from 'react-icons/md';
 import { useEnv } from '@/context/EnvContext';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
-import { useLibraryStore } from '@/store/libraryStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useSettingsStore } from '@/store/settingsStore';
-import { useParallelViewStore } from '@/store/parallelViewStore';
 import { isWebAppPlatform } from '@/services/environment';
 import { eventDispatcher } from '@/utils/event';
-import { FIXED_LAYOUT_FORMATS } from '@/types/book';
 import { DOWNLOAD_READEST_URL } from '@/services/constants';
 import { saveViewSettings } from '@/helpers/settings';
 import { setProofreadRulesVisibility } from '@/app/reader/components/ProofreadRules';
 import { setAboutDialogVisible } from '@/components/AboutWindow';
-import useBooksManager from '../../hooks/useBooksManager';
 import MenuItem from '@/components/MenuItem';
 import Menu from '@/components/Menu';
 
@@ -30,12 +26,9 @@ const BookMenu: React.FC<BookMenuProps> = ({ menuClassName, setIsDropdownOpen })
   const _ = useTranslation();
   const { envConfig } = useEnv();
   const { settings } = useSettingsStore();
-  const { bookKeys, recreateViewer, getViewSettings } = useReaderStore();
-  const { getVisibleLibrary } = useLibraryStore();
-  const { openParallelView } = useBooksManager();
+  const { recreateViewer, getViewSettings } = useReaderStore();
   const { sideBarBookKey } = useSidebarStore();
   const { getConfig } = useBookDataStore();
-  const { parallelViews, setParallel, unsetParallel } = useParallelViewStore();
   const viewSettings = getViewSettings(sideBarBookKey!);
 
   const [isSortedTOC, setIsSortedTOC] = React.useState(viewSettings?.sortedTOC || false);
@@ -51,10 +44,6 @@ const BookMenu: React.FC<BookMenuProps> = ({ menuClassName, setIsDropdownOpen })
     return cfg.booknotes.filter((n) => n.type === 'annotation' && !n.deletedAt).length;
   }, [sideBarBookKey, getConfig]);
 
-  const handleParallelView = (id: string) => {
-    openParallelView(id);
-    setIsDropdownOpen?.(false);
-  };
   const handleReloadPage = () => {
     window.location.reload();
     setIsDropdownOpen?.(false);
@@ -85,14 +74,6 @@ const BookMenu: React.FC<BookMenuProps> = ({ menuClassName, setIsDropdownOpen })
         },
       );
     }
-  };
-  const handleSetParallel = () => {
-    setParallel(bookKeys);
-    setIsDropdownOpen?.(false);
-  };
-  const handleUnsetParallel = () => {
-    unsetParallel(bookKeys);
-    setIsDropdownOpen?.(false);
   };
   const showProofreadRulesWindow = () => {
     setProofreadRulesVisibility(true);
@@ -130,45 +111,6 @@ const BookMenu: React.FC<BookMenuProps> = ({ menuClassName, setIsDropdownOpen })
       className={clsx('book-menu dropdown-content z-20 shadow-2xl', menuClassName)}
       onCancel={() => setIsDropdownOpen?.(false)}
     >
-      <MenuItem
-        label={_('Parallel Read')}
-        buttonClass={bookKeys.length > 1 ? 'lg:tooltip lg:tooltip-bottom' : ''}
-        tooltip={parallelViews.length > 0 ? _('Disable') : _('Enable')}
-        Icon={parallelViews.length > 0 && bookKeys.length > 1 ? MdCheck : undefined}
-      >
-        <ul className='max-h-60 overflow-y-auto'>
-          {getVisibleLibrary()
-            .filter((book) => !FIXED_LAYOUT_FORMATS.has(book.format))
-            .filter((book) => !!book.downloadedAt)
-            .slice(0, 20)
-            .map((book) => (
-              <MenuItem
-                key={book.hash}
-                Icon={
-                  <img
-                    src={book.coverImageUrl!}
-                    alt={book.title}
-                    width={56}
-                    height={80}
-                    className='aspect-auto max-h-8 max-w-4 rounded-sm shadow-md'
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = 'none';
-                    }}
-                  />
-                }
-                label={book.title}
-                labelClass='max-w-36'
-                onClick={() => handleParallelView(book.hash)}
-              />
-            ))}
-        </ul>
-      </MenuItem>
-      {bookKeys.length > 1 &&
-        (parallelViews.length > 0 ? (
-          <MenuItem label={_('Exit Parallel Read')} onClick={handleUnsetParallel} />
-        ) : (
-          <MenuItem label={_('Enter Parallel Read')} onClick={handleSetParallel} />
-        ))}
       {(settings.kosync.enabled || settings.readwise.enabled || settings.hardcover.enabled) && (
         <hr aria-hidden='true' className='border-base-200 my-1' />
       )}

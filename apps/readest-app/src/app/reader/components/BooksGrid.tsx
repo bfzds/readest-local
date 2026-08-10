@@ -9,7 +9,6 @@ import { useBookProgress } from '@/store/readerProgressStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useTranslation } from '@/hooks/useTranslation';
-import { getGridTemplate, getInsetEdges } from '@/utils/grid';
 import { tauriSetWindowTitle } from '@/utils/window';
 import { useContentInsets } from '../hooks/useContentInsets';
 import SearchResultsNav from './sidebar/SearchResultsNav';
@@ -29,7 +28,7 @@ import DoubleBorder from './DoubleBorder';
 import ReadingStatsTracker from './ReadingStatsTracker';
 
 interface BooksGridProps {
-  bookKeys: string[];
+  bookKey: string;
   onCloseBook: (bookKey: string) => void;
   onGoToLibrary: () => void;
 }
@@ -281,7 +280,7 @@ const BookCellInner: React.FC<BookCellProps> = ({
 
 const BookCell = React.memo(BookCellInner);
 
-const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook, onGoToLibrary }) => {
+const BooksGrid: React.FC<BooksGridProps> = ({ bookKey, onCloseBook, onGoToLibrary }) => {
   const _ = useTranslation();
   const { appService } = useEnv();
   // Per-field selectors — see store/readerProgressStore.ts header. The grid
@@ -294,8 +293,6 @@ const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook, onGoToLibr
   const [dropdownOpenBook, setDropdownOpenBook] = useState<string>('');
 
   const { safeAreaInsets: screenInsets } = useThemeStore();
-  const aspectRatio = window.innerWidth / window.innerHeight;
-  const gridTemplate = getGridTemplate(bookKeys.length, aspectRatio);
 
   useEffect(() => {
     if (!sideBarBookKey) return;
@@ -310,35 +307,21 @@ const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook, onGoToLibr
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sideBarBookKey, appService?.hasWindow]);
-
-  // Memoize the per-book grid insets array — its identity is the input
-  // to BookCell.gridInsets, and BookCell is React.memo'd. As long as
-  // bookKeys / screenInsets / aspectRatio don't change, the cells'
-  // gridInsets props stay reference-equal across renders.
-  const perBookGridInsets = useMemo<Insets[]>(() => {
-    if (!screenInsets) return [];
-    return bookKeys.map((_bookKey, index) => {
-      const { top, right, bottom, left } = getInsetEdges(index, bookKeys.length, aspectRatio);
-      return {
-        top: top ? screenInsets.top : 0,
-        right: right ? screenInsets.right : 0,
-        bottom: bottom ? screenInsets.bottom : 0,
-        left: left ? screenInsets.left : 0,
-      };
-    });
-    // aspectRatio is recomputed every render but its value is window-derived
-    // and won't change between resizes; including it explicitly so an
-    // orientation change still busts the cache.
-  }, [bookKeys, screenInsets, aspectRatio]);
+  const gridInsets = useMemo<Insets>(
+    () => ({
+      top: screenInsets?.top ?? 0,
+      right: screenInsets?.right ?? 0,
+      bottom: screenInsets?.bottom ?? 0,
+      left: screenInsets?.left ?? 0,
+    }),
+    [screenInsets],
+  );
 
   useEffect(() => {
     if (!screenInsets) return;
-    bookKeys.forEach((bookKey, index) => {
-      const insets = perBookGridInsets[index];
-      if (insets) setGridInsets(bookKey, insets);
-    });
+    setGridInsets(bookKey, gridInsets);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookKeys, screenInsets, perBookGridInsets]);
+  }, [bookKey, gridInsets]);
 
   // Stable cross-cell setter for the dropdown bookkeeping — used by the
   // memoized onDropdownOpenChange callback inside each BookCell.
@@ -348,36 +331,28 @@ const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook, onGoToLibr
 
   if (!screenInsets) return null;
 
-  const gridStyle = {
-    gridTemplateColumns: gridTemplate.columns,
-    gridTemplateRows: gridTemplate.rows,
-  };
-  const isHoveredAnim = bookKeys.length > 2;
   const appServiceHasRoundedWindow = !!appService?.hasRoundedWindow;
 
   return (
     <div
       className={clsx('books-grid bg-base-100 relative grid h-full flex-grow')}
-      style={gridStyle}
       role='main'
       aria-label={_('Books Content')}
     >
-      {bookKeys.map((bookKey, index) => (
-        <BookCell
-          key={bookKey}
-          bookKey={bookKey}
-          index={index}
-          gridInsets={perBookGridInsets[index]!}
-          screenInsets={screenInsets}
-          appServiceHasRoundedWindow={appServiceHasRoundedWindow}
-          isHoveredAnim={isHoveredAnim}
-          hoveredBookKey={hoveredBookKey}
-          isDropdownOpen={dropdownOpenBook === bookKey}
-          setDropdownOpenForBook={setDropdownOpenForBook}
-          onCloseBook={onCloseBook}
-          onGoToLibrary={onGoToLibrary}
-        />
-      ))}
+      <BookCell
+        key={bookKey}
+        bookKey={bookKey}
+        index={0}
+        gridInsets={gridInsets}
+        screenInsets={screenInsets}
+        appServiceHasRoundedWindow={appServiceHasRoundedWindow}
+        isHoveredAnim={false}
+        hoveredBookKey={hoveredBookKey}
+        isDropdownOpen={dropdownOpenBook === bookKey}
+        setDropdownOpenForBook={setDropdownOpenForBook}
+        onCloseBook={onCloseBook}
+        onGoToLibrary={onGoToLibrary}
+      />
     </div>
   );
 };

@@ -183,7 +183,7 @@ flowchart TB
 
     subgraph ReaderInternals["app/reader internals"]
         ReaderPage["page.tsx"]
-        ReaderComps["components/*<br/>(BookView, Sidebar, Notebook,<br/>Annotator, FootnotePopup, Translator,<br/>RSVP overlay, AIChat, ParallelView, ...)"]
+        ReaderComps["components/*<br/>(BookView, Sidebar, Notebook,<br/>Annotator, FootnotePopup, Translator,<br/>RSVP overlay, AIChat, ...)"]
         ReaderHooks["hooks/*<br/>(useFoliateEvents, useScrollHandler,<br/>useProgressSync, useAnnotations, ...)"]
         ReaderUtils["utils/*"]
     end
@@ -199,7 +199,7 @@ flowchart TB
 
 The biggest UI cluster by far is `app/reader`: roughly 80 components and 30
 hooks coordinating Foliate-based rendering, annotations, footnote popovers, the
-notebook side panel, parallel view, RSVP, AI chat, translator overlays,
+notebook side panel, RSVP, AI chat, translator overlays,
 search, TTS, and the settings panels under `components/settings`.
 
 ### 3.2 State (Zustand)
@@ -212,7 +212,6 @@ collapsing into one mega-context:
 libraryStore        -> books, folders, selection, sort
 bookDataStore       -> per-book data (TOC, annotations, locations)
 readerStore         -> active views, layout, ribbon state
-parallelViewStore   -> two-pane reading
 notebookStore       -> notebook side panel
 settingsStore       -> user/app settings
 themeStore          -> light/dark/atmosphere
