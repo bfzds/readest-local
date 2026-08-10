@@ -3,7 +3,6 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { marked } from 'marked';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
-import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import {
@@ -23,7 +22,6 @@ import {
   getHighlightColorLabel,
 } from '@/app/reader/utils/annotatorUtil';
 import { renderNoteTemplate, formatBlockQuote } from '@/utils/note';
-import { getPublicCoverUrl } from '@/utils/cover';
 import {
   AnnotationLinkType,
   buildAnnotationAppUrl,
@@ -68,9 +66,8 @@ const ExportMarkdownDialog: React.FC<ExportMarkdownDialogProps> = ({
   onExport,
 }) => {
   const _ = useTranslation();
-  const { envConfig, appService } = useEnv();
+  const { envConfig } = useEnv();
   const { settings } = useSettingsStore();
-  const { getBookData } = useBookDataStore();
   const { getViewSettings } = useReaderStore();
   const viewSettings = getViewSettings(bookKey);
 
@@ -137,26 +134,8 @@ const ExportMarkdownDialog: React.FC<ExportMarkdownDialogProps> = ({
   const [showSource, setShowSource] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Resolving a cover URL may publish the local cover to public storage, so it
-  // runs only when the export actually references one: the checkbox in simple
-  // mode, the coverImageUrl variable in template mode.
-  const wantsCoverImage = exportConfig.useCustomTemplate
-    ? exportConfig.customTemplate.includes('coverImageUrl')
-    : exportConfig.includeCoverImage;
-  const [coverImageUrl, setCoverImageUrl] = useState<string | null>(null);
-  useEffect(() => {
-    if (!isOpen || !wantsCoverImage || coverImageUrl) return;
-    const book = getBookData(bookKey)?.book;
-    if (!book) return;
-    let cancelled = false;
-    getPublicCoverUrl(book, appService).then((url) => {
-      if (!cancelled) setCoverImageUrl(url ?? null);
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, wantsCoverImage, bookKey, appService]);
+  // Offline builds have no public cover URL, so exports never publish one.
+  const coverImageUrl: string | null = null;
 
   useEffect(() => {
     const customTemplate = exportConfig.customTemplate;

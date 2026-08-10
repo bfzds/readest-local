@@ -22,14 +22,6 @@ vi.mock('@/libs/document', async () => {
 vi.mock('@/utils/txt', () => ({ TxtToEpubConverter: vi.fn() }));
 vi.mock('@/utils/svg', () => ({ svg2png: vi.fn() }));
 vi.mock('@tauri-apps/plugin-http', () => ({ fetch: vi.fn() }));
-vi.mock('@/libs/storage', () => ({
-  downloadFile: vi.fn(),
-  uploadFile: vi.fn(),
-  deleteFile: vi.fn(),
-  createProgressHandler: vi.fn(),
-  batchGetDownloadUrls: vi.fn(),
-}));
-
 import { BaseAppService } from '@/services/appService';
 import { refreshBookMetadata } from '@/services/bookService';
 

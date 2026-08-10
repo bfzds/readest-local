@@ -1,15 +1,11 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type React from 'react';
 
 import ImportMenuPopup, { getMenuPosition } from '@/app/library/components/ImportMenuPopup';
 
 vi.mock('@/hooks/useTranslation', () => ({
   useTranslation: () => (key: string) => key,
-}));
-
-const useEnvMock = vi.fn();
-vi.mock('@/context/EnvContext', () => ({
-  useEnv: () => useEnvMock(),
 }));
 
 const renderPopup = (props: Partial<React.ComponentProps<typeof ImportMenuPopup>> = {}) => {
@@ -21,8 +17,6 @@ const renderPopup = (props: Partial<React.ComponentProps<typeof ImportMenuPopup>
       anchor={anchor}
       onClose={onClose}
       onImportBooksFromFiles={vi.fn()}
-      onOpenCatalogManager={vi.fn()}
-      onOpenFeeds={vi.fn()}
       {...props}
     />,
   );
@@ -30,44 +24,29 @@ const renderPopup = (props: Partial<React.ComponentProps<typeof ImportMenuPopup>
 };
 
 beforeEach(() => {
-  useEnvMock.mockReturnValue({ appService: { isOnlineCatalogsAccessible: true } });
+  document.body.innerHTML = '';
 });
 
 afterEach(() => {
   cleanup();
   document.body.innerHTML = '';
-  useEnvMock.mockReset();
 });
 
 describe('ImportMenuPopup', () => {
-  it('shows the same always-available options as the library header menu', () => {
+  it('shows local-file import and hides platform-dependent options by default', () => {
     renderPopup();
 
     expect(screen.getByRole('menuitem', { name: 'From Local File' })).toBeTruthy();
-    expect(screen.getByRole('menuitem', { name: 'From Feed URL' })).toBeTruthy();
-    expect(screen.getByRole('menuitem', { name: 'Online Library' })).toBeTruthy();
     expect(screen.queryByRole('menuitem', { name: 'From Directory' })).toBeNull();
-    expect(screen.queryByRole('menuitem', { name: 'From Web URL' })).toBeNull();
   });
 
-  it('adds the platform-dependent options when their callbacks are available', () => {
+  it('adds the directory option when its callback is available', () => {
     const onImportBooksFromDirectory = vi.fn();
-    const onImportBookFromUrl = vi.fn();
-    const { onClose } = renderPopup({ onImportBooksFromDirectory, onImportBookFromUrl });
+    const { onClose } = renderPopup({ onImportBooksFromDirectory });
 
     fireEvent.click(screen.getByRole('menuitem', { name: 'From Directory' }));
     expect(onImportBooksFromDirectory).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(screen.getByRole('menuitem', { name: 'From Web URL' }));
-    expect(onImportBookFromUrl).toHaveBeenCalledTimes(1);
-    expect(onClose).toHaveBeenCalledTimes(2);
-  });
-
-  it('uses the OPDS label when curated online catalogs are unavailable', () => {
-    useEnvMock.mockReturnValue({ appService: { isOnlineCatalogsAccessible: false } });
-    renderPopup();
-
-    expect(screen.getByRole('menuitem', { name: 'OPDS Catalogs' })).toBeTruthy();
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('runs the selected action and dismisses the popup', () => {
@@ -119,7 +98,6 @@ describe('getMenuPosition', () => {
   it('keeps the menu inside the bounds near the edges', () => {
     expect(getMenuPosition(anchorRect(0, 200), menu, bounds).left).toBe(8);
     expect(getMenuPosition(anchorRect(960, 200, 40), menu, bounds).left).toBe(792);
-    // Menu taller than the room on either side of a short viewport.
     expect(
       getMenuPosition(anchorRect(400, 40), menu, { left: 8, top: 8, right: 992, bottom: 292 }).top,
     ).toBe(8);

@@ -71,7 +71,6 @@ import { transformContent } from '@/services/transformService';
 import { lockScreenOrientation, setSelectionSuppressed } from '@/utils/bridge';
 import { useTextTranslation } from '../hooks/useTextTranslation';
 import { useBookCoverAutoSave } from '../hooks/useAutoSaveBookCover';
-import { useDiscordPresence } from '@/hooks/useDiscordPresence';
 import { manageSyntaxHighlighting } from '@/utils/highlightjs';
 import { getViewInsets } from '@/utils/insets';
 import { collectDocumentImages, DocumentImage } from '../utils/documentImages';
@@ -164,12 +163,6 @@ const FoliateViewer: React.FC<{
   }, []);
 
   useAutoFocus<HTMLDivElement>({ ref: containerRef });
-
-  useDiscordPresence(
-    bookData?.book || null,
-    !!viewState?.isPrimary,
-    settings.discordRichPresenceEnabled,
-  );
 
   useEffect(() => {
     const timer = setTimeout(() => setToastMessage(''), 2000);

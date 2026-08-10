@@ -1,5 +1,5 @@
 import { SystemSettings } from '@/types/settings';
-import { FileSystem, AppPlatform, BaseDir, OsPlatform } from '@/types/system';
+import { FileSystem, AppPlatform, BaseDir, DeleteAction, OsPlatform } from '@/types/system';
 import {
   Book,
   BookConfig,
@@ -875,14 +875,47 @@ export async function saveBookNav(fs: FileSystem, book: Book, nav: BookNav): Pro
   await fs.writeFile(getBookNavFilename(book), 'Books', JSON.stringify(nav));
 }
 
-export async function fetchBookDetails(
+export async function deleteBook(
   fs: FileSystem,
   book: Book,
-  downloadBookFn: (book: Book) => Promise<void>,
-): Promise<BookDoc['metadata']> {
+  deleteAction: DeleteAction,
+): Promise<void> {
+  if (deleteAction === 'local' || deleteAction === 'both' || deleteAction === 'purge') {
+    const source = await resolveBookContentSource(fs, book);
+    if (source.kind === 'managed' && deleteAction !== 'purge') {
+      if (await fs.exists(source.path, source.base)) {
+        await fs.removeFile(source.path, source.base);
+      }
+    }
+
+    if (deleteAction === 'purge') {
+      const dir = getDir(book);
+      if (await fs.exists(dir, 'Books')) {
+        await fs.removeDir(dir, 'Books', true);
+      }
+      const ttsCacheDir = `tts-cache/${book.hash}`;
+      if (await fs.exists(ttsCacheDir, 'Cache')) {
+        await fs.removeDir(ttsCacheDir, 'Cache', true);
+      }
+    }
+
+    if (deleteAction === 'both' && (await fs.exists(getCoverFilename(book), 'Books'))) {
+      await fs.removeFile(getCoverFilename(book), 'Books');
+    }
+    if (deleteAction === 'local' || deleteAction === 'purge') {
+      book.downloadedAt = null;
+    } else {
+      book.deletedAt = Date.now();
+      book.downloadedAt = null;
+      book.coverDownloadedAt = null;
+    }
+  }
+}
+
+export async function fetchBookDetails(fs: FileSystem, book: Book): Promise<BookDoc['metadata']> {
   const fp = getLocalBookFilename(book);
-  if (!(await fs.exists(fp, 'Books')) && book.uploadedAt) {
-    await downloadBookFn(book);
+  if (!(await fs.exists(fp, 'Books'))) {
+    throw new BookFileNotFoundError();
   }
   const { file } = await loadBookContent(fs, book);
   let bookDoc: BookDoc | undefined;

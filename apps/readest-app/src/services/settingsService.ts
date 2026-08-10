@@ -24,7 +24,6 @@ import {
   DEFAULT_EINK_VIEW_SETTINGS,
   DEFAULT_VIEW_SETTINGS_CONFIG,
 } from './constants';
-import { DEFAULT_AI_SETTINGS } from './ai/constants';
 import { getTargetLang, isCJKEnv } from '@/utils/misc';
 import { safeLoadJSON, safeSaveJSON } from './persistence';
 
@@ -156,10 +155,6 @@ export async function loadSettings(ctx: Context): Promise<SystemSettings> {
   settings.globalViewSettings = {
     ...getDefaultViewSettings(ctx),
     ...settings.globalViewSettings,
-  };
-  settings.aiSettings = {
-    ...DEFAULT_AI_SETTINGS,
-    ...settings.aiSettings,
   };
 
   settings.localBooksDir = await ctx.fs.getPrefix('Books');

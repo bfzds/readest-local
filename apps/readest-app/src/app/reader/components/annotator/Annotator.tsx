@@ -31,7 +31,6 @@ import { useFoliateEvents } from '../../hooks/useFoliateEvents';
 import { useRendererInputListeners } from '../../hooks/useRendererInputListeners';
 import { useBookOrbitNotesSync } from '../../hooks/useBookOrbitNotesSync';
 import { useNotesSync } from '../../hooks/useNotesSync';
-import { useReadwiseSync } from '../../hooks/useReadwiseSync';
 import { useHardcoverSync } from '../../hooks/useHardcoverSync';
 import { useTextSelector } from '../../hooks/useTextSelector';
 import { Point, Position, TextSelection } from '@/utils/sel';
@@ -132,7 +131,6 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
 
   useNotesSync(bookKey);
   useBookOrbitNotesSync(bookKey);
-  useReadwiseSync(bookKey);
   useHardcoverSync(bookKey);
 
   useEffect(() => {

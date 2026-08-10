@@ -281,7 +281,6 @@ describe('services/constants', () => {
     it('has nested settings objects', () => {
       expect(DEFAULT_SYSTEM_SETTINGS.kosync).toBeDefined();
       expect(DEFAULT_SYSTEM_SETTINGS.readwise).toBeDefined();
-      expect(DEFAULT_SYSTEM_SETTINGS.aiSettings).toBeDefined();
     });
 
     it('has sync timestamps', () => {

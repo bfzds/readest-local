@@ -1,0 +1,369 @@
+﻿src/__tests__/document/document-loader-epub-case.test.ts(6,62): error TS2307: Cannot find module '@zip.js/zip.js' or its corresponding type declarations.
+src/__tests__/document/document-loader-epub-undeclared-cover.test.ts(18,80): error TS2307: Cannot find module '@zip.js/zip.js' or its corresponding type declarations.
+src/__tests__/document/series-metadata.test.ts(40,62): error TS2307: Cannot find module '@zip.js/zip.js' or its corresponding type declarations.
+src/__tests__/services/backup-windows-paths.test.ts(2,32): error TS2307: Cannot find module '@zip.js/zip.js' or its corresponding type declarations.
+src/__tests__/utils/txt-converter.test.ts(170,64): error TS2307: Cannot find module '@zip.js/zip.js' or its corresponding type declarations.
+src/__tests__/utils/txt-converter.test.ts(174,42): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+src/app/api/azure-translate/route.ts(7,8): error TS2307: Cannot find module '@/services/translators/providers/azureShared' or its corresponding type declarations.
+src/app/api/metadata/search/route.ts(2,33): error TS2307: Cannot find module '@/services/metadata/service' or its corresponding type declarations.
+src/app/api/metadata/search/route.ts(3,31): error TS2307: Cannot find module '@/services/metadata/types' or its corresponding type declarations.
+src/app/api/share/[token]/import/route.ts(84,49): error TS7006: Parameter 'f' implicitly has an 'any' type.
+src/app/api/share/[token]/import/route.ts(85,38): error TS7006: Parameter 'f' implicitly has an 'any' type.
+src/app/api/share/[token]/import/route.ts(94,41): error TS7006: Parameter 'f' implicitly has an 'any' type.
+src/app/api/share/create/route.ts(133,36): error TS7006: Parameter 'f' implicitly has an 'any' type.
+src/app/api/share/list/route.ts(61,23): error TS7006: Parameter 'row' implicitly has an 'any' type.
+src/app/api/yandex-translate/route.ts(7,8): error TS2307: Cannot find module '@/services/translators/providers/yandexShared' or its corresponding type declarations.
+src/app/auth/components/AuthPanel.tsx(2,37): error TS2307: Cannot find module '@supabase/supabase-js' or its corresponding type declarations.
+src/app/auth/components/EmailPasswordAuth.tsx(2,37): error TS2307: Cannot find module '@supabase/supabase-js' or its corresponding type declarations.
+src/app/auth/page.tsx(263,69): error TS7006: Parameter '_event' implicitly has an 'any' type.
+src/app/auth/page.tsx(263,77): error TS7006: Parameter 'session' implicitly has an 'any' type.
+src/app/auth/recovery/page.tsx(33,69): error TS7006: Parameter 'event' implicitly has an 'any' type.
+src/app/auth/recovery/page.tsx(33,76): error TS7006: Parameter 'session' implicitly has an 'any' type.
+src/app/gdrive-callback/page.tsx(9,30): error TS2307: Cannot find module '@/services/sync/providers/gdrive/WebDriveAuth' or its corresponding type declarations.
+src/app/gdrive-callback/page.tsx(10,30): error TS2307: Cannot find module '@/services/sync/providers/gdrive/GoogleDriveProvider' or its corresponding type declarations.
+src/app/gdrive-callback/page.tsx(11,35): error TS2307: Cannot find module '@/services/sync/providers/gdrive/auth/webTokenStore' or its corresponding type declarations.
+src/app/gdrive-callback/page.tsx(17,8): error TS2307: Cannot find module '@/services/sync/providers/gdrive/auth/webRedirectFlow' or its corresponding type declarations.
+src/app/gdrive-callback/page.tsx(56,71): error TS7006: Parameter 's' implicitly has an 'any' type.
+src/app/onedrive-callback/page.tsx(9,45): error TS2307: Cannot find module '@/services/sync/providers/onedrive/onedriveAuth' or its corresponding type declarations.
+src/app/onedrive-callback/page.tsx(10,38): error TS2307: Cannot find module '@/services/sync/providers/onedrive/buildOneDriveProvider' or its corresponding type declarations.
+src/app/onedrive-callback/page.tsx(18,8): error TS2307: Cannot find module '@/services/sync/providers/onedrive/webAuthCodeFlow' or its corresponding type declarations.
+src/app/onedrive-callback/page.tsx(75,73): error TS7006: Parameter 's' implicitly has an 'any' type.
+src/app/opds/components/CatalogManager.tsx(23,42): error TS2307: Cannot find module '@/services/sync/passphraseGate' or its corresponding type declarations.
+src/app/opds/components/CatalogManager.tsx(24,42): error TS2307: Cannot find module '@/services/sync/syncCategories' or its corresponding type declarations.
+src/app/opds/components/CatalogManager.tsx(30,64): error TS2307: Cannot find module '@/services/opds' or its corresponding type declarations.
+src/app/opds/components/CatalogManager.tsx(31,44): error TS2307: Cannot find module '@/services/opds/types' or its corresponding type declarations.
+src/app/opds/components/FailedDownloadsDialog.tsx(10,62): error TS2307: Cannot find module '@/services/opds' or its corresponding type declarations.
+src/app/opds/components/FailedDownloadsDialog.tsx(11,57): error TS2307: Cannot find module '@/services/opds/types' or its corresponding type declarations.
+src/app/opds/components/FailedDownloadsDialog.tsx(53,47): error TS7006: Parameter 'fe' implicitly has an 'any' type.
+src/app/opds/components/FailedDownloadsDialog.tsx(63,50): error TS7006: Parameter 'fe' implicitly has an 'any' type.
+src/app/opds/components/FailedDownloadsDialog.tsx(73,47): error TS7006: Parameter 'fe' implicitly has an 'any' type.
+src/app/opds/components/FailedDownloadsDialog.tsx(79,46): error TS7006: Parameter 'fe' implicitly has an 'any' type.
+src/app/opds/components/FailedDownloadsDialog.tsx(116,28): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+src/app/opds/components/PublicationView.tsx(9,34): error TS2307: Cannot find module '@/services/opds/cover' or its corresponding type declarations.
+src/app/opds/page.tsx(11,30): error TS2307: Cannot find module '@/libs/storage' or its corresponding type declarations.
+src/app/opds/page.tsx(19,33): error TS2307: Cannot find module '@/services/transferManager' or its corresponding type declarations.
+src/app/opds/page.tsx(20,45): error TS2307: Cannot find module '@/services/sync/cloudSyncProvider' or its corresponding type declarations.
+src/app/opds/page.tsx(21,34): error TS2307: Cannot find module '@/hooks/useTransferQueue' or its corresponding type declarations.
+src/app/opds/page.tsx(50,64): error TS2307: Cannot find module '@/services/opds/sourceMap' or its corresponding type declarations.
+src/app/opds/page.tsx(51,77): error TS2307: Cannot find module '@/services/opds/cover' or its corresponding type declarations.
+src/app/opds/page.tsx(52,56): error TS2307: Cannot find module '@/services/opds/metadata' or its corresponding type declarations.
+src/app/opds/page.tsx(53,40): error TS2307: Cannot find module '@/services/opds/pseStream' or its corresponding type declarations.
+src/app/opds/page.tsx(949,16): error TS7006: Parameter 'book' implicitly has an 'any' type.
+src/app/reader/components/Reader.tsx(19,34): error TS2307: Cannot find module '@/hooks/useTransferQueue' or its corresponding type declarations.
+src/app/reader/components/Reader.tsx(20,32): error TS2307: Cannot find module '@/hooks/useReplicaPull' or its corresponding type declarations.
+src/app/reader/components/ReaderContent.tsx(30,29): error TS2307: Cannot find module '@/app/library/components/ShareBookDialog' or its corresponding type declarations.
+src/app/reader/components/ReadingStatsTracker.tsx(13,33): error TS2307: Cannot find module '@/services/bookorbit/BookOrbitClient' or its corresponding type declarations.
+src/app/reader/components/ReadingStatsTracker.tsx(14,38): error TS2307: Cannot find module '@/services/bookorbit/statsPush' or its corresponding type declarations.
+src/app/reader/components/ReadingStatsTracker.tsx(16,39): error TS2307: Cannot find module '@/services/sync/syncCategories' or its corresponding type declarations.
+src/app/reader/components/TranslationToggler.tsx(10,40): error TS2307: Cannot find module '@/services/translators/utils' or its corresponding type declarations.
+src/app/reader/components/annotator/TranslatorPopup.tsx(14,8): error TS2307: Cannot find module '@/services/translators' or its corresponding type declarations.
+src/app/reader/components/annotator/TranslatorPopup.tsx(80,59): error TS7006: Parameter 't' implicitly has an 'any' type.
+src/app/reader/components/annotator/TranslatorPopup.tsx(82,34): error TS7006: Parameter 't' implicitly has an 'any' type.
+src/app/reader/components/annotator/TranslatorPopup.tsx(91,49): error TS7006: Parameter 't' implicitly has an 'any' type.
+src/app/reader/components/notebook/AIAssistant.tsx(18,46): error TS2307: Cannot find module '@/services/ai' or its corresponding type declarations.
+src/app/reader/components/notebook/AIAssistant.tsx(26,8): error TS2307: Cannot find module '@/services/ai/adapters' or its corresponding type declarations.
+src/app/reader/components/notebook/AIAssistant.tsx(27,63): error TS2307: Cannot find module '@/services/ai/types' or its corresponding type declarations.
+src/app/reader/components/notebook/AIAssistant.tsx(28,37): error TS2307: Cannot find module '@/services/reedy/retrieval/BookRetriever' or its corresponding type declarations.
+src/app/reader/components/notebook/AIAssistant.tsx(32,32): error TS2307: Cannot find module '@/services/reedy/ui/ReedyAssistant' or its corresponding type declarations.
+src/app/reader/components/notebook/AIAssistant.tsx(33,45): error TS2307: Cannot find module '@/services/reedy/tools/builtins/types' or its corresponding type declarations.
+src/app/reader/components/notebook/AIAssistant.tsx(296,34): error TS2339: Property 'aiSettings' does not exist on type 'SystemSettings'.
+src/app/reader/components/notebook/AIAssistant.tsx(298,15): error TS2339: Property 'aiSettings' does not exist on type 'SystemSettings'.
+src/app/reader/components/notebook/AIAssistant.tsx(299,15): error TS2339: Property 'aiSettings' does not exist on type 'SystemSettings'.
+src/app/reader/components/notebook/AIAssistant.tsx(329,32): error TS2339: Property 'aiSettings' does not exist on type 'SystemSettings'.
+src/app/reader/components/notebook/AIAssistant.tsx(348,41): error TS7006: Parameter 'result' implicitly has an 'any' type.
+src/app/reader/components/notebook/AIAssistant.tsx(489,32): error TS2339: Property 'aiSettings' does not exist on type 'SystemSettings'.
+src/app/reader/components/sidebar/ChatHistoryView.tsx(12,37): error TS2307: Cannot find module '@/services/ai/types' or its corresponding type declarations.
+src/app/reader/components/tts/TTSPlayerSheet.tsx(30,31): error TS2307: Cannot find module '@/hooks/useQuotaStats' or its corresponding type declarations.
+src/app/reader/hooks/kosyncProgress.ts(4,32): error TS2307: Cannot find module '@/services/sync/KOSyncClient' or its corresponding type declarations.
+src/app/reader/hooks/useBookOrbitNotesSync.ts(3,39): error TS2307: Cannot find module '@/services/bookorbit/annotationExchange' or its corresponding type declarations.
+src/app/reader/hooks/useBookOrbitNotesSync.ts(4,33): error TS2307: Cannot find module '@/services/bookorbit/BookOrbitClient' or its corresponding type declarations.
+src/app/reader/hooks/useBookOrbitNotesSync.ts(5,36): error TS2307: Cannot find module '@/services/bookorbit/BookOrbitSyncStore' or its corresponding type declarations.
+src/app/reader/hooks/useBookOrbitNotesSync.ts(6,39): error TS2307: Cannot find module '@/services/bookorbit/notesPass' or its corresponding type declarations.
+src/app/reader/hooks/useBookOrbitNotesSync.ts(93,12): error TS7006: Parameter 'pos0' implicitly has an 'any' type.
+src/app/reader/hooks/useBookOrbitNotesSync.ts(93,18): error TS7006: Parameter 'pos1' implicitly has an 'any' type.
+src/app/reader/hooks/useFileSync.ts(8,31): error TS2307: Cannot find module '@/hooks/useQuotaStats' or its corresponding type declarations.
+src/app/reader/hooks/useFileSync.ts(13,32): error TS2307: Cannot find module '@/services/sync/file/engine' or its corresponding type declarations.
+src/app/reader/hooks/useFileSync.ts(14,31): error TS2307: Cannot find module '@/services/sync/file/provider' or its corresponding type declarations.
+src/app/reader/hooks/useFileSync.ts(15,37): error TS2307: Cannot find module '@/services/sync/file/appLocalStore' or its corresponding type declarations.
+src/app/reader/hooks/useFileSync.ts(19,8): error TS2307: Cannot find module '@/services/sync/file/providerRegistry' or its corresponding type declarations.
+src/app/reader/hooks/useFileSync.ts(20,31): error TS2307: Cannot find module '@/services/sync/file/runLibrarySync' or its corresponding type declarations.
+src/app/reader/hooks/useFileSync.ts(24,8): error TS2307: Cannot find module '@/services/sync/cloudSyncProvider' or its corresponding type declarations.
+src/app/reader/hooks/useFileSync.ts(149,36): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'SystemSettings'.
+src/app/reader/hooks/useFileSync.ts(168,16): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'SystemSettings'.
+src/app/reader/hooks/useFileSync.ts(171,47): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'SystemSettings'.
+src/app/reader/hooks/useFileSync.ts(291,41): error TS18046: 'e' is of type 'unknown'.
+src/app/reader/hooks/useHardcoverSync.ts(9,56): error TS2307: Cannot find module '@/services/hardcover' or its corresponding type declarations.
+src/app/reader/hooks/useKOSync.ts(8,46): error TS2307: Cannot find module '@/services/sync/KOSyncClient' or its corresponding type declarations.
+src/app/reader/hooks/useTextTranslation.ts(3,38): error TS2307: Cannot find module '@/services/translators' or its corresponding type declarations.
+src/app/reader/hooks/useTextTranslation.ts(13,32): error TS2307: Cannot find module '@/services/translators' or its corresponding type declarations.
+src/app/reader/hooks/useTextTranslation.ts(19,37): error TS2307: Cannot find module '@/services/translators/utils' or its corresponding type declarations.
+src/app/reader/hooks/useTextTranslation.ts(144,6): error TS7006: Parameter 'translator' implicitly has an 'any' type.
+src/app/reader/utils/wordlensRuby.ts(1,38): error TS2307: Cannot find module '@/services/wordlens/types' or its corresponding type declarations.
+src/app/reader/utils/wordlensSection.ts(4,50): error TS2307: Cannot find module '@/services/wordlens/difficulty' or its corresponding type declarations.
+src/app/reader/utils/wordlensSection.ts(5,32): error TS2307: Cannot find module '@/services/wordlens/glossPacks' or its corresponding type declarations.
+src/app/reader/utils/wordlensSection.ts(6,29): error TS2307: Cannot find module '@/services/wordlens/planner' or its corresponding type declarations.
+src/app/s/ShareLanding.tsx(20,39): error TS2307: Cannot find module '@/libs/shareImport' or its corresponding type declarations.
+src/app/send/page.tsx(15,8): error TS2307: Cannot find module '@/services/send/conversion/conversionWorker' or its corresponding type declarations.
+src/app/send/page.tsx(16,32): error TS2307: Cannot find module '@/services/send/clipOptions' or its corresponding type declarations.
+src/app/send/page.tsx(59,33): error TS2353: Object literal may only specify known properties, and 'forceUpload' does not exist in type 'IngestFileOptions'.
+src/app/user/components/StorageManager.tsx(17,8): error TS2307: Cannot find module '@/libs/storage' or its corresponding type declarations.
+src/app/user/components/SyncCategoriesSection.tsx(11,8): error TS2307: Cannot find module '@/services/sync/cloudSyncProvider' or its corresponding type declarations.
+src/app/user/components/SyncCategoriesSection.tsx(16,8): error TS2307: Cannot find module '@/services/sync/syncCategories' or its corresponding type declarations.
+src/app/user/components/SyncCategoriesSection.tsx(86,19): error TS7053: Element implicitly has an 'any' type because expression of type 'SyncCategory' can't be used to index type 'Partial<Record<SyncCategory, boolean>>'.
+src/app/user/components/SyncCategoriesSection.tsx(117,31): error TS7006: Parameter 'category' implicitly has an 'any' type.
+src/app/user/components/SyncCategoriesSection.tsx(134,74): error TS18048: 'c' is possibly 'undefined'.
+src/app/user/components/SyncCategoriesSection.tsx(142,25): error TS18048: 'c' is possibly 'undefined'.
+src/app/user/components/SyncCategoriesSection.tsx(148,29): error TS18048: 'c' is possibly 'undefined'.
+src/app/user/components/SyncPassphraseSection.tsx(6,67): error TS2307: Cannot find module '@/services/sync/passphraseGate' or its corresponding type declarations.
+src/app/user/page.tsx(10,31): error TS2307: Cannot find module '@/hooks/useQuotaStats' or its corresponding type declarations.
+src/components/ClipSignInAlert.tsx(2,43): error TS2307: Cannot find module '@/services/send/clipSignIn' or its corresponding type declarations.
+src/components/PassphrasePrompt.tsx(6,63): error TS2307: Cannot find module '@/services/sync/passphraseGate' or its corresponding type declarations.
+src/components/PassphrasePrompt.tsx(7,43): error TS2307: Cannot find module '@/services/sync/passphraseGate' or its corresponding type declarations.
+src/components/PassphrasePrompt.tsx(40,30): error TS7031: Binding element 'kind' implicitly has an 'any' type.
+src/components/PassphrasePrompt.tsx(40,43): error TS7031: Binding element 'promptError' implicitly has an 'any' type.
+src/components/Providers.tsx(43,34): error TS2307: Cannot find module '@/services/sync/replicaSettingsSync' or its corresponding type declarations.
+src/components/assistant/Thread.tsx(37,33): error TS2307: Cannot find module '@/services/ai/adapters/reedySourceStore' or its corresponding type declarations.
+src/components/metadata/BookDetailView.tsx(30,28): error TS2307: Cannot find module '@/services/rss/feedBookUrl' or its corresponding type declarations.
+src/components/metadata/SourceSelector.tsx(8,26): error TS2307: Cannot find module '@/services/metadata/types' or its corresponding type declarations.
+src/components/settings/AIPanel.tsx(8,31): error TS2307: Cannot find module '@/services/ai/providers' or its corresponding type declarations.
+src/components/settings/AIPanel.tsx(12,8): error TS2307: Cannot find module '@/services/ai/providers/OpenRouterProvider' or its corresponding type declarations.
+src/components/settings/AIPanel.tsx(13,68): error TS2307: Cannot find module '@/services/ai/constants' or its corresponding type declarations.
+src/components/settings/AIPanel.tsx(14,49): error TS2307: Cannot find module '@/services/ai/types' or its corresponding type declarations.
+src/components/settings/AIPanel.tsx(15,42): error TS2307: Cannot find module '@/services/reedy/instrumentation' or its corresponding type declarations.
+src/components/settings/AIPanel.tsx(75,44): error TS2339: Property 'aiSettings' does not exist on type 'SystemSettings'.
+src/components/settings/AIPanel.tsx(135,61): error TS2339: Property 'aiSettings' does not exist on type 'SystemSettings'.
+src/components/settings/AIPanel.tsx(185,20): error TS7006: Parameter 'a' implicitly has an 'any' type.
+src/components/settings/AIPanel.tsx(185,23): error TS7006: Parameter 'b' implicitly has an 'any' type.
+src/components/settings/AIPanel.tsx(187,46): error TS7006: Parameter 'm' implicitly has an 'any' type.
+src/components/settings/CustomDictionaries.tsx(40,45): error TS2307: Cannot find module '@/services/sync/replicaBinaryUpload' or its corresponding type declarations.
+src/components/settings/CustomFonts.tsx(13,42): error TS2307: Cannot find module '@/services/sync/replicaBinaryUpload' or its corresponding type declarations.
+src/components/settings/IntegrationsPanel.tsx(24,31): error TS2307: Cannot find module '@/hooks/useQuotaStats' or its corresponding type declarations.
+src/components/settings/IntegrationsPanel.tsx(32,38): error TS2307: Cannot find module '@/services/sync/providers/gdrive/buildGoogleDriveProvider' or its corresponding type declarations.
+src/components/settings/IntegrationsPanel.tsx(33,38): error TS2307: Cannot find module '@/services/sync/providers/onedrive/buildOneDriveProvider' or its corresponding type declarations.
+src/components/settings/IntegrationsPanel.tsx(34,43): error TS2307: Cannot find module '@/services/sync/providers/icloud/buildICloudProvider' or its corresponding type declarations.
+src/components/settings/IntegrationsPanel.tsx(59,8): error TS2307: Cannot find module '@/services/sync/cloudSyncProvider' or its corresponding type declarations.
+src/components/settings/IntegrationsPanel.tsx(60,42): error TS2307: Cannot find module '@/services/sync/file/providerRegistry' or its corresponding type declarations.
+src/components/settings/IntegrationsPanel.tsx(61,31): error TS2307: Cannot find module '@/services/sync/file/runLibrarySync' or its corresponding type declarations.
+src/components/settings/IntegrationsPanel.tsx(103,60): error TS4111: Property 'webdav' comes from an index signature, so it must be accessed with ['webdav'].
+src/components/settings/IntegrationsPanel.tsx(104,60): error TS4111: Property 'gdrive' comes from an index signature, so it must be accessed with ['gdrive'].
+src/components/settings/IntegrationsPanel.tsx(105,56): error TS4111: Property 's3' comes from an index signature, so it must be accessed with ['s3'].
+src/components/settings/IntegrationsPanel.tsx(106,62): error TS4111: Property 'onedrive' comes from an index signature, so it must be accessed with ['onedrive'].
+src/components/settings/IntegrationsPanel.tsx(107,69): error TS4111: Property 'webdav' comes from an index signature, so it must be accessed with ['webdav'].
+src/components/settings/IntegrationsPanel.tsx(108,69): error TS4111: Property 'gdrive' comes from an index signature, so it must be accessed with ['gdrive'].
+src/components/settings/IntegrationsPanel.tsx(109,65): error TS4111: Property 's3' comes from an index signature, so it must be accessed with ['s3'].
+src/components/settings/IntegrationsPanel.tsx(110,71): error TS4111: Property 'onedrive' comes from an index signature, so it must be accessed with ['onedrive'].
+src/components/settings/IntegrationsPanel.tsx(111,60): error TS4111: Property 'icloud' comes from an index signature, so it must be accessed with ['icloud'].
+src/components/settings/IntegrationsPanel.tsx(112,69): error TS4111: Property 'icloud' comes from an index signature, so it must be accessed with ['icloud'].
+src/components/settings/IntegrationsPanel.tsx(468,8): error TS7006: Parameter 'k' implicitly has an 'any' type.
+src/components/settings/IntegrationsPanel.tsx(468,29): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'SystemSettings'.
+src/components/settings/LangPanel.tsx(13,8): error TS2307: Cannot find module '@/services/translators' or its corresponding type declarations.
+src/components/settings/LangPanel.tsx(125,34): error TS7006: Parameter 't' implicitly has an 'any' type.
+src/components/settings/LangPanel.tsx(137,59): error TS7006: Parameter 't' implicitly has an 'any' type.
+src/components/settings/LangPanel.tsx(138,56): error TS7006: Parameter 't' implicitly has an 'any' type.
+src/components/settings/LangPanel.tsx(141,31): error TS7006: Parameter 'p' implicitly has an 'any' type.
+src/components/settings/ThemePanel.tsx(17,42): error TS2307: Cannot find module '@/services/sync/replicaBinaryUpload' or its corresponding type declarations.
+src/components/settings/WordLensPanel.tsx(17,8): error TS2307: Cannot find module '@/services/wordlens/difficulty' or its corresponding type declarations.
+src/components/settings/WordLensPanel.tsx(27,8): error TS2307: Cannot find module '@/services/wordlens/glossPacks' or its corresponding type declarations.
+src/components/settings/WordLensPanel.tsx(82,42): error TS7006: Parameter 'm' implicitly has an 'any' type.
+src/components/settings/WordLensPanel.tsx(118,14): error TS7006: Parameter 'status' implicitly has an 'any' type.
+src/components/settings/WordLensPanel.tsx(211,34): error TS7031: Binding element 'done' implicitly has an 'any' type.
+src/components/settings/WordLensPanel.tsx(211,40): error TS7031: Binding element 'total' implicitly has an 'any' type.
+src/components/settings/integrations/BookOrbitForm.tsx(9,33): error TS2307: Cannot find module '@/services/bookorbit/BookOrbitClient' or its corresponding type declarations.
+src/components/settings/integrations/FileSyncForm.tsx(12,32): error TS2307: Cannot find module '@/services/sync/file/engine' or its corresponding type declarations.
+src/components/settings/integrations/FileSyncForm.tsx(13,31): error TS2307: Cannot find module '@/services/sync/file/provider' or its corresponding type declarations.
+src/components/settings/integrations/FileSyncForm.tsx(14,37): error TS2307: Cannot find module '@/services/sync/file/appLocalStore' or its corresponding type declarations.
+src/components/settings/integrations/FileSyncForm.tsx(18,8): error TS2307: Cannot find module '@/services/sync/file/providerRegistry' or its corresponding type declarations.
+src/components/settings/integrations/FileSyncForm.tsx(54,13): error TS18046: 'e' is of type 'unknown'.
+src/components/settings/integrations/FileSyncForm.tsx(62,16): error TS18046: 'e' is of type 'unknown'.
+src/components/settings/integrations/FileSyncForm.tsx(63,61): error TS18046: 'e' is of type 'unknown'.
+src/components/settings/integrations/FileSyncForm.tsx(155,24): error TS7031: Binding element 'book' implicitly has an 'any' type.
+src/components/settings/integrations/FileSyncForm.tsx(155,30): error TS7031: Binding element 'index' implicitly has an 'any' type.
+src/components/settings/integrations/FileSyncForm.tsx(155,37): error TS7031: Binding element 'total' implicitly has an 'any' type.
+src/components/settings/integrations/FileSyncForm.tsx(155,44): error TS7031: Binding element 'action' implicitly has an 'any' type.
+src/components/settings/integrations/GoogleDriveForm.tsx(11,8): error TS2307: Cannot find module '@/services/sync/providers/gdrive/googleDriveConnect' or its corresponding type declarations.
+src/components/settings/integrations/GoogleDriveForm.tsx(12,39): error TS2307: Cannot find module '@/services/sync/providers/gdrive/auth/webTokenStore' or its corresponding type declarations.
+src/components/settings/integrations/GoogleDriveForm.tsx(72,67): error TS7006: Parameter 's' implicitly has an 'any' type.
+src/components/settings/integrations/GoogleDriveForm.tsx(103,68): error TS7006: Parameter 's' implicitly has an 'any' type.
+src/components/settings/integrations/HardcoverForm.tsx(7,56): error TS2307: Cannot find module '@/services/hardcover' or its corresponding type declarations.
+src/components/settings/integrations/ICloudForm.tsx(8,43): error TS2307: Cannot find module '@/services/sync/providers/icloud/buildICloudProvider' or its corresponding type declarations.
+src/components/settings/integrations/KOSyncForm.tsx(9,30): error TS2307: Cannot find module '@/services/sync/KOSyncClient' or its corresponding type declarations.
+src/components/settings/integrations/OneDriveForm.tsx(11,8): error TS2307: Cannot find module '@/services/sync/providers/onedrive/onedriveConnect' or its corresponding type declarations.
+src/components/settings/integrations/OneDriveForm.tsx(12,42): error TS2307: Cannot find module '@/services/sync/providers/onedrive/webAuthCodeFlow' or its corresponding type declarations.
+src/components/settings/integrations/OneDriveForm.tsx(73,69): error TS7006: Parameter 's' implicitly has an 'any' type.
+src/components/settings/integrations/OneDriveForm.tsx(104,70): error TS7006: Parameter 's' implicitly has an 'any' type.
+src/components/settings/integrations/ReadwiseForm.tsx(8,32): error TS2307: Cannot find module '@/services/readwise' or its corresponding type declarations.
+src/components/settings/integrations/S3Form.tsx(8,31): error TS2307: Cannot find module '@/services/sync/file/provider' or its corresponding type declarations.
+src/components/settings/integrations/S3Form.tsx(9,34): error TS2307: Cannot find module '@/services/sync/providers/s3/S3Provider' or its corresponding type declarations.
+src/components/settings/integrations/S3Form.tsx(20,13): error TS18046: 'e' is of type 'unknown'.
+src/components/settings/integrations/S3Form.tsx(28,16): error TS18046: 'e' is of type 'unknown'.
+src/components/settings/integrations/S3Form.tsx(29,76): error TS18046: 'e' is of type 'unknown'.
+src/components/settings/integrations/S3Form.tsx(90,63): error TS7006: Parameter 's' implicitly has an 'any' type.
+src/components/settings/integrations/SendToReadestForm.tsx(9,59): error TS2307: Cannot find module '@/services/send/devicePrefs' or its corresponding type declarations.
+src/components/settings/integrations/WebDAVBrowsePane.tsx(31,8): error TS2307: Cannot find module '@/services/sync/providers/webdav/client' or its corresponding type declarations.
+src/components/settings/integrations/WebDAVBrowsePane.tsx(32,47): error TS2307: Cannot find module '@/services/sync/file/layout' or its corresponding type declarations.
+src/components/settings/integrations/WebDAVBrowsePane.tsx(33,38): error TS2307: Cannot find module '@/services/sync/providers/webdav/WebDAVProvider' or its corresponding type declarations.
+src/components/settings/integrations/WebDAVBrowsePane.tsx(34,37): error TS2307: Cannot find module '@/services/sync/file/engine' or its corresponding type declarations.
+src/components/settings/integrations/WebDAVBrowsePane.tsx(35,31): error TS2307: Cannot find module '@/services/sync/file/provider' or its corresponding type declarations.
+src/components/settings/integrations/WebDAVBrowsePane.tsx(256,45): error TS18046: 'e' is of type 'unknown'.
+src/components/settings/integrations/WebDAVBrowsePane.tsx(445,49): error TS2353: Object literal may only specify known properties, and 'isLoggedIn' does not exist in type 'IngestFileDeps'.
+src/components/settings/integrations/WebDAVForm.tsx(12,8): error TS2307: Cannot find module '@/services/sync/providers/webdav/client' or its corresponding type declarations.
+src/components/settings/integrations/WebDAVForm.tsx(13,44): error TS2307: Cannot find module '@/services/sync/providers/webdav/connectSettings' or its corresponding type declarations.
+src/components/settings/integrations/WebDAVForm.tsx(81,67): error TS7006: Parameter 's' implicitly has an 'any' type.
+src/components/settings/integrations/cloudSync.ts(9,8): error TS2307: Cannot find module '@/services/sync/cloudSyncActivation' or its corresponding type declarations.
+src/components/settings/integrations/webdavBrowseUtils.ts(18,34): error TS2307: Cannot find module '@/services/sync/providers/webdav/client' or its corresponding type declarations.
+src/context/AuthContext.tsx(12,22): error TS2307: Cannot find module '@supabase/supabase-js' or its corresponding type declarations.
+src/context/AuthContext.tsx(70,69): error TS7006: Parameter '_' implicitly has an 'any' type.
+src/context/AuthContext.tsx(70,72): error TS7006: Parameter 'session' implicitly has an 'any' type.
+src/context/EnvContext.tsx(7,42): error TS2307: Cannot find module '@/services/sync/replicaBootstrap' or its corresponding type declarations.
+src/context/EnvContext.tsx(8,33): error TS2307: Cannot find module '@/services/sync/replicaSync' or its corresponding type declarations.
+src/context/EnvContext.tsx(9,43): error TS2307: Cannot find module '@/services/sync/replicaCursorStore' or its corresponding type declarations.
+src/context/EnvContext.tsx(10,49): error TS2307: Cannot find module '@/services/sync/replicaTransferIntegration' or its corresponding type declarations.
+src/context/EnvContext.tsx(11,42): error TS2307: Cannot find module '@/services/sync/replicaPersist' or its corresponding type declarations.
+src/helpers/auth.ts(1,22): error TS2307: Cannot find module '@supabase/supabase-js' or its corresponding type declarations.
+src/hooks/useAppUrlIngress.ts(8,42): error TS2307: Cannot find module '@/services/sync/providers/gdrive/auth/reverseDnsRedirect' or its corresponding type declarations.
+src/hooks/useAppUrlIngress.ts(9,44): error TS2307: Cannot find module '@/services/sync/providers/onedrive/microsoftOAuthConfig' or its corresponding type declarations.
+src/hooks/useClipUrlIngress.ts(9,41): error TS2307: Cannot find module '@/services/send/conversion/conversionWorker' or its corresponding type declarations.
+src/hooks/useClipUrlIngress.ts(10,61): error TS2307: Cannot find module '@/services/send/clipSignIn' or its corresponding type declarations.
+src/hooks/useClipUrlIngress.ts(11,36): error TS2307: Cannot find module '@/services/send/conversion/types' or its corresponding type declarations.
+src/hooks/useClipUrlIngress.ts(113,46): error TS2353: Object literal may only specify known properties, and 'forceUpload' does not exist in type 'IngestFileOptions'.
+src/hooks/useInboxDrainer.ts(10,56): error TS2307: Cannot find module '@/services/send/inboxDrainer' or its corresponding type declarations.
+src/hooks/useInboxDrainer.ts(11,37): error TS2307: Cannot find module '@/services/send/devicePrefs' or its corresponding type declarations.
+src/hooks/useInboxDrainer.ts(15,8): error TS2307: Cannot find module '@/services/send/conversion/conversionWorker' or its corresponding type declarations.
+src/hooks/useInboxDrainer.ts(131,13): error TS2353: Object literal may only specify known properties, and 'forceUpload' does not exist in type 'IngestFileOptions'.
+src/hooks/useInboxDrainer.ts(143,30): error TS7006: Parameter 'id' implicitly has an 'any' type.
+src/hooks/useInboxDrainer.ts(150,32): error TS7006: Parameter 'id' implicitly has an 'any' type.
+src/hooks/useInboxDrainer.ts(157,28): error TS7006: Parameter 'id' implicitly has an 'any' type.
+src/hooks/useInboxDrainer.ts(157,32): error TS7006: Parameter 'error' implicitly has an 'any' type.
+src/hooks/useSync.ts(6,39): error TS2307: Cannot find module '@/services/sync/syncCategories' or its corresponding type declarations.
+src/hooks/useTranslator.ts(9,8): error TS2307: Cannot find module '@/services/translators' or its corresponding type declarations.
+src/hooks/useTranslator.ts(10,66): error TS2307: Cannot find module '@/services/translators' or its corresponding type declarations.
+src/hooks/useTranslator.ts(11,36): error TS2307: Cannot find module '@/services/translators' or its corresponding type declarations.
+src/hooks/useTranslator.ts(35,59): error TS7006: Parameter 't' implicitly has an 'any' type.
+src/hooks/useTranslator.ts(37,34): error TS7006: Parameter 't' implicitly has an 'any' type.
+src/hooks/useTranslator.ts(54,68): error TS7006: Parameter 't' implicitly has an 'any' type.
+src/hooks/useTranslator.ts(62,37): error TS7006: Parameter 'text' implicitly has an 'any' type.
+src/hooks/useTranslator.ts(62,43): error TS7006: Parameter 'index' implicitly has an 'any' type.
+src/hooks/useTranslator.ts(80,33): error TS7006: Parameter 'text' implicitly has an 'any' type.
+src/hooks/useTranslator.ts(82,16): error TS7006: Parameter 'cached' implicitly has an 'any' type.
+src/hooks/useTranslator.ts(93,46): error TS7006: Parameter 't' implicitly has an 'any' type.
+src/libs/document.ts(254,76): error TS2307: Cannot find module '@zip.js/zip.js' or its corresponding type declarations.
+src/libs/document.ts(255,25): error TS2307: Cannot find module '@zip.js/zip.js' or its corresponding type declarations.
+src/libs/document.ts(258,38): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+src/libs/document.ts(431,39): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+src/libs/metadata.ts(1,47): error TS2307: Cannot find module '@/services/metadata/types' or its corresponding type declarations.
+src/libs/payment/storage.ts(19,25): error TS7006: Parameter 'sum' implicitly has an 'any' type.
+src/libs/payment/storage.ts(19,30): error TS7006: Parameter 'payment' implicitly has an 'any' type.
+src/libs/shareServer.ts(105,33): error TS7006: Parameter 'f' implicitly has an 'any' type.
+src/libs/shareServer.ts(109,34): error TS7006: Parameter 'f' implicitly has an 'any' type.
+src/pages/api/deepl/translate.ts(10,28): error TS2307: Cannot find module '@/services/translators' or its corresponding type declarations.
+src/pages/api/send/address.ts(16,8): error TS2307: Cannot find module '@/services/send/sendAddress' or its corresponding type declarations.
+src/pages/api/send/inbox.ts(6,33): error TS2307: Cannot find module '@/services/send/sendAddress' or its corresponding type declarations.
+src/pages/api/send/inbox/file.ts(6,33): error TS2307: Cannot find module '@/services/send/sendAddress' or its corresponding type declarations.
+src/pages/api/send/senders.ts(10,38): error TS2307: Cannot find module '@/services/send/sendAddress' or its corresponding type declarations.
+src/pages/api/storage/download.ts(90,58): error TS7006: Parameter 'record' implicitly has an 'any' type.
+src/pages/api/storage/download.ts(122,14): error TS7006: Parameter 'f' implicitly has an 'any' type.
+src/pages/api/storage/download.ts(142,22): error TS2339: Property 'user_id' does not exist on type '{}'.
+src/pages/api/storage/download.ts(147,67): error TS2339: Property 'file_key' does not exist on type '{}'.
+src/pages/api/storage/list.ts(115,34): error TS7006: Parameter 'f' implicitly has an 'any' type.
+src/pages/api/storage/list.ts(115,61): error TS7006: Parameter 'hash' implicitly has an 'any' type.
+src/pages/api/storage/list.ts(118,34): error TS7006: Parameter 'f' implicitly has an 'any' type.
+src/pages/api/storage/list.ts(118,62): error TS7006: Parameter 'id' implicitly has an 'any' type.
+src/pages/api/storage/list.ts(131,52): error TS7006: Parameter 'f' implicitly has an 'any' type.
+src/pages/api/storage/list.ts(136,28): error TS7031: Binding element 'data' implicitly has an 'any' type.
+src/pages/api/storage/list.ts(136,34): error TS7031: Binding element 'error' implicitly has an 'any' type.
+src/pages/api/storage/list.ts(137,45): error TS7006: Parameter 'f' implicitly has an 'any' type.
+src/pages/api/storage/list.ts(140,60): error TS2345: Argument of type 'unknown[]' is not assignable to parameter of type 'string[]'.
+  Type 'unknown' is not assignable to type 'string'.
+src/pages/api/storage/list.ts(141,61): error TS2345: Argument of type 'unknown[]' is not assignable to parameter of type 'string[]'.
+  Type 'unknown' is not assignable to type 'string'.
+src/pages/api/storage/purge.ts(65,51): error TS7006: Parameter 'record' implicitly has an 'any' type.
+src/pages/api/storage/purge.ts(72,30): error TS7006: Parameter 'fileRecord' implicitly has an 'any' type.
+src/pages/api/storage/purge.ts(102,22): error TS7006: Parameter 'result' implicitly has an 'any' type.
+src/pages/api/storage/purge.ts(121,52): error TS7006: Parameter 'record' implicitly has an 'any' type.
+src/pages/api/sync.ts(3,32): error TS2307: Cannot find module '@supabase/supabase-js' or its corresponding type declarations.
+src/pages/api/sync.ts(549,38): error TS7006: Parameter 'record' implicitly has an 'any' type.
+src/pages/api/sync.ts(796,35): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/backupService.ts(1,47): error TS2307: Cannot find module '@zip.js/zip.js' or its corresponding type declarations.
+src/services/backupService.ts(283,45): error TS2307: Cannot find module '@zip.js/zip.js' or its corresponding type declarations.
+src/services/backupService.ts(343,50): error TS2307: Cannot find module '@zip.js/zip.js' or its corresponding type declarations.
+src/services/backupService.ts(365,38): error TS2307: Cannot find module '@zip.js/zip.js' or its corresponding type declarations.
+src/services/backupService.ts(401,68): error TS2307: Cannot find module '@zip.js/zip.js' or its corresponding type declarations.
+src/services/backupService.ts(407,35): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/services/backupService.ts(414,39): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/services/backupService.ts(417,42): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/services/backupService.ts(458,49): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/services/backupService.ts(512,47): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/services/backupService.ts(514,43): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/services/backupService.ts(553,43): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/services/bookContent.ts(6,37): error TS2307: Cannot find module './opds/pseStream' or its corresponding type declarations.
+src/services/bookContent.ts(7,31): error TS2307: Cannot find module '@/services/rss/feedBookUrl' or its corresponding type declarations.
+src/services/bookService.ts(32,80): error TS2307: Cannot find module './opds/pseStream' or its corresponding type declarations.
+src/services/dictionaries/contentId.ts(2,44): error TS2307: Cannot find module '@/services/sync/adapters/dictionary' or its corresponding type declarations.
+src/services/statistics/ttsStatsRecorder.ts(21,39): error TS2307: Cannot find module '@/services/sync/syncCategories' or its corresponding type declarations.
+src/services/transformers/sanitizer.ts(1,23): error TS2307: Cannot find module 'dompurify' or its corresponding type declarations.
+src/services/tts/providers/bookCacheStore.ts(245,9): error TS2307: Cannot find module '@/services/sync/file/ttsPackSync' or its corresponding type declarations.
+src/store/aiChatStore.ts(2,43): error TS2307: Cannot find module '@/services/ai/types' or its corresponding type declarations.
+src/store/aiChatStore.ts(3,25): error TS2307: Cannot find module '@/services/ai/storage/aiStore' or its corresponding type declarations.
+src/store/customDictionaryStore.ts(10,60): error TS2307: Cannot find module '@/services/sync/replicaPublish' or its corresponding type declarations.
+src/store/customDictionaryStore.ts(11,33): error TS2307: Cannot find module '@/services/sync/adapters/dictionary' or its corresponding type declarations.
+src/store/customDictionaryStore.ts(12,50): error TS2307: Cannot find module '@/services/sync/replicaSettingsSync' or its corresponding type declarations.
+src/store/customDictionaryStore.ts(168,38): error TS2307: Cannot find module '@/services/sync/replicaPersist' or its corresponding type declarations.
+src/store/customFontStore.ts(11,38): error TS2307: Cannot find module '@/services/sync/replicaPersist' or its corresponding type declarations.
+src/store/customFontStore.ts(12,60): error TS2307: Cannot find module '@/services/sync/replicaPublish' or its corresponding type declarations.
+src/store/customFontStore.ts(13,27): error TS2307: Cannot find module '@/services/sync/adapters/font' or its corresponding type declarations.
+src/store/customFontStore.ts(15,39): error TS2307: Cannot find module '@/services/sync/migrateLegacy' or its corresponding type declarations.
+src/store/customFontStore.ts(454,20): error TS7006: Parameter 'id' implicitly has an 'any' type.
+src/store/customFontStore.ts(454,24): error TS7006: Parameter 'next' implicitly has an 'any' type.
+src/store/customFontStore.ts(455,17): error TS7006: Parameter 'env' implicitly has an 'any' type.
+src/store/customOPDSStore.ts(5,38): error TS2307: Cannot find module '@/services/sync/replicaPersist' or its corresponding type declarations.
+src/store/customOPDSStore.ts(6,60): error TS2307: Cannot find module '@/services/sync/replicaPublish' or its corresponding type declarations.
+src/store/customOPDSStore.ts(10,8): error TS2307: Cannot find module '@/services/sync/adapters/opdsCatalog' or its corresponding type declarations.
+src/store/customTextureStore.ts(11,38): error TS2307: Cannot find module '@/services/sync/replicaPersist' or its corresponding type declarations.
+src/store/customTextureStore.ts(12,60): error TS2307: Cannot find module '@/services/sync/replicaPublish' or its corresponding type declarations.
+src/store/customTextureStore.ts(13,30): error TS2307: Cannot find module '@/services/sync/adapters/texture' or its corresponding type declarations.
+src/store/customTextureStore.ts(15,39): error TS2307: Cannot find module '@/services/sync/migrateLegacy' or its corresponding type declarations.
+src/store/customTextureStore.ts(474,20): error TS7006: Parameter 'id' implicitly has an 'any' type.
+src/store/customTextureStore.ts(474,24): error TS7006: Parameter 'next' implicitly has an 'any' type.
+src/store/customTextureStore.ts(475,17): error TS7006: Parameter 'env' implicitly has an 'any' type.
+src/store/feedStore.ts(2,35): error TS2307: Cannot find module '@/services/rss/feedClient' or its corresponding type declarations.
+src/store/fileSyncStore.ts(2,42): error TS2307: Cannot find module '@/services/sync/file/providerRegistry' or its corresponding type declarations.
+src/store/readerStore.ts(20,8): error TS2307: Cannot find module '@/services/opds/pseStream' or its corresponding type declarations.
+src/store/readerStore.ts(22,49): error TS2307: Cannot find module '@/services/rss/feedBookUrl' or its corresponding type declarations.
+src/store/readerStore.ts(23,33): error TS2307: Cannot find module '@/services/rss/feedReader' or its corresponding type declarations.
+src/store/readerStore.ts(227,11): error TS18049: 'bookDoc' is possibly 'null' or 'undefined'.
+src/store/readerStore.ts(233,15): error TS18049: 'bookDoc' is possibly 'null' or 'undefined'.
+src/store/readerStore.ts(246,37): error TS18049: 'bookDoc' is possibly 'null' or 'undefined'.
+src/store/readerStore.ts(249,26): error TS2345: Argument of type 'BookDoc | null | undefined' is not assignable to parameter of type 'BookDoc'.
+  Type 'undefined' is not assignable to type 'BookDoc'.
+src/store/readerStore.ts(251,49): error TS2345: Argument of type 'BookDoc | null | undefined' is not assignable to parameter of type 'BookDoc'.
+  Type 'undefined' is not assignable to type 'BookDoc'.
+src/store/readerStore.ts(252,26): error TS2345: Argument of type 'BookDoc | null | undefined' is not assignable to parameter of type 'BookDoc'.
+  Type 'undefined' is not assignable to type 'BookDoc'.
+src/store/readerStore.ts(261,9): error TS2345: Argument of type 'BookDoc | null | undefined' is not assignable to parameter of type 'BookDoc'.
+  Type 'undefined' is not assignable to type 'BookDoc'.
+src/store/readerStore.ts(265,12): error TS18049: 'bookDoc' is possibly 'null' or 'undefined'.
+src/store/readerStore.ts(266,9): error TS18049: 'bookDoc' is possibly 'null' or 'undefined'.
+src/store/readerStore.ts(268,38): error TS18049: 'bookDoc' is possibly 'null' or 'undefined'.
+src/store/readerStore.ts(270,18): error TS18049: 'bookDoc' is possibly 'null' or 'undefined'.
+src/store/readerStore.ts(271,13): error TS18049: 'bookDoc' is possibly 'null' or 'undefined'.
+src/store/readerStore.ts(272,11): error TS18049: 'bookDoc' is possibly 'null' or 'undefined'.
+src/store/readerStore.ts(272,59): error TS18049: 'bookDoc' is possibly 'null' or 'undefined'.
+src/store/readerStore.ts(276,50): error TS18049: 'bookDoc' is possibly 'null' or 'undefined'.
+src/store/readerStore.ts(278,40): error TS18049: 'bookDoc' is possibly 'null' or 'undefined'.
+src/store/readerStore.ts(281,11): error TS18049: 'bookDoc' is possibly 'null' or 'undefined'.
+src/store/readerStore.ts(282,27): error TS18049: 'bookDoc' is possibly 'null' or 'undefined'.
+src/store/readerStore.ts(297,41): error TS18049: 'bookDoc' is possibly 'null' or 'undefined'.
+src/store/readerStore.ts(301,9): error TS18049: 'bookDoc' is possibly 'null' or 'undefined'.
+src/store/readerStore.ts(302,63): error TS2322: Type 'BookDoc | null | undefined' is not assignable to type 'BookDoc | null'.
+  Type 'undefined' is not assignable to type 'BookDoc | null'.
+src/utils/access.ts(6,31): error TS2307: Cannot find module '@/services/translators/utils' or its corresponding type declarations.
+src/utils/sanitize.ts(1,23): error TS2307: Cannot find module 'dompurify' or its corresponding type declarations.
+src/utils/supabase.ts(1,30): error TS2307: Cannot find module '@supabase/supabase-js' or its corresponding type declarations.
+src/utils/transform.ts(13,34): error TS2307: Cannot find module '@/services/rss/feedBookUrl' or its corresponding type declarations.
+src/utils/txt.ts(803,64): error TS2307: Cannot find module '@zip.js/zip.js' or its corresponding type declarations.
+src/utils/zip.ts(1,31): error TS2307: Cannot find module '@zip.js/zip.js' or its corresponding type declarations.
+src/utils/zip.ts(4,38): error TS2307: Cannot find module '@zip.js/zip.js' or its corresponding type declarations.
+src/workers/send-conversion.worker.ts(1,31): error TS2307: Cannot find module '../services/send/conversion/convertToEpub' or its corresponding type declarations.
+src/workers/send-conversion.worker.ts(2,33): error TS2307: Cannot find module '../services/send/conversion/types' or its corresponding type declarations.
+src/workers/send-conversion.worker.ts(6,8): error TS2307: Cannot find module '../services/send/conversion/conversion-worker-protocol' or its corresponding type declarations.
+src/workers/send-conversion.worker.ts(33,50): error TS18046: 'error' is of type 'unknown'.

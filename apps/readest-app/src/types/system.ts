@@ -1,9 +1,7 @@
 import { SystemSettings } from './settings';
-import type { RssFeed } from '@/types/rss';
 import { Book, BookConfig, BookContent, ImportBookOptions, ViewSettings } from './book';
 import { BookMetadata } from '@/libs/document';
 import type { BookNav } from '@/services/nav';
-import { ProgressHandler } from '@/utils/transfer';
 import { CustomFont, CustomFontInfo } from '@/styles/fonts';
 import { CustomTextureInfo } from '@/styles/textures';
 import { DatabaseOpts, DatabaseService } from './database';
@@ -179,41 +177,6 @@ export interface AppService {
   importBook(file: string | File, books: Book[], options?: ImportBookOptions): Promise<Book | null>;
   refreshBookMetadata(book: Book): Promise<boolean>;
   deleteBook(book: Book, deleteAction: DeleteAction): Promise<void>;
-  uploadBook(book: Book, onProgress?: ProgressHandler): Promise<void>;
-  uploadBookCover(book: Book, onProgress?: ProgressHandler): Promise<void>;
-  downloadBook(
-    book: Book,
-    onlyCover?: boolean,
-    redownload?: boolean,
-    onProgress?: ProgressHandler,
-  ): Promise<void>;
-  uploadFileToCloud(
-    lfp: string,
-    cfp: string,
-    base: BaseDir,
-    handleProgress: ProgressHandler,
-    hash: string,
-    temp?: boolean,
-    media?: string,
-  ): Promise<string | undefined>;
-  uploadReplicaFile(
-    kind: string,
-    replicaId: string,
-    filename: string,
-    lfp: string,
-    base: BaseDir,
-    onProgress: ProgressHandler,
-  ): Promise<void>;
-  downloadReplicaFile(
-    kind: string,
-    replicaId: string,
-    filename: string,
-    lfp: string,
-    base: BaseDir,
-    onProgress?: ProgressHandler,
-  ): Promise<void>;
-  deleteReplicaBundle(kind: string, replicaId: string, filenames: string[]): Promise<void>;
-  downloadBookCovers(books: Book[], redownload?: boolean): Promise<void>;
   exportBook(book: Book): Promise<boolean>;
   isBookAvailable(book: Book): Promise<boolean>;
   getBookFileSize(book: Book): Promise<number | null>;
@@ -224,8 +187,6 @@ export interface AppService {
   saveBookNav(book: Book, nav: BookNav): Promise<void>;
   loadBookContent(book: Book): Promise<BookContent>;
   resolveNativeBookFilePath(book: Book): Promise<string | null>;
-  loadFeeds(): Promise<RssFeed[]>;
-  saveFeeds(feeds: RssFeed[]): Promise<void>;
   loadLibraryBooks(): Promise<Book[]>;
   saveLibraryBooks(books: Book[], options?: SaveLibraryBooksOptions): Promise<void>;
   getCoverImageUrl(book: Book): string;

@@ -5,7 +5,6 @@ import { BookDoc } from '@/libs/document';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useBookDataStore } from '@/store/bookDataStore';
-import { useSettingsStore } from '@/store/settingsStore';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import 'overlayscrollbars/overlayscrollbars.css';
 
@@ -21,13 +20,11 @@ const SidebarContent: React.FC<{
   const { setHoveredBookKey } = useReaderStore();
   const { setSideBarVisible, setSearchBarVisible } = useSidebarStore();
   const { getConfig, setConfig } = useBookDataStore();
-  const { settings } = useSettingsStore();
   const config = getConfig(sideBarBookKey);
   const [activeTab, setActiveTab] = useState(config?.viewSettings?.sideBarTab || 'toc');
   const [fade, setFade] = useState(false);
   const [targetTab, setTargetTab] = useState(activeTab);
   const isMobile = window.innerWidth < 640 || window.innerHeight < 640;
-  const aiEnabled = settings?.aiSettings?.enabled ?? false;
 
   useEffect(() => {
     if (!sideBarBookKey) return;
@@ -38,11 +35,11 @@ const SidebarContent: React.FC<{
 
   // reset to toc if history tab was active but AI is now disabled
   useEffect(() => {
-    if ((activeTab === 'history' || targetTab === 'history') && !aiEnabled) {
+    if (activeTab === 'history' || targetTab === 'history') {
       setActiveTab('toc');
       setTargetTab('toc');
     }
-  }, [aiEnabled, activeTab, targetTab]);
+  }, [activeTab, targetTab]);
 
   const handleTabChange = (tab: string) => {
     if (activeTab === tab) {

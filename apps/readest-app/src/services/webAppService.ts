@@ -308,7 +308,7 @@ export class WebAppService extends BaseAppService {
       const settings = await this.loadSettings();
       const lastMigrationVersion = settings.migrationVersion || 0;
 
-      await super.runMigrations(lastMigrationVersion, settings);
+      await super.runMigrations(lastMigrationVersion);
 
       if (lastMigrationVersion < this.CURRENT_MIGRATION_VERSION) {
         await this.saveSettings({
