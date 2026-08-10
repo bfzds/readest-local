@@ -1,11 +1,6 @@
 import { create } from 'zustand';
 import { EnvConfigType } from '@/services/environment';
-import type {
-  DictionarySettings,
-  ImportedDictionary,
-  WebSearchEntry,
-} from '@/services/dictionaries/types';
-import { BUILTIN_PROVIDER_IDS, BUILTIN_WEB_SEARCH_IDS } from '@/services/dictionaries/types';
+import type { DictionarySettings, ImportedDictionary } from '@/services/dictionaries/types';
 import { useSettingsStore } from './settingsStore';
 import { publishReplicaDelete, publishReplicaUpsert } from '@/services/sync/replicaPublish';
 import { DICTIONARY_KIND } from '@/services/sync/adapters/dictionary';
@@ -20,39 +15,9 @@ const publishDictDelete = (contentId: string): void => {
   void publishReplicaDelete(DICTIONARY_KIND, contentId);
 };
 
-/**
- * Built-in web-search ids are seeded into `providerOrder` but disabled by
- * default — users opt in. This preserves the principle that we don't push
- * users onto external pages without consent, while still surfacing the
- * options in the settings list.
- */
-const BUILTIN_WEB_ORDER = [
-  BUILTIN_WEB_SEARCH_IDS.google,
-  BUILTIN_WEB_SEARCH_IDS.urban,
-  BUILTIN_WEB_SEARCH_IDS.merriamWebster,
-  BUILTIN_WEB_SEARCH_IDS.goodreads,
-];
-
 const DEFAULT_DICTIONARY_SETTINGS: DictionarySettings = {
-  providerOrder: [
-    BUILTIN_PROVIDER_IDS.systemDictionary,
-    BUILTIN_PROVIDER_IDS.wiktionary,
-    BUILTIN_PROVIDER_IDS.wikipedia,
-    ...BUILTIN_WEB_ORDER,
-  ],
-  providerEnabled: {
-    // System dictionary is opt-in — enabling it disables the rest (and
-    // vice versa) via the settings UI's exclusivity rule. Default off
-    // so existing users see no behavior change on upgrade.
-    [BUILTIN_PROVIDER_IDS.systemDictionary]: false,
-    [BUILTIN_PROVIDER_IDS.wiktionary]: true,
-    [BUILTIN_PROVIDER_IDS.wikipedia]: true,
-    [BUILTIN_WEB_SEARCH_IDS.google]: false,
-    [BUILTIN_WEB_SEARCH_IDS.urban]: false,
-    [BUILTIN_WEB_SEARCH_IDS.merriamWebster]: false,
-    [BUILTIN_WEB_SEARCH_IDS.goodreads]: false,
-  },
-  webSearches: [],
+  providerOrder: [],
+  providerEnabled: {},
   fontScale: 1,
 };
 
@@ -117,13 +82,6 @@ interface DictionaryStoreState {
   setDefaultProviderId(id: string | undefined): void;
   /** Set the dictionary popup font-size multiplier (#4443). */
   setFontScale(scale: number): void;
-
-  /** Add a custom web search (id is generated). Appended + enabled by default. */
-  addWebSearch(name: string, urlTemplate: string): WebSearchEntry;
-  /** Update an existing custom web search; no-op if id is unknown or built-in. */
-  updateWebSearch(id: string, patch: { name?: string; urlTemplate?: string }): void;
-  /** Soft-delete a custom web search and remove from order/enabled. */
-  removeWebSearch(id: string): boolean;
 
   /**
    * Mirror an inbound dictionarySettings patch from the bundled
@@ -444,66 +402,6 @@ export const useCustomDictionaryStore = create<DictionaryStoreState>((set, get) 
     }));
   },
 
-  addWebSearch: (name, urlTemplate) => {
-    const trimmedName = name.trim();
-    const trimmedUrl = urlTemplate.trim();
-    const id = `web:${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
-    const entry: WebSearchEntry = { id, name: trimmedName, urlTemplate: trimmedUrl };
-    set((state) => {
-      const list = state.settings.webSearches ?? [];
-      const order = state.settings.providerOrder.includes(id)
-        ? state.settings.providerOrder
-        : [...state.settings.providerOrder, id];
-      const enabled = { ...state.settings.providerEnabled, [id]: true };
-      return {
-        settings: {
-          ...state.settings,
-          webSearches: [...list, entry],
-          providerOrder: order,
-          providerEnabled: enabled,
-        },
-      };
-    });
-    return entry;
-  },
-
-  updateWebSearch: (id, patch) => {
-    if (id.startsWith('web:builtin:')) return;
-    set((state) => {
-      const list = state.settings.webSearches ?? [];
-      if (!list.some((t) => t.id === id)) return state;
-      const next = list.map((t) =>
-        t.id === id
-          ? {
-              ...t,
-              name: patch.name?.trim() ?? t.name,
-              urlTemplate: patch.urlTemplate?.trim() ?? t.urlTemplate,
-            }
-          : t,
-      );
-      return { settings: { ...state.settings, webSearches: next } };
-    });
-  },
-
-  removeWebSearch: (id) => {
-    if (id.startsWith('web:builtin:')) return false;
-    const list = get().settings.webSearches ?? [];
-    if (!list.some((t) => t.id === id)) return false;
-    set((state) => ({
-      settings: {
-        ...state.settings,
-        webSearches: (state.settings.webSearches ?? []).map((t) =>
-          t.id === id ? { ...t, deletedAt: Date.now() } : t,
-        ),
-        providerOrder: state.settings.providerOrder.filter((p) => p !== id),
-        providerEnabled: Object.fromEntries(
-          Object.entries(state.settings.providerEnabled).filter(([k]) => k !== id),
-        ),
-      },
-    }));
-    return true;
-  },
-
   applyRemoteDictionarySettings: (patch) => {
     set((state) => ({
       settings: { ...state.settings, ...patch },
@@ -535,10 +433,8 @@ export const useCustomDictionaryStore = create<DictionaryStoreState>((set, get) 
       const tombstonedIds = new Set(persisted.filter((d) => d.deletedAt).map((d) => d.id));
       const dropTombstoned = (id: string) => !tombstonedIds.has(id);
 
-      // Merge defaults to back-fill any missing keys (e.g. new builtin added in a release).
-      // For providerOrder, we append any newly-defaulted ids (like the
-      // built-in web searches added in this release) so existing users see
-      // them appear at the end of the list.
+      // Merge defaults to back-fill any missing keys. Existing persisted
+      // orders are kept as-is; empty orders inherit the local defaults.
       const persistedOrder = persistedSettings.providerOrder.filter(dropTombstoned);
       const orderSet = new Set(persistedOrder);
       const merged: string[] = persistedOrder.length
@@ -567,16 +463,11 @@ export const useCustomDictionaryStore = create<DictionaryStoreState>((set, get) 
         }
       }
       if (orphans.length > 0) {
-        // Insert orphans BEFORE the first builtin in providerOrder so
-        // user-imported dicts stay contiguous near the top of the list.
-        // Appending at the very end strands them after the builtins —
-        // the user's UX feedback was that imports felt "lost" below
-        // the wikipedia/wiktionary/web-search section. If providerOrder
-        // contains no builtin yet (degenerate state), fall back to
-        // appending at the end.
-        const isBuiltinOrWebBuiltin = (id: string): boolean =>
-          id.startsWith('builtin:') || id.startsWith('web:builtin:');
-        const firstBuiltinIdx = merged.findIndex(isBuiltinOrWebBuiltin);
+        // Insert orphans before the first builtin provider so user-imported
+        // dicts stay contiguous near the top of the list. If providerOrder
+        // contains no builtin yet (degenerate state), fall back to appending
+        // at the end.
+        const firstBuiltinIdx = merged.findIndex((id) => id.startsWith('builtin:'));
         if (firstBuiltinIdx < 0) {
           merged.push(...orphans);
         } else {
@@ -590,7 +481,6 @@ export const useCustomDictionaryStore = create<DictionaryStoreState>((set, get) 
           ...persistedEnabled,
         },
         defaultProviderId: persistedSettings.defaultProviderId,
-        webSearches: persistedSettings.webSearches ?? [],
         fontScale: persistedSettings.fontScale ?? DEFAULT_DICTIONARY_SETTINGS.fontScale,
       };
       set({ dictionaries, settings: settingsMerged });
@@ -614,7 +504,7 @@ export const useCustomDictionaryStore = create<DictionaryStoreState>((set, get) 
       };
       // Open the auto-mutation gate for providerOrder when this save
       // originates from a user action that intentionally changed the
-      // order (drag-drop, dict import, dict delete, web-search add).
+      // order (drag-drop, dict import, dict delete).
       // Auto-saves from replica pull / download-complete leave it
       // closed so automatic local order changes never publish.
       if (opts?.publishOrderChange) {

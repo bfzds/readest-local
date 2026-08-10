@@ -29,7 +29,6 @@ const TTSEngines = {
   isstts: 'IssTTS',
   xfpeiyin: 'XFPeiYin',
   azure: 'Azure TTS',
-  edgetts: 'Edge TTS',
   google: 'Google TTS',
   gemini: 'Gemini TTS',
   weread: 'WeRead TTS',
@@ -229,7 +228,7 @@ export class NativeTTSClient implements TTSClient {
   }
 
   async setRate(rate: number) {
-    // Power the rate to match the EdgeTTS behavior
+    // Power the rate to match the native engine's perception of rate
     this.#rate = parseFloat(Math.pow(rate, 2.5).toFixed(2));
     await invoke('plugin:native-tts|set_rate', { payload: { rate: this.#rate } });
   }

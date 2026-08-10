@@ -893,10 +893,6 @@ export async function deleteBook(
       if (await fs.exists(dir, 'Books')) {
         await fs.removeDir(dir, 'Books', true);
       }
-      const ttsCacheDir = `tts-cache/${book.hash}`;
-      if (await fs.exists(ttsCacheDir, 'Cache')) {
-        await fs.removeDir(ttsCacheDir, 'Cache', true);
-      }
     }
 
     if (deleteAction === 'both' && (await fs.exists(getCoverFilename(book), 'Books'))) {

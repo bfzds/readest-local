@@ -1,6 +1,6 @@
 // Continuous long-file playout for Media Overlay on iOS Tauri.
 //
-// Edge TTS already plays through an in-process AVPlayer (NativeAudioPlayer)
+// Synthesized TTS already plays through an in-process AVPlayer (NativeAudioPlayer)
 // because WebKit HTMLMediaElement / WebAudio cannot own the app's
 // non-mixable .playback session — Now Playing, mute switch, and AirPods all
 // fight it. Media Overlay used HTMLAudioElement and was interrupted ~0.5s
@@ -115,7 +115,7 @@ export class NativeNarrationPlayer {
     this.#startPolling();
   }
 
-  // Forget the native session id after another engine (Edge) aborted the shared
+  // Forget the native session id after another engine aborted the shared
   // AVPlayer. Keeps the staged chapter file so the next load() is cheap.
   invalidateSession(): void {
     this.#userPaused = true;

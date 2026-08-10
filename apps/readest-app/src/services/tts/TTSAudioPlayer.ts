@@ -1,4 +1,4 @@
-// The playout seam of the TTS architecture: BufferedTTSClient schedules
+// The playout seam of the TTS architecture: the audio driver schedules
 // synthesized audio through this interface and reads the media clock back
 // for word highlighting and the section timeline. The driver is chosen per
 // platform by OS constraints, not preference:

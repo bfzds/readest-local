@@ -43,7 +43,7 @@
  * # Compression
  *
  * The header carries a compression name: `zlib`, `bz2`, `lzma2`, or empty.
- * v1 supports `zlib` only — that's what virtually every Wikipedia/Wiktionary-
+ * v1 supports `zlib` only — that's what virtually every encyclopedia-style
  * derived slob ships with. `bz2` and `lzma2` are flagged unsupported at
  * import time so the popup hides the provider with a clear reason.
  *
@@ -54,7 +54,7 @@
  * ASCII order; for accented or non-Latin scripts the orders differ. v1
  * does case-insensitive ASCII binary search, plus a tiny linear "near"
  * scan around the binary-search bracket to absorb the small ICU/byte
- * order mismatches that occur with diacritics. Real Wikipedia/Wiktionary
+ * order mismatches that occur with diacritics. Real-world reference works
  * slobs lookup hot headwords correctly with this strategy; pure ICU
  * collation would require shipping ICU data and isn't worth it for v1.
  */

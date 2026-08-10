@@ -37,12 +37,7 @@ import {
   isSystemDictionarySupported,
   type RememberedLookupApp,
 } from '@/services/dictionaries/systemDictionary';
-import { queueDictionaryBinaryUpload } from '@/services/sync/replicaBinaryUpload';
-import type { ImportedDictionary, WebSearchEntry } from '@/services/dictionaries/types';
-import {
-  getBuiltinWebSearch,
-  isValidUrlTemplate,
-} from '@/services/dictionaries/webSearchTemplates';
+import type { ImportedDictionary } from '@/services/dictionaries/types';
 import SubPageHeader from './SubPageHeader';
 import { BoxedList, SettingsRow, SettingsSelect, Tips } from './primitives';
 
@@ -63,13 +58,9 @@ interface CustomDictionariesProps {
 interface ProviderRow {
   id: string;
   label: string;
-  kind: 'builtin' | 'stardict' | 'mdict' | 'dict' | 'slob' | 'bgl' | 'web';
+  kind: 'builtin' | 'stardict' | 'mdict' | 'dict' | 'slob' | 'bgl';
   badge: string;
   imported?: ImportedDictionary;
-  /** Set on `kind: 'web'` rows. The shape distinguishes deletable custom
-   *  entries (when `builtinWeb` is false) from immutable built-ins. */
-  webSearch?: WebSearchEntry;
-  builtinWeb?: boolean;
   disabled?: boolean;
   reason?: string;
 }
@@ -100,15 +91,7 @@ const restrictToParentElement: Modifier = ({ containerNodeRect, draggingNodeRect
 
 const dragModifiers: Modifier[] = [restrictToVerticalAxis, restrictToParentElement];
 
-const builtinWebLabel = (id: string, _: (key: string) => string): string => {
-  const tpl = getBuiltinWebSearch(id);
-  if (!tpl) return id;
-  return _(tpl.nameKey);
-};
-
 const builtinLabel = (id: string, _: (key: string) => string): string => {
-  if (id === BUILTIN_PROVIDER_IDS.wiktionary) return _('Wiktionary');
-  if (id === BUILTIN_PROVIDER_IDS.wikipedia) return _('Wikipedia');
   if (id === BUILTIN_PROVIDER_IDS.systemDictionary) return _('System Dictionary');
   return id;
 };
@@ -124,7 +107,6 @@ interface SortableRowProps {
   isEditMode: boolean;
   onToggle: (id: string, next: boolean) => void;
   onDelete: (row: ProviderRow) => void;
-  onEditWebSearch?: (entry: WebSearchEntry) => void;
   onEditDict?: (dict: ImportedDictionary) => void;
   _: (key: string, options?: Record<string, number | string>) => string;
 }
@@ -137,7 +119,6 @@ const SortableRow: React.FC<SortableRowProps> = ({
   isEditMode,
   onToggle,
   onDelete,
-  onEditWebSearch,
   onEditDict,
   _,
 }) => {
@@ -212,18 +193,13 @@ const SortableRow: React.FC<SortableRowProps> = ({
         title={lockedBySystem ? _('Disable System Dictionary first to change this.') : undefined}
       />
 
-      {/* Edit pencil — parity with the trailing delete X, but for the
-          rename / re-template flow. Visible only in edit mode for rows
-          backed by user-mutable metadata (imported dicts and custom web
-          searches; built-ins are immutable). */}
-      {(row.imported || (row.kind === 'web' && !row.builtinWeb)) && isEditMode && (
+      {/* Edit pencil — parity with the trailing delete X, but only for
+          imported dictionaries (built-ins are immutable). */}
+      {row.imported && isEditMode && (
         <button
           type='button'
           onClick={() => {
-            if (row.imported && onEditDict) onEditDict(row.imported);
-            else if (row.kind === 'web' && row.webSearch && onEditWebSearch) {
-              onEditWebSearch(row.webSearch);
-            }
+            if (row.imported) onEditDict?.(row.imported);
           }}
           className='btn btn-ghost btn-sm shrink-0 px-1'
           aria-label={_('Edit')}
@@ -233,11 +209,10 @@ const SortableRow: React.FC<SortableRowProps> = ({
         </button>
       )}
 
-      {/* Delete X — for imported dictionaries and custom web searches, only
-          in delete mode. Built-ins (incl. built-in web searches) never show
-          it; deletable rows reserve no width when not in delete mode so the
+      {/* Delete X — only for imported dictionaries, only in delete mode.
+          Deletable rows reserve no width when not in delete mode so the
           toggles align across the list. */}
-      {(row.imported || (row.kind === 'web' && !row.builtinWeb)) && isDeleteMode && (
+      {row.imported && isDeleteMode && (
         <button
           type='button'
           onClick={() => onDelete(row)}
@@ -265,9 +240,6 @@ const CustomDictionaries: React.FC<CustomDictionariesProps> = ({ onBack }) => {
     reorder,
     setEnabled,
     setFontScale,
-    addWebSearch,
-    updateWebSearch,
-    removeWebSearch,
     saveCustomDictionaries,
     loadCustomDictionaries,
     markAvailableByContentId,
@@ -330,44 +302,6 @@ const CustomDictionaries: React.FC<CustomDictionariesProps> = ({ onBack }) => {
       return next;
     });
 
-  // Add/edit web-search modal state. `editingId` is `null` for "add", a
-  // custom entry's id for "edit".
-  const [webModal, setWebModal] = useState<null | {
-    editingId: string | null;
-    name: string;
-    urlTemplate: string;
-  }>(null);
-  const openAddWebSearch = () => setWebModal({ editingId: null, name: '', urlTemplate: '' });
-  const openEditWebSearch = (entry: WebSearchEntry) =>
-    setWebModal({ editingId: entry.id, name: entry.name, urlTemplate: entry.urlTemplate });
-  const closeWebModal = () => setWebModal(null);
-  const submitWebModal = async () => {
-    if (!webModal) return;
-    const name = webModal.name.trim();
-    const url = webModal.urlTemplate.trim();
-    if (!name || !isValidUrlTemplate(url)) {
-      eventDispatcher.dispatch('toast', {
-        type: 'warning',
-        message: _('URL template must start with http(s):// and contain %WORD%.'),
-        timeout: 4000,
-      });
-      return;
-    }
-    const isAdd = !webModal.editingId;
-    if (webModal.editingId) {
-      updateWebSearch(webModal.editingId, { name, urlTemplate: url });
-      // Re-create the cached provider so the new template + label take effect.
-      evictProvider(webModal.editingId);
-    } else {
-      addWebSearch(name, url);
-    }
-    // Adding a new web search appends to providerOrder (an explicit
-    // user reorder); editing only changes name/URL, so providerOrder
-    // is untouched and the auto-mutation gate stays closed.
-    await saveCustomDictionaries(envConfig, { publishOrderChange: isAdd });
-    setWebModal(null);
-  };
-
   // Edit-imported-dict modal. Only the display `name` is editable; the
   // bundle on disk is untouched.
   const [dictModal, setDictModal] = useState<null | { id: string; name: string }>(null);
@@ -394,7 +328,6 @@ const CustomDictionaries: React.FC<CustomDictionariesProps> = ({ onBack }) => {
 
   const buildRows = (): ProviderRow[] => {
     const dictById = new Map(dictionaries.map((d) => [d.id, d]));
-    const webById = new Map((settings.webSearches ?? []).map((w) => [w.id, w]));
     const rows: ProviderRow[] = [];
     // Cache cross-row platform checks so we don't re-walk navigator
     // for every system-id encounter (and so the first iteration
@@ -428,32 +361,6 @@ const CustomDictionaries: React.FC<CustomDictionariesProps> = ({ onBack }) => {
           label: builtinLabel(id, _),
           kind: 'builtin',
           badge: _('Built-in'),
-        });
-        continue;
-      }
-      if (id.startsWith('web:builtin:')) {
-        const tpl = getBuiltinWebSearch(id);
-        if (!tpl) continue;
-        rows.push({
-          id,
-          label: builtinWebLabel(id, _),
-          kind: 'web',
-          badge: _('Web'),
-          webSearch: tpl,
-          builtinWeb: true,
-        });
-        continue;
-      }
-      if (id.startsWith('web:')) {
-        const w = webById.get(id);
-        if (!w || w.deletedAt) continue;
-        rows.push({
-          id,
-          label: w.name,
-          kind: 'web',
-          badge: _('Web'),
-          webSearch: w,
-          builtinWeb: false,
         });
         continue;
       }
@@ -491,7 +398,7 @@ const CustomDictionaries: React.FC<CustomDictionariesProps> = ({ onBack }) => {
   };
 
   const rows = buildRows();
-  const hasDeletable = rows.some((r) => r.imported || (r.kind === 'web' && !r.builtinWeb));
+  const hasDeletable = rows.some((r) => r.imported);
 
   // System-dictionary handoff is exclusive at lookup time — but only on
   // platforms where it's actually supported. `providerEnabled` is whole-field
@@ -544,14 +451,12 @@ const CustomDictionaries: React.FC<CustomDictionariesProps> = ({ onBack }) => {
         // `unavailable` flag on an in-memory entry with the same contentId
         // (e.g. when a prior import lost its bundle dir for any reason).
         if (dict.contentId) markAvailableByContentId(dict.contentId);
-        if (appService) void queueDictionaryBinaryUpload(dict, appService);
         added += 1;
       }
       let replaced = 0;
       for (const { oldIds, newDict } of importResult.replacements) {
         replaceDictionaries(oldIds, newDict);
         if (newDict.contentId) markAvailableByContentId(newDict.contentId);
-        if (appService) void queueDictionaryBinaryUpload(newDict, appService);
         // Invalidate any cached provider instances for the replaced ids so
         // their next lookup picks up the new bundle's files.
         for (const oldId of oldIds) evictProvider(oldId);
@@ -633,9 +538,6 @@ const CustomDictionaries: React.FC<CustomDictionariesProps> = ({ onBack }) => {
       }
       removeDictionary(dict.id);
       evictProvider(dict.id);
-    } else if (row.kind === 'web' && !row.builtinWeb && row.webSearch) {
-      removeWebSearch(row.webSearch.id);
-      evictProvider(row.id);
     } else {
       return;
     }
@@ -643,9 +545,7 @@ const CustomDictionaries: React.FC<CustomDictionariesProps> = ({ onBack }) => {
     await saveCustomDictionaries(envConfig, { publishOrderChange: true });
     // Auto-leave delete mode when the last deletable entry is gone — there's
     // nothing left to delete (edit mode is gated on the same row set).
-    const remaining = rows.filter(
-      (r) => r.id !== row.id && (r.imported || (r.kind === 'web' && !r.builtinWeb)),
-    );
+    const remaining = rows.filter((r) => r.id !== row.id && r.imported);
     if (remaining.length === 0) {
       setIsDeleteMode(false);
       setIsEditMode(false);
@@ -777,7 +677,6 @@ const CustomDictionaries: React.FC<CustomDictionariesProps> = ({ onBack }) => {
                   isEditMode={isEditMode}
                   onToggle={handleToggle}
                   onDelete={handleDelete}
-                  onEditWebSearch={openEditWebSearch}
                   onEditDict={openEditDict}
                   _={_}
                 />
@@ -839,34 +738,6 @@ const CustomDictionaries: React.FC<CustomDictionariesProps> = ({ onBack }) => {
             {importing ? _('Importing…') : _('Import Dictionary')}
           </span>
         </button>
-        <button
-          type='button'
-          onClick={openAddWebSearch}
-          className={clsx(
-            'eink-bordered group flex h-11 items-center justify-center gap-2.5',
-            'border-base-200 bg-base-100 rounded-lg border px-4',
-            'text-base-content text-sm font-medium',
-            'transition-colors duration-150',
-            'hover:border-base-300 hover:bg-base-300/40',
-            'active:bg-base-200/80',
-            'focus-visible:ring-base-content/15 focus-visible:outline-none focus-visible:ring-2',
-          )}
-        >
-          <span
-            className={clsx(
-              // eink-inverted keeps the "+" legible on its dark badge (#4454);
-              // without it the badge collapses to a solid black spot in eink.
-              'eink-inverted',
-              'flex h-5 w-5 items-center justify-center rounded-full',
-              'bg-base-200 text-base-content/60',
-              'transition-colors duration-150',
-              'group-hover:bg-base-content group-hover:text-base-100',
-            )}
-          >
-            <MdAdd className='h-3.5 w-3.5' />
-          </span>
-          <span className='line-clamp-1'>{_('Add Web Search')}</span>
-        </button>
       </div>
 
       {/* Reset the remembered system-lookup app. Only rendered on Android
@@ -904,61 +775,6 @@ const CustomDictionaries: React.FC<CustomDictionariesProps> = ({ onBack }) => {
         <li>{_('Babylon dictionaries are single .bgl files.')}</li>
         <li>{_('Select all the bundle files together when importing.')}</li>
       </Tips>
-
-      {/* Add / edit web-search modal. Lightweight inline `<dialog>` (daisyUI
-          modal classes); the heavier `Dialog.tsx` is overkill for a 2-field
-          form. */}
-      {webModal && (
-        <div className='modal modal-open' role='dialog'>
-          <div className='modal-box w-11/12 max-w-md'>
-            <h3 className='text-base font-semibold'>
-              {webModal.editingId ? _('Edit Web Search') : _('Add Web Search')}
-            </h3>
-            <div className='mt-4 space-y-3'>
-              <label className='form-control w-full'>
-                <span className='label-text text-sm'>{_('Name')}</span>
-                <input
-                  type='text'
-                  className='input input-bordered input-sm w-full'
-                  value={webModal.name}
-                  placeholder={_('e.g. Google')}
-                  onChange={(e) => setWebModal((m) => (m ? { ...m, name: e.target.value } : m))}
-                />
-              </label>
-              <label className='form-control w-full'>
-                <span className='label-text text-sm'>{_('URL Template')}</span>
-                <input
-                  type='url'
-                  className='input input-bordered input-sm w-full'
-                  value={webModal.urlTemplate}
-                  placeholder='https://www.google.com/search?q=%WORD%'
-                  onChange={(e) =>
-                    setWebModal((m) => (m ? { ...m, urlTemplate: e.target.value } : m))
-                  }
-                />
-                <span className='label-text-alt text-base-content/60 mt-1 text-xs'>
-                  {_('Use %WORD% where the looked-up word should appear.')}
-                </span>
-              </label>
-            </div>
-            <div className='modal-action'>
-              <button type='button' onClick={closeWebModal} className='btn btn-ghost btn-sm'>
-                {_('Cancel')}
-              </button>
-              <button type='button' onClick={submitWebModal} className='btn btn-primary btn-sm'>
-                {_('Save')}
-              </button>
-            </div>
-          </div>
-          {/* Click-outside dismiss. */}
-          <button
-            type='button'
-            aria-label={_('Close')}
-            className='modal-backdrop'
-            onClick={closeWebModal}
-          />
-        </div>
-      )}
 
       {/* Edit-imported-dict modal. Single field for the display name; the
           on-disk bundle is untouched. */}

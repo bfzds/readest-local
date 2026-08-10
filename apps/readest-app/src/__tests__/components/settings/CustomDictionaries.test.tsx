@@ -14,7 +14,7 @@ import { render, cleanup } from '@testing-library/react';
 import CustomDictionaries from '@/components/settings/CustomDictionaries';
 import { useCustomDictionaryStore } from '@/store/customDictionaryStore';
 import { BUILTIN_PROVIDER_IDS } from '@/services/dictionaries/types';
-import type { DictionarySettings } from '@/services/dictionaries/types';
+import type { DictionarySettings, ImportedDictionary } from '@/services/dictionaries/types';
 
 // Per-test platform control. `isSystemDictionaryEnabled` (real, from the
 // registry) reads `isSystemDictionarySupported`, so toggling these flips both
@@ -43,9 +43,28 @@ vi.mock('@/services/sync/replicaBinaryUpload', () => ({
 
 const LOCKED_TITLE = 'Disable System Dictionary first to change this.';
 
+const importedDicts: ImportedDictionary[] = [
+  {
+    id: 'mdict:one',
+    kind: 'mdict',
+    name: 'MDict One',
+    bundleDir: 'one',
+    files: { mdx: 'one.mdx' },
+    addedAt: 1,
+  },
+  {
+    id: 'stardict:two',
+    kind: 'stardict',
+    name: 'StarDict Two',
+    bundleDir: 'two',
+    files: { ifo: 'two.ifo' },
+    addedAt: 2,
+  },
+];
+
 const seedSettings = (settings: DictionarySettings) => {
   useCustomDictionaryStore.setState({
-    dictionaries: [],
+    dictionaries: importedDicts,
     settings,
     // The mount effect calls loadCustomDictionaries; no-op it so it can't
     // clobber the seeded state with on-disk defaults.
@@ -57,16 +76,15 @@ const seedSettings = (settings: DictionarySettings) => {
 const enabledSystemSettings: DictionarySettings = {
   providerOrder: [
     BUILTIN_PROVIDER_IDS.systemDictionary,
-    BUILTIN_PROVIDER_IDS.wiktionary,
-    BUILTIN_PROVIDER_IDS.wikipedia,
+    importedDicts[0]!.id,
+    importedDicts[1]!.id,
   ],
   providerEnabled: {
     // Synced "on" from a device where the OS handoff exists.
     [BUILTIN_PROVIDER_IDS.systemDictionary]: true,
-    [BUILTIN_PROVIDER_IDS.wiktionary]: true,
-    [BUILTIN_PROVIDER_IDS.wikipedia]: true,
+    [importedDicts[0]!.id]: true,
+    [importedDicts[1]!.id]: true,
   },
-  webSearches: [],
 };
 
 const getToggles = (container: HTMLElement) =>
@@ -84,7 +102,7 @@ afterEach(() => {
 describe('CustomDictionaries — system-dictionary lock', () => {
   it('does not lock other toggles when System Dictionary is unsupported on this platform', () => {
     // Web: not supported. System Dictionary row is hidden and the synced flag
-    // must not lock Wiktionary / Wikipedia.
+    // must not lock the imported dictionaries.
     platform.supported = false;
     platform.available = false;
     seedSettings(enabledSystemSettings);
@@ -92,7 +110,7 @@ describe('CustomDictionaries — system-dictionary lock', () => {
     const { container } = render(<CustomDictionaries onBack={() => {}} />);
     const toggles = getToggles(container);
 
-    // Two visible rows (System Dictionary hidden on this platform).
+    // Two visible imported rows (System Dictionary hidden on this platform).
     expect(toggles).toHaveLength(2);
     expect(toggles.every((t) => !t.disabled)).toBe(true);
     expect(toggles.some((t) => t.title === LOCKED_TITLE)).toBe(false);

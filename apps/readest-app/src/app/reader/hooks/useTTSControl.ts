@@ -15,8 +15,7 @@ import {
   TTSHighlightOptions,
   TTSVoicesGroup,
 } from '@/services/tts';
-import { DEFAULT_SENTENCE_GAP_SEC } from '@/services/tts/EdgeTTSClient';
-import { DEFAULT_PARAGRAPH_GAP_SEC } from '@/services/tts/TTSController';
+import { DEFAULT_PARAGRAPH_GAP_SEC, DEFAULT_SENTENCE_GAP_SEC } from '@/services/tts/TTSController';
 import { eventDispatcher } from '@/utils/event';
 import { genSSMLRaw, parseSSMLLang } from '@/utils/ssml';
 import { throttle } from '@/utils/throttle';
@@ -1008,13 +1007,6 @@ export const useTTSControl = ({ bookKey, onRequestHidePanel }: UseTTSControlProp
     return ttsControllerRef.current?.supportsPlaybackInfo() ?? false;
   }, []);
 
-  // Stable handle for the download/chapters surface (reads the cache and
-  // drives headless pre-synthesis off the playback path). MUST be memoized:
-  // an inline arrow here changes identity every render, which would cascade
-  // through useTTSDownloads' refresh callback into its effect and spin an
-  // infinite render loop the moment the sheet opens.
-  const getController = useCallback(() => ttsControllerRef.current, []);
-
   // Playback callbacks
   const handleTogglePlay = useCallback(async () => {
     const ttsController = ttsControllerRef.current;
@@ -1195,6 +1187,5 @@ export const useTTSControl = ({ bookKey, onRequestHidePanel }: UseTTSControlProp
     handleGetPlaybackInfo,
     handleSupportsPlaybackInfo,
     refreshTtsLang,
-    getController,
   };
 };

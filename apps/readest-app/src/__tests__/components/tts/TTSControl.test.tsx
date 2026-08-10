@@ -21,25 +21,6 @@ vi.mock('@/app/reader/hooks/useTTSControl', () => ({
   useTTSControl: () => ttsState,
 }));
 
-vi.mock('@/app/reader/hooks/useTTSDownloads', () => ({
-  useTTSDownloads: () => ({
-    supported: false,
-    chapters: [],
-    statuses: new Map(),
-    cacheBytes: 0,
-    download: { activeChapterKey: null, done: 0, total: 0 },
-    downloadChapter: vi.fn(),
-    downloadAll: vi.fn(),
-    cancel: vi.fn(),
-    statusOf: () => 'none',
-    refresh: vi.fn(),
-  }),
-}));
-
-vi.mock('@/store/readerProgressStore', () => ({
-  useBookProgress: () => ({ index: 0 }),
-}));
-
 vi.mock('@/app/reader/components/tts/TTSMiniPlayer', () => ({
   __esModule: true,
   default: ({ onExpand }: { onExpand: () => void }) => (
@@ -65,7 +46,6 @@ describe('TTSControl', () => {
       ttsClientsInited: true,
       showIndicator: true,
       showBackToCurrentTTSLocation: false,
-      getController: () => null,
       timeoutOption: 0,
       timeoutTimestamp: 0,
       chapterRemainingSec: null,

@@ -1,20 +1,13 @@
 /**
  * Pluggable dictionary provider model.
  *
- * Built-in providers (Wiktionary, Wikipedia) and importable providers
- * (StarDict, MDict) all implement {@link DictionaryProvider}. The
+ * Importable providers (StarDict, MDict, DICT, Slob, BGL) and the system
+ * dictionary all implement {@link DictionaryProvider}. The
  * {@link DictionaryPopup} renders one tab per enabled provider in user-defined
  * order; each provider writes lookup output into a per-tab container.
  */
 
-export type DictionaryProviderKind =
-  | 'builtin'
-  | 'stardict'
-  | 'mdict'
-  | 'dict'
-  | 'slob'
-  | 'bgl'
-  | 'web';
+export type DictionaryProviderKind = 'builtin' | 'stardict' | 'mdict' | 'dict' | 'slob' | 'bgl';
 
 export interface DictionaryLookupContext {
   /** Source language hint, e.g. book primary language code (`en`, `zh`). */
@@ -46,7 +39,7 @@ export type DictionaryLookupOutcome =
   | { ok: false; reason: 'empty' | 'unsupported' | 'error'; message?: string };
 
 export interface DictionaryProvider {
-  /** Stable id, e.g. `builtin:wiktionary`, `stardict:abc123`, `mdict:xyz`. */
+  /** Stable id, e.g. `builtin:system`, `stardict:abc123`, `mdict:xyz`. */
   id: string;
   kind: DictionaryProviderKind;
   /** Localized label shown in the tab strip. */
@@ -145,28 +138,6 @@ export interface ImportedDictionary {
   unsupportedReason?: string;
 }
 
-/**
- * A web-search "provider" template — a URL with a `%WORD%` placeholder
- * (URL-encoded substitution at lookup time). Built-in templates (Google,
- * Urban Dictionary, Merriam-Webster) are hardcoded in the registry and
- * reference the IDs in {@link BUILTIN_WEB_SEARCH_IDS}; user-added templates
- * live in {@link DictionarySettings.webSearches} with IDs of the form
- * `web:<uniqueId>`.
- *
- * Web-search providers don't fetch upstream — the popup just renders an
- * "Open in [name]" link that opens the resolved URL externally. Iframe
- * embedding is blocked by every major dictionary site (X-Frame-Options).
- */
-export interface WebSearchEntry {
-  id: string;
-  /** Display name shown in the tab strip and the settings list. */
-  name: string;
-  /** URL with `%WORD%` placeholder, e.g. `https://example.com/?q=%WORD%`. */
-  urlTemplate: string;
-  /** Soft-delete marker; only set on user-added entries. */
-  deletedAt?: number;
-}
-
 export interface DictionarySettings {
   /** Provider id order shown in the popup tab strip. Includes builtin ids. */
   providerOrder: string[];
@@ -174,11 +145,6 @@ export interface DictionarySettings {
   providerEnabled: Record<string, boolean>;
   /** Last-used tab id; `undefined` falls back to first enabled provider. */
   defaultProviderId?: string;
-  /**
-   * User-defined web search templates. Built-in templates (Google, Urban,
-   * Merriam-Webster) are hardcoded in the registry and not stored here.
-   */
-  webSearches?: WebSearchEntry[];
   /**
    * Font-size multiplier for the dictionary popup content (independent of the
    * main reading view, #4443). `1` = the default sizes; larger values scale
@@ -191,8 +157,6 @@ export interface DictionarySettings {
 
 /** Stable ids for the built-in providers. */
 export const BUILTIN_PROVIDER_IDS = {
-  wiktionary: 'builtin:wiktionary',
-  wikipedia: 'builtin:wikipedia',
   /**
    * "Sentinel" id for the OS-native dictionary (macOS Dictionary.app via the
    * `dict://` URL scheme; iOS `UIReferenceLibraryViewController`; Android
@@ -207,19 +171,3 @@ export const BUILTIN_PROVIDER_IDS = {
 } as const;
 
 export type BuiltinProviderId = (typeof BUILTIN_PROVIDER_IDS)[keyof typeof BUILTIN_PROVIDER_IDS];
-
-/**
- * Stable ids for the built-in web-search templates. The `web:builtin:*`
- * prefix lets the registry recognize and dispatch them without a settings
- * lookup; user-added templates live in `settings.webSearches` with ids of
- * the form `web:<uniqueId>`.
- */
-export const BUILTIN_WEB_SEARCH_IDS = {
-  google: 'web:builtin:google',
-  urban: 'web:builtin:urban',
-  merriamWebster: 'web:builtin:merriam-webster',
-  goodreads: 'web:builtin:goodreads',
-} as const;
-
-export type BuiltinWebSearchId =
-  (typeof BUILTIN_WEB_SEARCH_IDS)[keyof typeof BUILTIN_WEB_SEARCH_IDS];
