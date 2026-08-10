@@ -105,14 +105,6 @@ const nextConfig = {
         source: '/reader/:ids',
         destination: '/reader?ids=:ids',
       },
-      {
-        source: '/o/book/:hash/annotation/:id',
-        destination: '/o?book=:hash&note=:id',
-      },
-      {
-        source: '/s/:token',
-        destination: '/s?token=:token',
-      },
     ];
   },
   async headers() {
