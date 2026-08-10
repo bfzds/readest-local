@@ -8,11 +8,6 @@ export type ShortcutEntry = {
 };
 
 const DEFAULT_SHORTCUTS = {
-  onSwitchSideBar: {
-    keys: ['ctrl+Tab', 'opt+Tab', 'alt+Tab'],
-    description: _('Switch Sidebar Tab'),
-    section: 'General',
-  },
   onToggleSideBar: {
     keys: ['s'],
     description: _('Toggle Sidebar'),

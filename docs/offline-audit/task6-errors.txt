@@ -1,0 +1,9 @@
+﻿node.exe : $ pnpm --filter @readest/readest-app lint
+At C:\Users\30575\AppData\Roaming\npm\pnpm.ps1:24 char:5
++     & "node$exe"  "$basedir/node_modules/pnpm/bin/pnpm.mjs" $args
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ($ pnpm --filter...eadest-app lint:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+$ tsgo --noEmit && biome lint .
+Checked 1112 files in 1103ms. No fixes applied.
