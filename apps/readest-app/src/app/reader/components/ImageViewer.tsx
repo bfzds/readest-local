@@ -43,7 +43,7 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
   // can't save to a file there); elsewhere it shares where supported, else
   // exports. The affordance reflects the actual action.
   const saveToGallery = appService?.isAndroidApp ?? false;
-  const canShare = !saveToGallery && canShareText(appService);
+  const canShare = !saveToGallery && canShareText();
   const [scale, setScale] = useState(1);
   // `scale` is relative to the fit-to-screen size, which says nothing about how
   // much of the image's own resolution is on screen: fitting a 1600px

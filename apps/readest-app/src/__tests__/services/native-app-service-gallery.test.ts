@@ -49,10 +49,6 @@ vi.mock('@tauri-apps/api/path', () => ({
   tempDir: () => Promise.resolve('/tmp'),
 }));
 
-vi.mock('@choochmeque/tauri-plugin-sharekit-api', () => ({
-  shareFile: vi.fn().mockResolvedValue(undefined),
-}));
-
 vi.mock('@/utils/bridge', () => ({
   copyURIToPath: vi.fn().mockResolvedValue({ path: '' }),
   getStorefrontRegionCode: vi.fn().mockResolvedValue({ regionCode: null }),

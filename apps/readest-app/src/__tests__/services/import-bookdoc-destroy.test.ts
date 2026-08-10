@@ -21,7 +21,6 @@ vi.mock('@/libs/document', async () => {
 
 vi.mock('@/utils/txt', () => ({ TxtToEpubConverter: vi.fn() }));
 vi.mock('@/utils/svg', () => ({ svg2png: vi.fn() }));
-vi.mock('@tauri-apps/plugin-http', () => ({ fetch: vi.fn() }));
 import { BaseAppService } from '@/services/appService';
 import { refreshBookMetadata } from '@/services/bookService';
 

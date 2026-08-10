@@ -210,7 +210,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
     saveConfigAndCloseBook(bookKey, true);
     dismissBook(bookKey);
     if (bookKeys.filter((key) => key !== bookKey).length == 0) {
-      const openWithFiles = (await parseOpenWithFiles(appService)) || [];
+      const openWithFiles = (await parseOpenWithFiles()) || [];
       if (appService?.hasWindow) {
         if (openWithFiles.length > 0) {
           void tauriHandleOnCloseWindow(handleCloseBooks).catch((error) => {

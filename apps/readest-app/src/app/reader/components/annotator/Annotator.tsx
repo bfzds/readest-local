@@ -203,7 +203,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
   const dictPopupHeight = Math.min(360, maxHeight);
   const proofreadPopupWidth = Math.min(440, maxWidth);
   const proofreadPopupHeight = Math.min(200, maxHeight);
-  const canShare = canShareText(appService);
+  const canShare = canShareText();
   // The toolbar is now customizable, so size the selection popup to the number
   // of visible tools (responsive) up to a max — otherwise a 2-tool toolbar
   // renders a sparse, full-width bar. Annotated selections keep the max width
@@ -1148,14 +1148,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
 
   const handleShare = () => {
     if (!selection?.text) return;
-    const position = trianglePosition
-      ? {
-          x: trianglePosition.point.x,
-          y: trianglePosition.point.y,
-          preferredEdge: 'bottom' as const,
-        }
-      : undefined;
-    void shareSelectedText(selection.text, position, appService);
+    void shareSelectedText(selection.text);
     handleDismissPopupAndSelection();
   };
 

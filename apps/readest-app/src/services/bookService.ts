@@ -37,7 +37,6 @@ import { TxtToEpubConverter } from '@/utils/txt';
 import { svg2png } from '@/utils/svg';
 import { normalizeMetadataIsbn } from '@/utils/isbn';
 import { BookFileNotFoundError } from './errors';
-import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import {
   isBookFileContentSource,
   resolveBookContentSource,
@@ -248,11 +247,6 @@ function imageToArrayBuffer(
       ctx.fs
         .openFile(imageFile, 'None')
         .then((file) => file.arrayBuffer())
-        .then(resolve)
-        .catch(reject);
-    } else if (ctx.appPlatform === 'tauri' && imageUrl) {
-      tauriFetch(imageUrl, { method: 'GET' })
-        .then((response) => response.arrayBuffer())
         .then(resolve)
         .catch(reject);
     } else {

@@ -1,0 +1,77 @@
+Task 7 errors and fixes (2026-08-11)
+====================================
+
+1. cargo check - build.rs still built windows-thumbnail extension
+   - Error: manifest path `...\extensions\windows-thumbnail\Cargo.toml` does not exist
+   - Cause: Task 1 removed the extension directory, but `build.rs` still called
+     `build_windows_thumbnail()` and `tauri.windows.conf.json` still referenced
+     `../extensions/windows-thumbnail/target/windows_thumbnail.dll`.
+   - Fix: removed the stale build function/call and the stale Windows resource.
+
+2. cargo check - proc macro: capability with identifier default not found
+   - Cause: cleanup of `build.rs` accidentally dropped the
+     `tauri_build::try_build(...)` call, so no ACL manifest/capabilities were
+     generated.
+   - Fix: restored `try_build` with the updated command list.
+
+3. cargo check - SingleInstancePayload missing derives
+   - Error: `SingleInstancePayload: serde::Serialize` / `Clone` not satisfied
+   - Cause: updater cleanup removed `#[derive(Clone, serde::Serialize)]`.
+   - Fix: restored the derive.
+
+4. pnpm lint - TS6133 unused variables
+   - `AnnotationToolbarCustomizer.tsx`: `appService` no longer used after
+     `canShareText()` stopped taking an app service.
+   - `nativeAppService.ts`: `saveFile` `options` unused after local-only export.
+   - Fix: removed the unused binding / renamed parameter to `_options`.
+
+5. vitest - ImageViewerSave.test.tsx
+   - Error: "Share Image" button not found
+   - Cause: `canShareText()` now detects the Web Share API instead of
+     `appService`; jsdom does not expose `navigator.share`.
+   - Fix: test mocks `navigator.share` for the share-capable case.
+
+6. vitest - object-key-name.test.ts suite failed to load
+   - Error: failed to resolve import `./s3` from `src/utils/object.ts`
+   - Cause: Task 2/7 leftovers: cloud object-storage utils (`object.ts`,
+     `storage.ts`) and `getRemoteBookFilename` were still present after
+     `s3.ts`/`r2.ts` were deleted.
+   - Fix: deleted `src/utils/object.ts`, `src/utils/storage.ts`, the test file,
+     and removed `getRemoteBookFilename` from `src/utils/book.ts`.
+
+Final verification
+------------------
+- `cargo check -p Readest`: passed
+- `pnpm lint` (tsgo + biome): passed, 1089 files
+- `pnpm exec vitest run --maxWorkers=4`: 399 passed / 1 skipped, 5575 tests passed
+
+7. pnpm lint - ERR_PNPM_UNUSED_PATCH
+   - Error: patches for @ai-sdk/provider-utils@3.0.25 / @4.0.27 were not used
+   - Cause: Task 7 dependency pruning never landed in package.json; removing
+     the workspace patch entries left the lockfile out of sync.
+   - Fix: removed both patch entries/files, then actually pruned the cloud
+     dependencies from apps/readest-app/package.json.
+
+8. pnpm install - lockfile upgraded unrelated packages
+   - Cause: deleting patchedDependencies forced a full re-resolution and the
+     caret ranges were resolved to newer versions (ai/aws/stripe/supabase...).
+   - Fix: re-ran install after pruning package.json; final lockfile diff only
+     removes the cloud dependency trees, no unrelated upgrades.
+
+9. next.config.mjs - imports for pruned packages
+   - Cause: imported @next/bundle-analyzer, dev-only @opennextjs/cloudflare and
+     transpiled ai/assistant-ui packages that Task 7 removes.
+   - Fix: removed the bundle-analyzer/opennext imports, the ai transpile list
+     and the analyzer wrapper; kept @serwist/next for Task 8.
+
+10. cargo check - Permission http:default not found
+    - Cause: capabilities/default.json, desktop.json and webdriver-remote.json
+      still granted permissions for removed plugins/commands.
+    - Fix: pruned http/websocket/oauth/deep-link/sharekit/sentry/updater and
+      deleted command permissions; removed the "updater" window name.
+
+11. deployment leftovers
+    - Cause: Dockerfile/docker/fastlane/ops, WordLens data, app-store/Play
+      scripts, cloud publish workflows and stale CI jobs were still tracked.
+    - Fix: deleted those directories/files, removed the matching package.json
+      scripts and the extension job from pull-request.yml.
