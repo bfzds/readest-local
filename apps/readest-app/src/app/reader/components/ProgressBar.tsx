@@ -144,14 +144,12 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
   // pills in scrolled mode, see below) is a tap target.
   const [dismissed, setDismissed] = useState(false);
 
-  // Scrolled mode reserves no bottom band (footerReservesBand) — the info
-  // floats over the book text, so each segment carries its own shrink-wrapped
-  // pill backdrop to stay legible instead of a full-width bar. The pills
-  // double as the tap targets there: making the whole strip tappable would
-  // swallow taps and text selection over the last lines of the page, so the
-  // strip is only a target where it sits on reserved margin space (paginated
-  // band, sticky-bar band, vertical side column).
-  const hasFooterContent = stickyBarActive || footerInfoVisible(viewSettings);
+  // Scrolled mode reserves a bottom band (footerReservesBand), so the footer
+  // sits in its own strip below the text instead of floating over it. The
+  // pills still keep each segment visually distinct; the strip is a tap
+  // target only where it sits on reserved margin space (paginated band,
+  // sticky-bar band, scrolled band, vertical side column).
+  const hasFooterContent = stickyBarActive || footerInfoVisible(viewSettings) || !!sectionLabel;
   const stripTappable = hasFooterContent && (isVertical || footerReservesBand(viewSettings));
   const pillClass =
     viewSettings.scrolled &&
@@ -230,15 +228,35 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
           />
         )}
         {!isVertical && !stickyBarActive && sectionLabel && (
-          <div className='section-label min-w-0 flex-1 truncate text-start' title={sectionLabel}>
-            {sectionLabel}
+          <div
+            data-testid='progress-section-label'
+            className={clsx(
+              'section-label min-w-0 text-start',
+              // The pill backdrop belongs to the inner text span only; a
+              // full-width flex child would paint a whole-row mask over the
+              // page in scrolled mode. Cap the title so the pill stays
+              // shrink-wrapped instead of swallowing the footer row.
+              !pillClass && 'flex-1 truncate',
+              pillClass && 'max-w-[min(55vw,36rem)]',
+            )}
+          >
+            {pillClass ? (
+              <span
+                className={clsx('no-scrollbar block whitespace-nowrap overflow-x-auto', pillClass)}
+                title={sectionLabel}
+              >
+                {sectionLabel}
+              </span>
+            ) : (
+              sectionLabel
+            )}
           </div>
         )}
         {hasRemainingInfo && (
           <div
             className={clsx(
               'remaining-info text-start truncate',
-              !stickyBarActive && 'flex-1 min-w-0',
+              !stickyBarActive && !pillClass && 'flex-1 min-w-0',
             )}
           >
             {viewSettings.showRemainingTime ? (
@@ -294,7 +312,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
         <div
           className={clsx(
             'progress-info items-center text-end tabular-nums truncate',
-            !stickyBarActive && 'flex-1 min-w-0',
+            !stickyBarActive && !pillClass && 'flex-1 min-w-0',
           )}
         >
           {viewSettings.showProgressInfo && (

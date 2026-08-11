@@ -5,7 +5,12 @@ import {
   BookSearchConfig,
   ViewSettings,
 } from '@/types/book';
-import { deserializeConfig, serializeConfig, serializeRawConfig } from '@/utils/serializer';
+import {
+  deserializeConfig,
+  migratePageNavigationSettings,
+  serializeConfig,
+  serializeRawConfig,
+} from '@/utils/serializer';
 
 const globalViewSettings = {
   zoomLevel: 100,
@@ -69,6 +74,45 @@ describe('BookConfig serialization', () => {
     expect(config.location).toBe('epubcfi(/6/10!/4/2)');
     expect(config.viewSettings?.zoomLevel).toBe(90);
     expect(config.searchConfig?.query).toBe('rabbit');
+  });
+
+  it('migrates legacy page navigation toggles into unified page/chapter switches', () => {
+    const viewSettings = {
+      showPrevPageButton: true,
+      showNextPageButton: false,
+    } as unknown as Partial<ViewSettings>;
+    const legacy = viewSettings as unknown as {
+      showPrevPageButton?: boolean;
+      showNextPageButton?: boolean;
+    };
+    migratePageNavigationSettings(viewSettings);
+    expect(viewSettings.showPageNavigationButtons).toBe(true);
+    expect(viewSettings.showChapterNavigationButtons).toBe(true);
+    expect(legacy.showPrevPageButton).toBeUndefined();
+    expect(legacy.showNextPageButton).toBeUndefined();
+  });
+
+  it('leaves new-style page and chapter switches untouched', () => {
+    const viewSettings = {
+      showPageNavigationButtons: false,
+      showChapterNavigationButtons: true,
+    } as Partial<ViewSettings>;
+    migratePageNavigationSettings(viewSettings);
+    expect(viewSettings.showPageNavigationButtons).toBe(false);
+    expect(viewSettings.showChapterNavigationButtons).toBe(true);
+  });
+
+  it('folds legacy per-book page toggles into the new switches on load', () => {
+    const config = deserializeConfig(
+      JSON.stringify({ viewSettings: { showPrevPageButton: true } }),
+      globalViewSettings,
+      defaultSearchConfig,
+    );
+    expect(config.viewSettings?.showPageNavigationButtons).toBe(true);
+    expect(config.viewSettings?.showChapterNavigationButtons).toBe(true);
+    expect(
+      (config.viewSettings as unknown as Record<string, unknown>)['showPrevPageButton'],
+    ).toBeUndefined();
   });
 
   it('migrates legacy split annotations on load when schemaVersion < 2', () => {

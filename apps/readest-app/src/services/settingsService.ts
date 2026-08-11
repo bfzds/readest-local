@@ -26,6 +26,7 @@ import {
 } from './constants';
 import { getTargetLang, isCJKEnv } from '@/utils/misc';
 import { safeLoadJSON, safeSaveJSON } from './persistence';
+import { migratePageNavigationSettings } from '@/utils/serializer';
 
 export interface Context {
   fs: FileSystem;
@@ -164,6 +165,7 @@ export async function loadSettings(ctx: Context): Promise<SystemSettings> {
     ...getDefaultViewSettings(ctx),
     ...settings.globalViewSettings,
   };
+  migratePageNavigationSettings(settings.globalViewSettings);
 
   settings.localBooksDir = await ctx.fs.getPrefix('Books');
 

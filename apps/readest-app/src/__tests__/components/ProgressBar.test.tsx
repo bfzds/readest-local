@@ -1,20 +1,22 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, cleanup, screen } from '@testing-library/react';
 
+const defaultViewSettings = () => ({
+  vertical: false,
+  scrolled: false,
+  showStickyProgressBar: false,
+  marginBottomPx: 20,
+  showRemainingTime: false,
+  showRemainingPages: false,
+  showProgressInfo: true,
+  showCurrentTime: false,
+  showCurrentBatteryStatus: false,
+  rtl: false,
+});
+
 const readerStoreState = {
   getView: () => null,
-  getViewSettings: () => ({
-    vertical: false,
-    scrolled: false,
-    showStickyProgressBar: false,
-    marginBottomPx: 20,
-    showRemainingTime: false,
-    showRemainingPages: false,
-    showProgressInfo: true,
-    showCurrentTime: false,
-    showCurrentBatteryStatus: false,
-    rtl: false,
-  }),
+  getViewSettings: defaultViewSettings,
 };
 
 vi.mock('@/hooks/useTranslation', () => ({
@@ -55,6 +57,48 @@ vi.mock('@/hooks/useMedianPageDurationSecs', () => ({
 import ProgressBar from '@/app/reader/components/ProgressBar';
 
 afterEach(() => cleanup());
+
+describe('ProgressBar section label', () => {
+  afterEach(() => {
+    readerStoreState.getViewSettings = defaultViewSettings;
+  });
+
+  it('truncates the label in paginated mode', () => {
+    render(
+      <ProgressBar
+        bookKey='book-1'
+        horizontalGap={5}
+        contentInsets={{ left: 20, right: 20, top: 20, bottom: 20 }}
+        gridInsets={{ left: 0, right: 0, top: 0, bottom: 0 }}
+      />,
+    );
+    const label = screen.getByTestId('progress-section-label');
+    expect(label.className).toContain('truncate');
+    expect(label.className).not.toContain('progress-pill');
+  });
+
+  it('keeps the label readable and scrollable in scrolled mode', () => {
+    readerStoreState.getViewSettings = () => ({
+      ...defaultViewSettings(),
+      scrolled: true,
+    });
+    render(
+      <ProgressBar
+        bookKey='book-1'
+        horizontalGap={5}
+        contentInsets={{ left: 20, right: 20, top: 20, bottom: 20 }}
+        gridInsets={{ left: 0, right: 0, top: 0, bottom: 0 }}
+      />,
+    );
+    const label = screen.getByTestId('progress-section-label');
+    const pill = label.querySelector('span');
+    expect(pill).not.toBeNull();
+    expect(pill!.className).toContain('progress-pill');
+    expect(pill!.className).toContain('overflow-x-auto');
+    expect(label.className).not.toContain('truncate');
+    expect(label.className).toContain('max-w-');
+  });
+});
 
 describe('ProgressBar', () => {
   it('shows the current section label at the bottom', () => {

@@ -765,10 +765,10 @@ const FoliateViewer: React.FC<{
     const showDoubleBorderHeader = showDoubleBorder && viewSettings.showHeader;
     const showDoubleBorderFooter = showDoubleBorder && viewSettings.showFooter;
     const showTopHeader = viewSettings.showHeader && !viewSettings.vertical;
-    // The bottom band is reserved only while the footer displays something
-    // there (and never in scrolled mode, where the info floats in pills) —
-    // see footerReservesBand. Otherwise the empty reservation shows as a
-    // full-width blank bar that steals space from the book text.
+    // The bottom band is reserved whenever the footer renders content, and in
+    // scrolled mode whenever the footer is on so the section title never runs
+    // under the text; see footerReservesBand. Otherwise the empty reservation
+    // shows as a full-width blank bar that steals space from the book text.
     const showBottomFooter = footerReservesBand(viewSettings) && !viewSettings.vertical;
     const moreTopInset = showTopHeader ? Math.max(0, 16 - insets.top) : 0;
     // Only the persistent 'minimal' card reserves a band; the 'full' one

@@ -312,8 +312,8 @@ export interface ViewConfig {
   showPaginationButtons: boolean;
   showNotebookButton: boolean;
   showBookmarkButton: boolean;
-  showPrevPageButton: boolean;
-  showNextPageButton: boolean;
+  showPageNavigationButtons: boolean;
+  showChapterNavigationButtons: boolean;
   showSideBar: boolean;
   showGoToLibraryButton: boolean;
   showAnnotationQuickActionButton: boolean;

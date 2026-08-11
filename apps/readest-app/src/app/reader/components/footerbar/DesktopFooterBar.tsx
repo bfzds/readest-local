@@ -2,8 +2,6 @@ import clsx from 'clsx';
 import React, { useCallback, useEffect, useRef } from 'react';
 import { FaHeadphones } from 'react-icons/fa6';
 import { RiArrowLeftSLine, RiArrowRightSLine } from 'react-icons/ri';
-import { RiArrowGoBackLine, RiArrowGoForwardLine } from 'react-icons/ri';
-import { RiArrowLeftDoubleLine, RiArrowRightDoubleLine } from 'react-icons/ri';
 import { useReaderStore } from '@/store/readerStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import type { FooterBarChildProps } from './types';
@@ -21,8 +19,7 @@ const DesktopFooterBar: React.FC<FooterBarChildProps> = ({
   onSpeakText,
 }) => {
   const _ = useTranslation();
-  const { hoveredBookKey, getView, getViewState, getViewSettings } = useReaderStore();
-  const view = getView(bookKey);
+  const { hoveredBookKey, getViewState, getViewSettings } = useReaderStore();
   const viewState = getViewState(bookKey);
   const viewSettings = getViewSettings(bookKey);
 
@@ -69,36 +66,13 @@ const DesktopFooterBar: React.FC<FooterBarChildProps> = ({
         msOverflowStyle: 'none',
       }}
     >
-      {!viewSettings?.showPaginationButtons && viewSettings?.showPrevPageButton && (
-        <Button
-          icon={getNavigationIcon(
-            viewSettings?.rtl,
-            <RiArrowLeftDoubleLine />,
-            <RiArrowRightDoubleLine />,
-          )}
-          onClick={navigationHandlers.onPrevSection}
-          label={_('Previous Section')}
-        />
-      )}
-      {!viewSettings?.showPaginationButtons && viewSettings?.showPrevPageButton && (
+      {!viewSettings?.showPaginationButtons && viewSettings?.showPageNavigationButtons && (
         <Button
           icon={getNavigationIcon(viewSettings?.rtl, <RiArrowLeftSLine />, <RiArrowRightSLine />)}
           onClick={navigationHandlers.onPrevPage}
           label={_('Previous Page')}
         />
       )}
-      <Button
-        icon={getNavigationIcon(viewSettings?.rtl, <RiArrowGoBackLine />, <RiArrowGoForwardLine />)}
-        onClick={navigationHandlers.onGoBack}
-        label={_('Go Back')}
-        disabled={!view?.history.canGoBack}
-      />
-      <Button
-        icon={getNavigationIcon(viewSettings?.rtl, <RiArrowGoForwardLine />, <RiArrowGoBackLine />)}
-        onClick={navigationHandlers.onGoForward}
-        label={_('Go Forward')}
-        disabled={!view?.history.canGoForward}
-      />
       {progressValid && <PageJumpInput bookKey={bookKey} className='mx-2 text-sm' />}
       <input
         ref={rangeInputRef}
@@ -115,22 +89,11 @@ const DesktopFooterBar: React.FC<FooterBarChildProps> = ({
         onClick={onSpeakText!}
         label={_('Speak')}
       />
-      {!viewSettings?.showPaginationButtons && viewSettings?.showNextPageButton && (
+      {!viewSettings?.showPaginationButtons && viewSettings?.showPageNavigationButtons && (
         <Button
           icon={getNavigationIcon(viewSettings?.rtl, <RiArrowRightSLine />, <RiArrowLeftSLine />)}
           onClick={navigationHandlers.onNextPage}
           label={_('Next Page')}
-        />
-      )}
-      {!viewSettings?.showPaginationButtons && viewSettings?.showNextPageButton && (
-        <Button
-          icon={getNavigationIcon(
-            viewSettings?.rtl,
-            <RiArrowRightDoubleLine />,
-            <RiArrowLeftDoubleLine />,
-          )}
-          onClick={navigationHandlers.onNextSection}
-          label={_('Next Section')}
         />
       )}
     </div>

@@ -48,8 +48,12 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
   );
   const [showNotebookButton, setShowNotebookButton] = useState(viewSettings.showNotebookButton);
   const [showBookmarkButton, setShowBookmarkButton] = useState(viewSettings.showBookmarkButton);
-  const [showPrevPageButton, setShowPrevPageButton] = useState(viewSettings.showPrevPageButton);
-  const [showNextPageButton, setShowNextPageButton] = useState(viewSettings.showNextPageButton);
+  const [showPageNavigationButtons, setShowPageNavigationButtons] = useState(
+    viewSettings.showPageNavigationButtons,
+  );
+  const [showChapterNavigationButtons, setShowChapterNavigationButtons] = useState(
+    viewSettings.showChapterNavigationButtons,
+  );
   const [showSideBar, setShowSideBar] = useState(viewSettings.showSideBar);
   const [showGoToLibraryButton, setShowGoToLibraryButton] = useState(
     viewSettings.showGoToLibraryButton,
@@ -108,8 +112,8 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
       showPaginationButtons: setShowPaginationButtons,
       showNotebookButton: setShowNotebookButton,
       showBookmarkButton: setShowBookmarkButton,
-      showPrevPageButton: setShowPrevPageButton,
-      showNextPageButton: setShowNextPageButton,
+      showPageNavigationButtons: setShowPageNavigationButtons,
+      showChapterNavigationButtons: setShowChapterNavigationButtons,
       showSideBar: setShowSideBar,
       showGoToLibraryButton: setShowGoToLibraryButton,
       showAnnotationQuickActionButton: setShowAnnotationQuickActionButton,
@@ -203,14 +207,28 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
   }, [showBookmarkButton]);
 
   useEffect(() => {
-    saveViewSettings(envConfig, bookKey, 'showPrevPageButton', showPrevPageButton, false, false);
+    saveViewSettings(
+      envConfig,
+      bookKey,
+      'showPageNavigationButtons',
+      showPageNavigationButtons,
+      false,
+      false,
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showPrevPageButton]);
+  }, [showPageNavigationButtons]);
 
   useEffect(() => {
-    saveViewSettings(envConfig, bookKey, 'showNextPageButton', showNextPageButton, false, false);
+    saveViewSettings(
+      envConfig,
+      bookKey,
+      'showChapterNavigationButtons',
+      showChapterNavigationButtons,
+      false,
+      false,
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showNextPageButton]);
+  }, [showChapterNavigationButtons]);
 
   useEffect(() => {
     saveViewSettings(envConfig, bookKey, 'showSideBar', showSideBar, false, false);
@@ -442,18 +460,22 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
           data-setting-id='settings.control.showBookmarkButton'
         />
         <SettingsSwitchRow
-          label={_('Previous Page')}
-          description={_('Show the Previous Page button')}
-          checked={showPrevPageButton}
-          onChange={() => setShowPrevPageButton(!showPrevPageButton)}
-          data-setting-id='settings.control.showPrevPageButton'
+          label={_('Page Navigation Control')}
+          description={_(
+            'Show or hide the Previous Page and Next Page buttons only. Does not affect chapter navigation.',
+          )}
+          checked={showPageNavigationButtons}
+          onChange={() => setShowPageNavigationButtons(!showPageNavigationButtons)}
+          data-setting-id='settings.control.showPageNavigationButtons'
         />
         <SettingsSwitchRow
-          label={_('Next Page')}
-          description={_('Show the Next Page button')}
-          checked={showNextPageButton}
-          onChange={() => setShowNextPageButton(!showNextPageButton)}
-          data-setting-id='settings.control.showNextPageButton'
+          label={_('Chapter Navigation')}
+          description={_(
+            'Show or hide the Previous Chapter and Next Chapter buttons only. Does not affect page navigation.',
+          )}
+          checked={showChapterNavigationButtons}
+          onChange={() => setShowChapterNavigationButtons(!showChapterNavigationButtons)}
+          data-setting-id='settings.control.showChapterNavigationButtons'
         />
         <SettingsSwitchRow
           label={_('Sidebar')}
@@ -516,6 +538,7 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
         />
         <SettingsSwitchRow
           label={_('Show Page Navigation Buttons')}
+          description={_('Show the floating page-turn buttons beside the reading area.')}
           checked={showPaginationButtons}
           onChange={() => setShowPaginationButtons(!showPaginationButtons)}
           data-setting-id='settings.control.showPaginationButtons'
