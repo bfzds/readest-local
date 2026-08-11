@@ -38,6 +38,7 @@ import { parsePixivNovelFilename, type PixivNovelMetadata } from '@/utils/pixivN
 import { svg2png } from '@/utils/svg';
 import { normalizeMetadataIsbn } from '@/utils/isbn';
 import { BookFileNotFoundError } from './errors';
+import { simplifyChineseText } from '@/utils/simplecc';
 import {
   isBookFileContentSource,
   resolveBookContentSource,
@@ -545,6 +546,14 @@ export async function importBook(
     }
 
     const primaryLanguage = getPrimaryLanguage(loadedBook.metadata.language);
+    // metaHash was computed above from the original metadata; only display fields
+    // are simplified so re-importing the same file still dedupes by original title.
+    const simplifiedTitle = await simplifyChineseText(formatTitle(loadedBook.metadata.title));
+    const simplifiedAuthor = await simplifyChineseText(
+      formatAuthors(loadedBook.metadata.author, primaryLanguage),
+    );
+    loadedBook.metadata.title = simplifiedTitle;
+    loadedBook.metadata.author = simplifiedAuthor;
     const book: Book = {
       hash,
       format,
