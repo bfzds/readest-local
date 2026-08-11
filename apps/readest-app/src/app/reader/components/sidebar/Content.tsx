@@ -11,6 +11,7 @@ import 'overlayscrollbars/overlayscrollbars.css';
 import TOCView from './TOCView';
 import BooknoteView from './BooknoteView';
 import TabNavigation from './TabNavigation';
+import TOCChapterNav from './TOCChapterNav';
 
 const SidebarContent: React.FC<{
   bookDoc: BookDoc;
@@ -92,6 +93,7 @@ const SidebarContent: React.FC<{
             )}
           </div>
         </OverlayScrollbarsComponent>
+        {activeTab === 'toc' && bookDoc.toc && <TOCChapterNav bookKey={sideBarBookKey} />}
       </div>
       <div
         className='flex-shrink-0'
