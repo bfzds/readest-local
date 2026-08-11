@@ -11,7 +11,8 @@ $exe = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $exe) { throw "Release exe not found; looked in: $($candidates -join ', ')" }
 $outDir = Join-Path $Root 'release\readest-local'
 New-Item -ItemType Directory -Force $outDir | Out-Null
-Copy-Item $exe (Join-Path $outDir ([System.IO.Path]::GetFileNameWithoutExtension($ExeName) + '-local.exe')) -Force
+$outName = if ($ExeName -match '-local\.exe$') { $ExeName } else { ([System.IO.Path]::GetFileNameWithoutExtension($ExeName) + '-local.exe') }
+Copy-Item $exe (Join-Path $outDir $outName) -Force
 @(
   'Readest Local 便携版',
   '直接运行 exe，无需安装。',
