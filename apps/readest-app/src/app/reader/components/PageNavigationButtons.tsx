@@ -23,7 +23,7 @@ const PageNavigationButtons: React.FC<PageNavigationButtonsProps> = ({
   const getBookData = useBookDataStore((s) => s.getBookData);
   const getView = useReaderStore((s) => s.getView);
   const getViewSettings = useReaderStore((s) => s.getViewSettings);
-  // hoveredBookKey is reactive state — drives button visibility.
+  // hoveredBookKey is reactive state: drives button visibility.
   const hoveredBookKey = useReaderStore((s) => s.hoveredBookKey);
   const bookData = getBookData(bookKey);
   const view = getView(bookKey);
@@ -34,6 +34,9 @@ const PageNavigationButtons: React.FC<PageNavigationButtonsProps> = ({
   const { section, pageinfo } = progress || {};
   const pageInfo = bookData?.isFixedLayout ? section : pageinfo;
   const currentPage = pageInfo?.current;
+
+  const showPrevPageButton = viewSettings?.showPrevPageButton;
+  const showNextPageButton = viewSettings?.showNextPageButton;
 
   const isPageNavigationButtonsVisible =
     (hoveredBookKey === bookKey || isDropdownOpen) && viewSettings?.showPaginationButtons;
@@ -78,6 +81,10 @@ const PageNavigationButtons: React.FC<PageNavigationButtonsProps> = ({
     return viewSettings?.rtl ? _('Previous Section') : _('Next Section');
   };
 
+  if (!isPageNavigationButtonsVisible || (!showPrevPageButton && !showNextPageButton)) {
+    return null;
+  }
+
   return (
     <>
       {currentPage !== undefined && (
@@ -86,109 +93,117 @@ const PageNavigationButtons: React.FC<PageNavigationButtonsProps> = ({
         </div>
       )}
 
-      <div
-        className={clsx(
-          'absolute left-2 -translate-y-1/2',
-          'flex items-center gap-1',
-          isPageNavigationButtonsVisible ? 'top-1/2 opacity-100' : 'bottom-2 opacity-0',
-          !isPageNavigationButtonsVisible && !appService?.isAndroidApp ? 'pointer-events-none' : '',
-        )}
-      >
-        <button
-          onClick={handleGoLeftSection}
+      {showPrevPageButton && (
+        <div
           className={clsx(
-            'flex h-20 w-20 items-center justify-center focus:outline-none',
-            !isPageNavigationButtonsVisible && appService?.isAndroidApp && 'h-4 w-4',
+            'absolute left-2 -translate-y-1/2',
+            'flex items-center gap-1',
+            isPageNavigationButtonsVisible ? 'top-1/2 opacity-100' : 'bottom-2 opacity-0',
+            !isPageNavigationButtonsVisible && !appService?.isAndroidApp
+              ? 'pointer-events-none'
+              : '',
           )}
-          aria-hidden={false}
-          aria-label={getLeftSectionLabel()}
-          tabIndex={0}
         >
-          <span
+          <button
+            onClick={handleGoLeftSection}
             className={clsx(
-              'flex h-12 w-12 items-center justify-center rounded-full',
-              'bg-base-100/90 shadow-lg backdrop-blur-sm',
-              'eink:border eink:border-base-content not-eink:group-hover:bg-base-200',
-              'transition-transform active:scale-95',
+              'flex h-20 w-20 items-center justify-center focus:outline-none',
+              !isPageNavigationButtonsVisible && appService?.isAndroidApp && 'h-4 w-4',
             )}
+            aria-hidden={false}
+            aria-label={getLeftSectionLabel()}
+            tabIndex={0}
           >
-            <RiArrowLeftDoubleLine size={24} />
-          </span>
-        </button>
-        <button
-          onClick={handleGoLeftPage}
-          className={clsx(
-            'flex h-20 w-20 items-center justify-center focus:outline-none',
-            !isPageNavigationButtonsVisible && appService?.isAndroidApp && 'h-4 w-4',
-          )}
-          aria-hidden={false}
-          aria-label={getLeftPageLabel()}
-          tabIndex={0}
-        >
-          <span
+            <span
+              className={clsx(
+                'flex h-12 w-12 items-center justify-center rounded-full',
+                'bg-base-100/90 shadow-lg backdrop-blur-sm',
+                'eink:border eink:border-base-content not-eink:group-hover:bg-base-200',
+                'transition-transform active:scale-95',
+              )}
+            >
+              <RiArrowLeftDoubleLine size={24} />
+            </span>
+          </button>
+          <button
+            onClick={handleGoLeftPage}
             className={clsx(
-              'flex h-12 w-12 items-center justify-center rounded-full',
-              'bg-base-100/90 shadow-lg backdrop-blur-sm',
-              'eink:border eink:border-base-content not-eink:group-hover:bg-base-200',
-              'transition-transform active:scale-95',
+              'flex h-20 w-20 items-center justify-center focus:outline-none',
+              !isPageNavigationButtonsVisible && appService?.isAndroidApp && 'h-4 w-4',
             )}
+            aria-hidden={false}
+            aria-label={getLeftPageLabel()}
+            tabIndex={0}
           >
-            <IoChevronBack size={24} />
-          </span>
-        </button>
-      </div>
+            <span
+              className={clsx(
+                'flex h-12 w-12 items-center justify-center rounded-full',
+                'bg-base-100/90 shadow-lg backdrop-blur-sm',
+                'eink:border eink:border-base-content not-eink:group-hover:bg-base-200',
+                'transition-transform active:scale-95',
+              )}
+            >
+              <IoChevronBack size={24} />
+            </span>
+          </button>
+        </div>
+      )}
 
-      <div
-        className={clsx(
-          'absolute right-2 -translate-y-1/2',
-          'flex items-center gap-1',
-          isPageNavigationButtonsVisible ? 'top-1/2 opacity-100' : 'bottom-2 opacity-0',
-          !isPageNavigationButtonsVisible && !appService?.isAndroidApp ? 'pointer-events-none' : '',
-        )}
-      >
-        <button
-          onClick={handleGoRightPage}
+      {showNextPageButton && (
+        <div
           className={clsx(
-            'flex h-20 w-20 items-center justify-center focus:outline-none',
-            !isPageNavigationButtonsVisible && appService?.isAndroidApp && 'h-4 w-4',
+            'absolute right-2 -translate-y-1/2',
+            'flex items-center gap-1',
+            isPageNavigationButtonsVisible ? 'top-1/2 opacity-100' : 'bottom-2 opacity-0',
+            !isPageNavigationButtonsVisible && !appService?.isAndroidApp
+              ? 'pointer-events-none'
+              : '',
           )}
-          aria-hidden={false}
-          aria-label={getRightPageLabel()}
-          tabIndex={0}
         >
-          <span
+          <button
+            onClick={handleGoRightPage}
             className={clsx(
-              'flex h-12 w-12 items-center justify-center rounded-full',
-              'bg-base-100/90 shadow-lg backdrop-blur-sm',
-              'eink:border eink:border-base-content not-eink:group-hover:bg-base-200',
-              'transition-transform active:scale-95',
+              'flex h-20 w-20 items-center justify-center focus:outline-none',
+              !isPageNavigationButtonsVisible && appService?.isAndroidApp && 'h-4 w-4',
             )}
+            aria-hidden={false}
+            aria-label={getRightPageLabel()}
+            tabIndex={0}
           >
-            <IoChevronForward size={24} />
-          </span>
-        </button>
-        <button
-          onClick={handleGoRightSection}
-          className={clsx(
-            'flex h-20 w-20 items-center justify-center focus:outline-none',
-            !isPageNavigationButtonsVisible && appService?.isAndroidApp && 'h-4 w-4',
-          )}
-          aria-hidden={false}
-          aria-label={getRightSectionLabel()}
-          tabIndex={0}
-        >
-          <span
+            <span
+              className={clsx(
+                'flex h-12 w-12 items-center justify-center rounded-full',
+                'bg-base-100/90 shadow-lg backdrop-blur-sm',
+                'eink:border eink:border-base-content not-eink:group-hover:bg-base-200',
+                'transition-transform active:scale-95',
+              )}
+            >
+              <IoChevronForward size={24} />
+            </span>
+          </button>
+          <button
+            onClick={handleGoRightSection}
             className={clsx(
-              'flex h-12 w-12 items-center justify-center rounded-full',
-              'bg-base-100/90 shadow-lg backdrop-blur-sm',
-              'eink:border eink:border-base-content not-eink:group-hover:bg-base-200',
-              'transition-transform active:scale-95',
+              'flex h-20 w-20 items-center justify-center focus:outline-none',
+              !isPageNavigationButtonsVisible && appService?.isAndroidApp && 'h-4 w-4',
             )}
+            aria-hidden={false}
+            aria-label={getRightSectionLabel()}
+            tabIndex={0}
           >
-            <RiArrowRightDoubleLine size={24} />
-          </span>
-        </button>
-      </div>
+            <span
+              className={clsx(
+                'flex h-12 w-12 items-center justify-center rounded-full',
+                'bg-base-100/90 shadow-lg backdrop-blur-sm',
+                'eink:border eink:border-base-content not-eink:group-hover:bg-base-200',
+                'transition-transform active:scale-95',
+              )}
+            >
+              <RiArrowRightDoubleLine size={24} />
+            </span>
+          </button>
+        </div>
+      )}
     </>
   );
 };

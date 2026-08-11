@@ -606,6 +606,15 @@ describe('services/constants', () => {
       expect(typeof DEFAULT_VIEW_CONFIG.showNextPageButton).toBe('boolean');
     });
 
+    it('hides the sidebar by default', () => {
+      expect(DEFAULT_VIEW_CONFIG.showSideBar).toBe(false);
+    });
+
+    it('hides the go-to-library and quick action buttons by default', () => {
+      expect(DEFAULT_VIEW_CONFIG.showGoToLibraryButton).toBe(false);
+      expect(DEFAULT_VIEW_CONFIG.showAnnotationQuickActionButton).toBe(false);
+    });
+
     it('has progress style settings', () => {
       expect(typeof DEFAULT_VIEW_CONFIG.progressStyle).toBe('string');
     });

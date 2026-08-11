@@ -13,6 +13,11 @@
 4. 阅读设置 `ControlPanel` 的 Reading Interface 分组新增 “Sidebar / 侧边栏” 开关，默认关闭，即默认隐藏侧边栏。
 5. `useSidebar` 初始化时仅在“已固定侧边栏且 `showSideBar` 为 true”时自动显示侧边栏。
 
+## 修复：开关即时控制侧边栏
+
+- 问题：`ControlPanel` 的 Sidebar 开关原先只保存 `showSideBar` 偏好，没有调用侧边栏状态，点击后当前侧边栏不变。
+- 修复：开关 `checked` 改为绑定 `isSideBarVisible`；点击时同时 `setSideBarVisible(next)` 和 `setShowSideBar(next)`，因此打开/关闭开关会立即显示/隐藏侧边栏，并同步保存默认偏好。
+
 ## 涉及文件
 
 - 新建：`apps/readest-app/src/app/reader/components/SearchFloatingButton.tsx`

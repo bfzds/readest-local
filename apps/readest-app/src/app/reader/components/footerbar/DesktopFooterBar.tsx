@@ -69,7 +69,7 @@ const DesktopFooterBar: React.FC<FooterBarChildProps> = ({
         msOverflowStyle: 'none',
       }}
     >
-      {!viewSettings?.showPaginationButtons && (
+      {!viewSettings?.showPaginationButtons && viewSettings?.showPrevPageButton && (
         <Button
           icon={getNavigationIcon(
             viewSettings?.rtl,
@@ -80,7 +80,7 @@ const DesktopFooterBar: React.FC<FooterBarChildProps> = ({
           label={_('Previous Section')}
         />
       )}
-      {!viewSettings?.showPaginationButtons && (
+      {!viewSettings?.showPaginationButtons && viewSettings?.showPrevPageButton && (
         <Button
           icon={getNavigationIcon(viewSettings?.rtl, <RiArrowLeftSLine />, <RiArrowRightSLine />)}
           onClick={navigationHandlers.onPrevPage}
@@ -115,14 +115,14 @@ const DesktopFooterBar: React.FC<FooterBarChildProps> = ({
         onClick={onSpeakText!}
         label={_('Speak')}
       />
-      {!viewSettings?.showPaginationButtons && (
+      {!viewSettings?.showPaginationButtons && viewSettings?.showNextPageButton && (
         <Button
           icon={getNavigationIcon(viewSettings?.rtl, <RiArrowRightSLine />, <RiArrowLeftSLine />)}
           onClick={navigationHandlers.onNextPage}
           label={_('Next Page')}
         />
       )}
-      {!viewSettings?.showPaginationButtons && (
+      {!viewSettings?.showPaginationButtons && viewSettings?.showNextPageButton && (
         <Button
           icon={getNavigationIcon(
             viewSettings?.rtl,

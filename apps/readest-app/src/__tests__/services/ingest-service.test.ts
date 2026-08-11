@@ -178,4 +178,36 @@ describe('ingestFile', () => {
     expect(existing.groupId).toBe('manual');
     expect(existing.groupName).toBe('Manual/Group');
   });
+
+  test('in-place re-import refreshes stale Pixiv title and author from the filename', async () => {
+    const { appService, settings, importBook } = makeDeps({
+      externalLibraryFolders: ['/Users/me/Library'],
+      osPlatform: 'macos',
+    });
+    const sourcePath = '/Users/me/Library/异世界魔物娘收容-1501076-kof_boss.epub';
+    const existing: Book = {
+      hash: 'previously-hashed',
+      format: 'EPUB',
+      title: '第1章',
+      sourceTitle: '第1章',
+      author: '',
+      filePath: sourcePath,
+      createdAt: 1000,
+      updatedAt: 2000,
+    };
+    const lookupIndex = {
+      byHash: new Map(),
+      byMetaKey: new Map(),
+      byFilePath: new Map([[sourcePath.toLowerCase(), existing]]),
+    } as unknown as Parameters<typeof ingestFile>[0]['lookupIndex'];
+    const book = await ingestFile(
+      { file: sourcePath, books: [existing], lookupIndex },
+      { appService, settings },
+    );
+    expect(book).toBe(existing);
+    expect(importBook).not.toHaveBeenCalled();
+    expect(existing.title).toBe('异世界魔物娘收容');
+    expect(existing.sourceTitle).toBe('异世界魔物娘收容');
+    expect(existing.author).toBe('kof_boss');
+  });
 });

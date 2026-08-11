@@ -42,7 +42,7 @@ export const useOpenBook = () => {
       if (cfi && options?.highlightSearchResult) params.set('highlight', 'search');
       const queryParams = params.size ? params.toString() : undefined;
       if (appService?.hasWindow && settings.openBookInNewWindow) {
-        showReaderWindow(appService, [book.hash], queryParams);
+        await showReaderWindow(appService, [book.hash], queryParams);
       } else {
         setTimeout(() => {
           navigateToReader(router, [book.hash], queryParams);

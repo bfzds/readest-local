@@ -6,14 +6,18 @@ import { BOOK_IDS_SEPARATOR } from '@/services/constants';
 import { AppService } from '@/types/system';
 
 let readerWindowsCount = 0;
-const createReaderWindow = (appService: AppService, url: string) => {
+const createReaderWindow = async (appService: AppService, url: string) => {
   const currentWindow = getCurrentWindow();
   const label = currentWindow.label;
   const newLabelPrefix = label === 'main' ? 'reader' : label;
+  const scaleFactor = await currentWindow.scaleFactor();
+  const { width, height } = await currentWindow.innerSize();
   const win = new WebviewWindow(`${newLabelPrefix}-${readerWindowsCount}`, {
     url,
-    width: 800,
-    height: 600,
+    // Match the window the reader was opened from so switching from the
+    // library to a book does not snap the window back to a default size.
+    width: Math.round(width / scaleFactor),
+    height: Math.round(height / scaleFactor),
     center: true,
     resizable: true,
     title: 'Readest',
@@ -40,7 +44,7 @@ const createReaderWindow = (appService: AppService, url: string) => {
   });
 };
 
-export const showReaderWindow = (
+export const showReaderWindow = async (
   appService: AppService,
   bookIds: string[],
   queryParams?: string,
@@ -49,14 +53,14 @@ export const showReaderWindow = (
   const params = new URLSearchParams(queryParams || '');
   params.set('ids', ids);
   const url = `/reader?${params.toString()}`;
-  createReaderWindow(appService, url);
+  await createReaderWindow(appService, url);
 };
 
-export const showLibraryWindow = (appService: AppService, filenames: string[]) => {
+export const showLibraryWindow = async (appService: AppService, filenames: string[]) => {
   const params = new URLSearchParams();
   filenames.forEach((filename) => params.append('file', filename));
   const url = `/library?${params.toString()}`;
-  createReaderWindow(appService, url);
+  await createReaderWindow(appService, url);
 };
 
 // Bring the main library window back when a reader window asks to "go to library".

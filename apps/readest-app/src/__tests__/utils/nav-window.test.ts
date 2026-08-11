@@ -14,7 +14,11 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
 }));
 
 vi.mock('@tauri-apps/api/window', () => ({
-  getCurrentWindow: () => ({ label: 'main' }),
+  getCurrentWindow: () => ({
+    label: 'main',
+    innerSize: async () => ({ width: 1600, height: 1000 }),
+    scaleFactor: async () => 1,
+  }),
   ScrollBarStyle: {},
 }));
 
@@ -43,15 +47,15 @@ describe('nav.ts window transparency', () => {
     webviewWindowCtor.mockClear();
   });
 
-  test('Linux reader window is not transparent', () => {
-    showReaderWindow(makeAppService('linux'), ['book-1']);
+  test('Linux reader window is not transparent', async () => {
+    await showReaderWindow(makeAppService('linux'), ['book-1']);
     expect(webviewWindowCtor).toHaveBeenCalledTimes(1);
     const options = webviewWindowCtor.mock.calls[0]![1] as Record<string, unknown>;
     expect(options['transparent']).toBe(false);
   });
 
-  test('macOS reader window is not transparent (native decorations)', () => {
-    showReaderWindow(makeAppService('macos'), ['book-1']);
+  test('macOS reader window is not transparent (native decorations)', async () => {
+    await showReaderWindow(makeAppService('macos'), ['book-1']);
     const options = webviewWindowCtor.mock.calls[0]![1] as Record<string, unknown>;
     expect(options['transparent']).toBe(false);
   });

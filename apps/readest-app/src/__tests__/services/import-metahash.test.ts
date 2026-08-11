@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Book } from '@/types/book';
+import type { BookFormat } from '@/types/book';
 import { getMetadataHash } from '@/utils/book';
 
 const mockOpen = vi.hoisted(() => vi.fn());
@@ -785,5 +786,87 @@ describe('importBook with BookLookupIndex', () => {
     expect(lookupIndex.byFilePath.get('/lib/a.epub')).toBe(inPlaceBook);
     expect(lookupIndex.byFilePath.has('/lib/b.epub')).toBe(false);
     expect(lookupIndex.byFilePath.has('https://example.com/c.epub')).toBe(false);
+  });
+
+  it('restores Pixiv title and author when EPUB metadata falls back to filename', async () => {
+    mockPartialMD5.mockResolvedValue('pixiv-hash');
+    const fs = service.getFs();
+    fs.openFile.mockResolvedValue(
+      new File(['epub'], '23456789-小说标题.epub', { type: 'application/epub+zip' }),
+    );
+    setupMockBookDoc({
+      title: '23456789-小说标题.epub',
+      author: '',
+      language: 'ja',
+      identifier: '',
+    });
+
+    const result = await service.importBook('pixiv/作者A-12345678/23456789-小说标题.epub', [], {
+      transient: true,
+    });
+
+    expect(result?.title).toBe('小说标题');
+    expect(result?.author).toBe('作者A');
+  });
+
+  it('restores the Pixiv title when EPUB metadata holds a chapter heading', async () => {
+    mockPartialMD5.mockResolvedValue('chapter-hash');
+    const fs = service.getFs();
+    fs.openFile.mockResolvedValue(
+      new File(['epub'], '异世界魔物娘收容-1501076-kof_boss.epub', {
+        type: 'application/epub+zip',
+      }),
+    );
+    setupMockBookDoc({
+      title: '第1章',
+      author: '',
+      language: 'ja',
+      identifier: '',
+    });
+
+    const result = await service.importBook('异世界魔物娘收容-1501076-kof_boss.epub', [], {
+      transient: true,
+    });
+
+    expect(result?.title).toBe('异世界魔物娘收容');
+    expect(result?.author).toBe('kof_boss');
+  });
+
+  it('refreshes a stale title when the same Pixiv file is re-imported', async () => {
+    mockPartialMD5.mockResolvedValue('reimport-hash');
+    const fs = service.getFs();
+    fs.openFile.mockResolvedValue(
+      new File(['epub'], '异世界魔物娘收容-1501076-kof_boss.epub', {
+        type: 'application/epub+zip',
+      }),
+    );
+    setupMockBookDoc({
+      title: '第1章',
+      author: '',
+      language: 'ja',
+      identifier: '',
+    });
+
+    // 书库中已存在同 hash 的旧条目，标题是修复前留下的“第1章”。
+    const existing = {
+      hash: 'reimport-hash',
+      format: 'EPUB' as BookFormat,
+      metaHash: 'stale-meta-hash',
+      title: '第1章',
+      sourceTitle: '第1章',
+      author: '',
+      primaryLanguage: 'ja',
+      createdAt: 1,
+      updatedAt: 1,
+      downloadedAt: 1,
+    };
+    const result = await service.importBook('异世界魔物娘收容-1501076-kof_boss.epub', [existing], {
+      transient: true,
+    });
+
+    expect(result?.title).toBe('异世界魔物娘收容');
+    expect(result?.author).toBe('kof_boss');
+    expect(existing.title).toBe('异世界魔物娘收容');
+    expect(existing.sourceTitle).toBe('异世界魔物娘收容');
   });
 });

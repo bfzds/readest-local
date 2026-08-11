@@ -1,5 +1,4 @@
 import * as React from 'react';
-import clsx from 'clsx';
 import { PiBooks } from 'react-icons/pi';
 
 import { useEnv } from '@/context/EnvContext';
@@ -35,14 +34,6 @@ const LibraryEmptyState: React.FC<LibraryEmptyStateProps> = ({ onImport }) => {
           >
             {_('Import Books')}
           </button>
-          <div
-            className={clsx(
-              'text-base-content/70 mt-1 py-2 text-sm font-medium',
-              'underline underline-offset-4',
-            )}
-          >
-            {_('Import from local files or folders')}
-          </div>
         </div>
       </div>
     </div>
