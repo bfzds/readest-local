@@ -16,11 +16,11 @@ export const getMaxInlineSize = (viewSettings: ViewSettings) => {
 };
 
 export const getDefaultMaxInlineSize = () => {
-  if (typeof window === 'undefined') return 720;
+  if (typeof window === 'undefined') return 800;
 
   const screenWidth = window.innerWidth;
   const screenHeight = window.innerHeight;
-  return screenWidth < screenHeight ? Math.max(screenWidth, 720) : 720;
+  return screenWidth < screenHeight ? Math.max(screenWidth, 800) : 800;
 };
 
 export const getDefaultMaxBlockSize = () => {

@@ -298,16 +298,16 @@ export const DEFAULT_BOOK_FONT: BookFont = {
   monospaceFont: 'Consolas',
   defaultFont: 'Serif',
   defaultCJKFont: 'LXGW WenKai GB Screen',
-  defaultFontSize: 16,
+  defaultFontSize: 18,
   minimumFontSize: 8,
   fontWeight: 400,
 };
 
 export const DEFAULT_BOOK_LAYOUT: BookLayout = {
-  marginTopPx: 44,
-  marginBottomPx: 44,
-  marginLeftPx: 16,
-  marginRightPx: 16,
+  marginTopPx: 20,
+  marginBottomPx: 20,
+  marginLeftPx: 20,
+  marginRightPx: 20,
   compactMarginTopPx: 16,
   compactMarginBottomPx: 16,
   compactMarginLeftPx: 16,
@@ -342,8 +342,8 @@ export const DEFAULT_BOOK_LANGUAGE: BookLanguage = {
 
 export const DEFAULT_BOOK_STYLE: BookStyle = {
   zoomLevel: 100,
-  paragraphMargin: 0.6,
-  lineHeight: 1.4,
+  paragraphMargin: 0.5,
+  lineHeight: 1.3,
   wordSpacing: 0,
   letterSpacing: 0,
   textIndent: 0,
@@ -420,6 +420,10 @@ export const DEFAULT_VIEW_CONFIG: ViewConfig = {
   showBatteryPercentage: true,
   use24HourClock: false,
   showPaginationButtons: false,
+  showNotebookButton: false,
+  showBookmarkButton: false,
+  showPrevPageButton: false,
+  showNextPageButton: false,
   progressStyle: 'fraction',
   referencePageCount: 0,
 

@@ -3,7 +3,7 @@ import { DEFAULT_ANNOTATION_TOOLBAR_ITEMS } from '@/utils/annotationToolbar';
 
 vi.mock('@/utils/config', () => ({
   getDefaultMaxBlockSize: vi.fn(() => 1600),
-  getDefaultMaxInlineSize: vi.fn(() => 720),
+  getDefaultMaxInlineSize: vi.fn(() => 800),
 }));
 vi.mock('@/utils/misc', () => ({
   stubTranslation: vi.fn((key: string) => key),
@@ -394,6 +394,10 @@ describe('services/constants', () => {
       );
     });
 
+    it('uses tReader-style 18px default font size', () => {
+      expect(DEFAULT_BOOK_FONT.defaultFontSize).toBe(18);
+    });
+
     it('has a valid font weight', () => {
       expect(DEFAULT_BOOK_FONT.fontWeight).toBeGreaterThanOrEqual(100);
       expect(DEFAULT_BOOK_FONT.fontWeight).toBeLessThanOrEqual(900);
@@ -413,6 +417,15 @@ describe('services/constants', () => {
       expect(DEFAULT_BOOK_LAYOUT.compactMarginBottomPx).toBeGreaterThanOrEqual(0);
       expect(DEFAULT_BOOK_LAYOUT.compactMarginLeftPx).toBeGreaterThanOrEqual(0);
       expect(DEFAULT_BOOK_LAYOUT.compactMarginRightPx).toBeGreaterThanOrEqual(0);
+    });
+
+    it('uses tReader-style 20px page margins by default', () => {
+      expect(DEFAULT_BOOK_LAYOUT.marginTopPx).toBe(20);
+      expect(DEFAULT_BOOK_LAYOUT.marginBottomPx).toBe(20);
+      expect(DEFAULT_BOOK_LAYOUT.marginLeftPx).toBe(20);
+      expect(DEFAULT_BOOK_LAYOUT.marginRightPx).toBe(20);
+      expect(DEFAULT_BOOK_LAYOUT.compactMarginTopPx).toBe(16);
+      expect(DEFAULT_BOOK_LAYOUT.compactMarginBottomPx).toBe(16);
     });
 
     it('has gap percent in a reasonable range', () => {
@@ -439,7 +452,7 @@ describe('services/constants', () => {
     });
 
     it('has maxInlineSize and maxBlockSize from mocked config', () => {
-      expect(DEFAULT_BOOK_LAYOUT.maxInlineSize).toBe(720);
+      expect(DEFAULT_BOOK_LAYOUT.maxInlineSize).toBe(800);
       expect(DEFAULT_BOOK_LAYOUT.maxBlockSize).toBe(1600);
     });
 
@@ -483,6 +496,11 @@ describe('services/constants', () => {
       expect(typeof DEFAULT_BOOK_STYLE.letterSpacing).toBe('number');
       expect(typeof DEFAULT_BOOK_STYLE.textIndent).toBe('number');
       expect(DEFAULT_BOOK_STYLE.contrast).toBe(100);
+    });
+
+    it('uses tReader-style line height and paragraph margin', () => {
+      expect(DEFAULT_BOOK_STYLE.lineHeight).toBe(1.3);
+      expect(DEFAULT_BOOK_STYLE.paragraphMargin).toBe(0.5);
     });
 
     it('has boolean style flags', () => {
@@ -582,6 +600,10 @@ describe('services/constants', () => {
       expect(typeof DEFAULT_VIEW_CONFIG.showBatteryPercentage).toBe('boolean');
       expect(typeof DEFAULT_VIEW_CONFIG.use24HourClock).toBe('boolean');
       expect(typeof DEFAULT_VIEW_CONFIG.showPaginationButtons).toBe('boolean');
+      expect(typeof DEFAULT_VIEW_CONFIG.showNotebookButton).toBe('boolean');
+      expect(typeof DEFAULT_VIEW_CONFIG.showBookmarkButton).toBe('boolean');
+      expect(typeof DEFAULT_VIEW_CONFIG.showPrevPageButton).toBe('boolean');
+      expect(typeof DEFAULT_VIEW_CONFIG.showNextPageButton).toBe('boolean');
     });
 
     it('has progress style settings', () => {
