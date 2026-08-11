@@ -17,6 +17,7 @@ import FoliateViewer from './FoliateViewer';
 import SectionInfo from './SectionInfo';
 import HeaderBar from './HeaderBar';
 import PageNavigationButtons from './PageNavigationButtons';
+import TOCFloatingButton from './TOCFloatingButton';
 import FooterBar from './footerbar/FooterBar';
 import ProgressBar from './ProgressBar';
 import BookmarkPullDown from './BookmarkPullDown';
@@ -261,6 +262,7 @@ const BookCellInner: React.FC<BookCellProps> = ({
       </div>
       <BookmarkPullDown bookKey={bookKey} ribbonHidden={!!hoveredBookKey} slideRef={slideRef} />
       <PageNavigationButtons bookKey={bookKey} isDropdownOpen={isDropdownOpen} />
+      <TOCFloatingButton bookKey={bookKey} />
       <Annotator bookKey={bookKey} contentInsets={contentInsets} />
       <SearchResultsNav bookKey={bookKey} gridInsets={gridInsets} />
       <BooknotesNav bookKey={bookKey} gridInsets={gridInsets} toc={bookDoc.toc || []} />
