@@ -23,6 +23,14 @@ vi.mock('@/libs/document', async () => {
 
 vi.mock('@/utils/txt', () => ({ TxtToEpubConverter: vi.fn() }));
 vi.mock('@/utils/svg', () => ({ svg2png: vi.fn() }));
+
+const mockSimplifyChineseText = vi.hoisted(() => vi.fn(async (text: string) => text));
+
+vi.mock('@/utils/simplecc', () => ({
+  initSimpleCC: vi.fn(),
+  runSimpleCC: vi.fn(),
+  simplifyChineseText: mockSimplifyChineseText,
+}));
 import { BaseAppService } from '@/services/appService';
 import { buildBookLookupIndex, refreshBookMetadata } from '@/services/bookService';
 
@@ -285,6 +293,34 @@ describe('importBook metaHash deduplication', () => {
     }
 
     expect(result.metadata?.isbn).toBe('9780316033664');
+  });
+
+  it('simplifies traditional Chinese title and author on import', async () => {
+    const originalMetadata = {
+      title: '紅樓夢',
+      author: '葉嘉瑩',
+      language: 'zh-TW',
+      identifier: 'isbn-123',
+    };
+    const metaHash = getMetadataHash(originalMetadata);
+
+    mockPartialMD5.mockResolvedValue('new-hash-456');
+    setupMockBookDoc(originalMetadata);
+    mockSimplifyChineseText.mockImplementation(async (text: string) => {
+      if (text === '紅樓夢') return '红楼梦';
+      if (text === '葉嘉瑩') return '叶嘉莹';
+      return text;
+    });
+
+    const mockFile = new File(['new content'], 'test.epub', { type: 'application/epub+zip' });
+    const result = await service.importBook(mockFile, []);
+
+    expect(result?.title).toBe('红楼梦');
+    expect(result?.sourceTitle).toBe('红楼梦');
+    expect(result?.author).toBe('叶嘉莹');
+    expect(result?.metadata?.title).toBe('红楼梦');
+    expect(result?.metadata?.author).toBe('叶嘉莹');
+    expect(result?.metaHash).toBe(metaHash);
   });
 });
 
