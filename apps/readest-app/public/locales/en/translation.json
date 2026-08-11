@@ -109,5 +109,8 @@
   "Chapter Navigation": "Chapter Navigation",
   "Page Navigation Control": "Page Navigation Control",
   "Show or hide the Previous Chapter and Next Chapter buttons only. Does not affect page navigation.": "Show or hide the Previous Chapter and Next Chapter buttons only. Does not affect page navigation.",
-  "Show or hide the Previous Page and Next Page buttons only. Does not affect chapter navigation.": "Show or hide the Previous Page and Next Page buttons only. Does not affect chapter navigation."
+  "Show or hide the Previous Page and Next Page buttons only. Does not affect chapter navigation.": "Show or hide the Previous Page and Next Page buttons only. Does not affect chapter navigation.",
+  "Edit Book Content": "Edit Book Content",
+  "Only text edits are supported": "Only text edits are supported",
+  "Unsaved changes will be lost": "Unsaved changes will be lost"
 }

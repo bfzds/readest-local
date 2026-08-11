@@ -1,19 +1,21 @@
 import clsx from 'clsx';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { VscLibrary } from 'react-icons/vsc';
-import { MdOutlineMenu } from 'react-icons/md';
+import { MdOutlineMenu, MdEdit } from 'react-icons/md';
 
 import { Insets } from '@/types/misc';
 import { useEnv } from '@/context/EnvContext';
 import { useThemeStore } from '@/store/themeStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
+import { useBookDataStore } from '@/store/bookDataStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTrafficLightStore } from '@/store/trafficLightStore';
 import { useTrafficLight } from '@/hooks/useTrafficLight';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { useSpatialNavigation } from '@/app/reader/hooks/useSpatialNavigation';
+import { isTauriAppPlatform } from '@/services/environment';
 import { getHighlightColorHex } from '../utils/annotatorUtil';
 import { annotationToolQuickActions } from './annotator/AnnotationTools';
 import { AnnotationToolType } from '@/types/annotator';
@@ -63,6 +65,11 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
   const { isSideBarVisible, getIsSideBarVisible } = useSidebarStore();
   const { getView, getViewSettings, setHoveredBookKey } = useReaderStore();
   const viewSettings = getViewSettings(bookKey);
+  const setEditing = useReaderStore((s) => s.setEditing);
+  const editing = useReaderStore((s) => s.viewStates[bookKey]?.editing ?? false);
+  const { getBookData } = useBookDataStore();
+  const bookData = getBookData(bookKey);
+  const canEditBookContent = isTauriAppPlatform() && bookData?.book?.format === 'EPUB' && !editing;
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [headerWidth, setHeaderWidth] = useState(0);
@@ -238,6 +245,15 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
               </button>
             )}
             {viewSettings?.showBookmarkButton && <BookmarkToggler bookKey={bookKey} />}
+            {canEditBookContent && (
+              <button
+                title={_('Edit Book Content')}
+                className='btn btn-ghost hidden h-8 min-h-8 w-8 p-0 sm:flex'
+                onClick={() => setEditing(bookKey, true)}
+              >
+                <MdEdit size={iconSize18} className='fill-base-content' />
+              </button>
+            )}
           </div>
           {enableAnnotationQuickActions && viewSettings?.showAnnotationQuickActionButton && (
             <Dropdown

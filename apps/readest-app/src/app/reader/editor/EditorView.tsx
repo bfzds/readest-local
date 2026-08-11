@@ -71,7 +71,7 @@ export const EditorView: React.FC<{
   }, [onSave, saving, _]);
 
   return (
-    <div className='editor-view flex h-full w-full flex-col bg-base-100'>
+    <div className='editor-view absolute inset-0 z-10 flex h-full w-full flex-col bg-base-100'>
       <div className='flex h-11 shrink-0 items-center justify-between px-4'>
         <span className='text-sm font-medium'>{_('Edit Book Content')}</span>
         <div className='flex items-center gap-2'>
