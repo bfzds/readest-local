@@ -53,8 +53,7 @@ import { runSimpleCC } from '@/utils/simplecc';
 import { getWordCount, isSingleLookupTerm } from '@/utils/word';
 import { getIndexFromCfi } from '@/utils/cfi';
 import { writeTextToClipboard } from '@/utils/clipboard';
-import { buildAnnotationUrl } from '@/utils/deeplink';
-import { DEFAULT_NOTE_EXPORT_CONFIG } from '@/services/constants';
+import { buildAnnotationAppUrl } from '@/utils/deeplink';
 import { canShareText, shareSelectedText } from '@/utils/share';
 import { getToolbarToolTypes, supportsProofread } from '@/utils/annotationToolbar';
 import { AnnotationToolType } from '@/types/annotator';
@@ -1131,11 +1130,11 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     const cfi = selection.cfi || view?.getCFI(selection.index, selection.range);
     if (!cfi) return;
     const noteId = config.booknotes?.find((note) => note.cfi === cfi && !note.deletedAt)?.id;
-    const linkType = viewSettings.noteExportConfig?.linkType ?? DEFAULT_NOTE_EXPORT_CONFIG.linkType;
-    const url = buildAnnotationUrl(
-      { bookHash: bookKey.split('-')[0]!, noteId: noteId ?? uniqueId(), cfi },
-      linkType,
-    );
+    const url = buildAnnotationAppUrl({
+      bookHash: bookKey.split('-')[0]!,
+      noteId: noteId ?? uniqueId(),
+      cfi,
+    });
     void writeTextToClipboard(url);
     eventDispatcher.dispatch('toast', {
       type: 'info',

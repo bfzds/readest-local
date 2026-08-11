@@ -829,7 +829,6 @@ export type BookContextMenuItemId =
   | 'clearStatus'
   | 'showDetails'
   | 'showInFinder'
-  | 'searchGoodreads'
   | 'delete';
 
 /**
@@ -953,7 +952,7 @@ export const getBookContextMenuItemIds = (book: Book): BookContextMenuItemId[] =
   ) {
     ids.push('clearStatus');
   }
-  ids.push('showDetails', 'showInFinder', 'searchGoodreads');
+  ids.push('showDetails', 'showInFinder');
   ids.push('delete');
   return ids;
 };

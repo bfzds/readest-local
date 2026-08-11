@@ -17,9 +17,9 @@
       "csp": {
         "default-src": "'self' 'unsafe-inline' blob: data: customprotocol: asset: http://asset.localhost http://rangefile.localhost ipc: http://ipc.localhost",
         "connect-src": "'self' blob: data: asset: http://asset.localhost http://rangefile.localhost ipc: http://ipc.localhost",
-        "img-src": "'self' blob: data: asset: http://asset.localhost http://rangefile.localhost",
+        "img-src": "'self' blob: data: asset: http://asset.localhost",
         "style-src": "'self' 'unsafe-inline' blob: asset: http://asset.localhost",
-        "font-src": "'self' blob: data: asset: http://asset.localhost tauri:",
+        "font-src": "'self' blob: data: asset: http://asset.localhost",
         "frame-src": "'self' blob: asset: http://asset.localhost",
         "script-src": "'self' 'unsafe-inline' 'unsafe-eval' data: blob: asset: http://asset.localhost"
       },

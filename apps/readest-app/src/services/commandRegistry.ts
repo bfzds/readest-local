@@ -525,7 +525,7 @@ const languagePanelItems = [
   {
     id: 'settings.language.translationProvider',
     labelKey: _('Translation Service'),
-    keywords: ['translation', 'provider', 'google', 'deepl', 'service'],
+    keywords: ['translation', 'provider', 'google', 'service'],
     section: 'Translation',
   },
   {

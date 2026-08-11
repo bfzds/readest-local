@@ -13,7 +13,6 @@ vi.mock('@/utils/misc', () => ({
 import {
   DATA_SUBDIR,
   LOCAL_BOOKS_SUBDIR,
-  CLOUD_BOOKS_SUBDIR,
   LOCAL_FONTS_SUBDIR,
   LOCAL_IMAGES_SUBDIR,
   SETTINGS_FILENAME,
@@ -24,7 +23,6 @@ import {
   SUPPORTED_IMAGE_EXTS,
   IMAGE_ACCEPT_FORMATS,
   DEFAULT_KOSYNC_SETTINGS,
-  READWISE_API_BASE_URL,
   DEFAULT_READWISE_SETTINGS,
   DEFAULT_SYSTEM_SETTINGS,
   DEFAULT_MOBILE_SYSTEM_SETTINGS,
@@ -64,17 +62,6 @@ import {
   CJK_EXCLUDE_PATTENS,
   CJK_FONTS_PATTENS,
   BOOK_IDS_SEPARATOR,
-  DOWNLOAD_READEST_URL,
-  READEST_WEB_BASE_URL,
-  READEST_NODE_BASE_URL,
-  READEST_UPDATER_FILE,
-  READEST_CHANGELOG_FILE,
-  READEST_PUBLIC_STORAGE_BASE_URL,
-  READEST_OPDS_USER_AGENT,
-  SYNC_PROGRESS_INTERVAL_SEC,
-  SYNC_NOTES_INTERVAL_SEC,
-  SYNC_BOOKS_INTERVAL_SEC,
-  CHECK_UPDATE_INTERVAL_SEC,
   MAX_ZOOM_LEVEL,
   MIN_ZOOM_LEVEL,
   ZOOM_STEP,
@@ -106,10 +93,6 @@ describe('services/constants', () => {
 
     it('LOCAL_BOOKS_SUBDIR contains DATA_SUBDIR', () => {
       expect(LOCAL_BOOKS_SUBDIR).toContain(DATA_SUBDIR);
-    });
-
-    it('CLOUD_BOOKS_SUBDIR contains DATA_SUBDIR', () => {
-      expect(CLOUD_BOOKS_SUBDIR).toContain(DATA_SUBDIR);
     });
 
     it('LOCAL_FONTS_SUBDIR contains DATA_SUBDIR', () => {
@@ -186,7 +169,7 @@ describe('services/constants', () => {
 
     it('has expected keys with correct types', () => {
       expect(typeof DEFAULT_KOSYNC_SETTINGS.serverUrl).toBe('string');
-      expect(DEFAULT_KOSYNC_SETTINGS.serverUrl).toMatch(/^https?:\/\//);
+      expect(DEFAULT_KOSYNC_SETTINGS.serverUrl).toBe('');
       expect(typeof DEFAULT_KOSYNC_SETTINGS.username).toBe('string');
       expect(typeof DEFAULT_KOSYNC_SETTINGS.userkey).toBe('string');
       expect(typeof DEFAULT_KOSYNC_SETTINGS.deviceId).toBe('string');
@@ -202,11 +185,6 @@ describe('services/constants', () => {
   // Readwise settings
   // ---------------------------------------------------------------------------
   describe('Readwise constants', () => {
-    it('READWISE_API_BASE_URL is a valid URL string', () => {
-      expect(typeof READWISE_API_BASE_URL).toBe('string');
-      expect(READWISE_API_BASE_URL).toMatch(/^https:\/\//);
-    });
-
     it('DEFAULT_READWISE_SETTINGS has expected structure', () => {
       expect(typeof DEFAULT_READWISE_SETTINGS).toBe('object');
       expect(DEFAULT_READWISE_SETTINGS.enabled).toBe(false);
@@ -872,62 +850,6 @@ describe('services/constants', () => {
     it('BOOK_IDS_SEPARATOR is a single character', () => {
       expect(typeof BOOK_IDS_SEPARATOR).toBe('string');
       expect(BOOK_IDS_SEPARATOR.length).toBe(1);
-    });
-
-    it('DOWNLOAD_READEST_URL is a valid URL', () => {
-      expect(DOWNLOAD_READEST_URL).toMatch(/^https:\/\//);
-    });
-
-    it('READEST_WEB_BASE_URL is a valid URL', () => {
-      expect(READEST_WEB_BASE_URL).toMatch(/^https:\/\//);
-    });
-
-    it('READEST_NODE_BASE_URL is a valid URL', () => {
-      expect(READEST_NODE_BASE_URL).toMatch(/^https:\/\//);
-    });
-
-    it('READEST_UPDATER_FILE is a URL ending with .json', () => {
-      expect(READEST_UPDATER_FILE).toMatch(/^https:\/\//);
-      expect(READEST_UPDATER_FILE).toMatch(/\.json$/);
-    });
-
-    it('READEST_CHANGELOG_FILE is a URL ending with .json', () => {
-      expect(READEST_CHANGELOG_FILE).toMatch(/^https:\/\//);
-      expect(READEST_CHANGELOG_FILE).toMatch(/\.json$/);
-    });
-
-    it('READEST_PUBLIC_STORAGE_BASE_URL is a valid URL', () => {
-      expect(READEST_PUBLIC_STORAGE_BASE_URL).toMatch(/^https:\/\//);
-    });
-
-    it('READEST_OPDS_USER_AGENT is a non-empty string', () => {
-      expect(typeof READEST_OPDS_USER_AGENT).toBe('string');
-      expect(READEST_OPDS_USER_AGENT.length).toBeGreaterThan(0);
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // Sync interval constants
-  // ---------------------------------------------------------------------------
-  describe('sync interval constants', () => {
-    it('SYNC_PROGRESS_INTERVAL_SEC is a positive number', () => {
-      expect(typeof SYNC_PROGRESS_INTERVAL_SEC).toBe('number');
-      expect(SYNC_PROGRESS_INTERVAL_SEC).toBeGreaterThan(0);
-    });
-
-    it('SYNC_NOTES_INTERVAL_SEC is a positive number', () => {
-      expect(typeof SYNC_NOTES_INTERVAL_SEC).toBe('number');
-      expect(SYNC_NOTES_INTERVAL_SEC).toBeGreaterThan(0);
-    });
-
-    it('SYNC_BOOKS_INTERVAL_SEC is a positive number', () => {
-      expect(typeof SYNC_BOOKS_INTERVAL_SEC).toBe('number');
-      expect(SYNC_BOOKS_INTERVAL_SEC).toBeGreaterThan(0);
-    });
-
-    it('CHECK_UPDATE_INTERVAL_SEC is at least one hour', () => {
-      expect(typeof CHECK_UPDATE_INTERVAL_SEC).toBe('number');
-      expect(CHECK_UPDATE_INTERVAL_SEC).toBeGreaterThanOrEqual(3600);
     });
   });
 

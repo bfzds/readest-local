@@ -128,7 +128,6 @@ describe('library context menu on Linux desktop (issue #5360)', () => {
       'Mark as On hold',
       'Show Book Details',
       'Reveal in Folder',
-      'Search on Goodreads',
       'Delete',
     ];
     const menuItems = await screen.findAllByRole('menuitem');
