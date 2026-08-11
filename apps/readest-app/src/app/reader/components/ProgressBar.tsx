@@ -43,7 +43,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
   // Reactive: this is the on-screen footer that has to refresh on every
   // page turn. Reads from readerProgressStore only.
   const progress = useBookProgress(bookKey);
-  const { section, pageinfo } = progress || {};
+  const { section, pageinfo, sectionLabel } = progress || {};
 
   const showDoubleBorder = viewSettings.vertical && viewSettings.doubleBorder;
   const isVertical = viewSettings.vertical;
@@ -228,6 +228,11 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
             rtl={viewSettings.rtl}
             isEink={isEink}
           />
+        )}
+        {!isVertical && !stickyBarActive && sectionLabel && (
+          <div className='section-label min-w-0 flex-1 truncate text-start' title={sectionLabel}>
+            {sectionLabel}
+          </div>
         )}
         {hasRemainingInfo && (
           <div
