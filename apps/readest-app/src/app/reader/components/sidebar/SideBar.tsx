@@ -121,14 +121,6 @@ const SideBar = ({}) => {
     setSideBarVisible(false);
   };
 
-  const handleToggleSearchBar = () => {
-    if (isSearchBarVisible) {
-      handleHideSearchBar();
-    } else {
-      setSearchBarVisible(true);
-    }
-  };
-
   const handleShowSearchBar = useCallback(() => {
     setTimeout(() => {
       setSideBarVisible(true);
@@ -254,10 +246,8 @@ const SideBar = ({}) => {
           <SidebarHeader
             bookKey={sideBarBookKey!}
             isPinned={isSideBarPinned}
-            isSearchBarVisible={isSearchBarVisible}
             onClose={() => setSideBarVisible(false)}
             onTogglePin={handleSideBarTogglePin}
-            onToggleSearchBar={handleToggleSearchBar}
           />
           <div
             className={clsx('search-bar', {
