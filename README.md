@@ -37,6 +37,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-portable.ps1 -
 ```
 
 便携版产物位于 `apps/readest-app/release/readest-local/`，直接运行 `readest-local.exe` 即可，无需安装。目标机器需要 Microsoft Edge WebView2 Runtime（Windows 11 自带）。
+便携版数据默认保存在 exe 同一目录：设置存于 `settings.json`，书库、字体、图片与词典等存于 `Readest` 子目录。整个文件夹可直接复制迁移。
 
 ## 离线验收
 
