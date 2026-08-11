@@ -23,6 +23,7 @@ const useSidebar = (initialWidth: string, isPinned: boolean) => {
     setSideBarWidth(initialWidth);
     setSideBarPin(isPinned);
     setSideBarVisible(isPinned);
+    setSideBarVisible(isPinned && (settings.globalViewSettings.showSideBar ?? false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
