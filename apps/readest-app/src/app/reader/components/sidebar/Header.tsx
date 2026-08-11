@@ -1,6 +1,5 @@
 import clsx from 'clsx';
 import React, { useRef } from 'react';
-import { FiSearch } from 'react-icons/fi';
 import { MdOutlineMenu, MdOutlinePushPin, MdPushPin } from 'react-icons/md';
 import { MdArrowBackIosNew } from 'react-icons/md';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -13,16 +12,13 @@ import SidebarToggler from '../SidebarToggler';
 const SidebarHeader: React.FC<{
   bookKey: string;
   isPinned: boolean;
-  isSearchBarVisible: boolean;
   onClose: () => void;
   onTogglePin: () => void;
-  onToggleSearchBar: () => void;
-}> = ({ bookKey, isPinned, isSearchBarVisible, onClose, onTogglePin, onToggleSearchBar }) => {
+}> = ({ bookKey, isPinned, onClose, onTogglePin }) => {
   const _ = useTranslation();
   const headerRef = useRef<HTMLDivElement>(null);
   const { isTrafficLightVisible } = useTrafficLight(headerRef);
   const iconSize15 = useResponsiveSize(15);
-  const iconSize18 = useResponsiveSize(18);
   const iconSize22 = useResponsiveSize(22);
 
   return (
@@ -47,16 +43,6 @@ const SidebarHeader: React.FC<{
         </div>
       </div>
       <div className='flex min-w-24 max-w-32 items-center justify-between sm:size-[70%]'>
-        <button
-          title={isSearchBarVisible ? _('Hide Search Bar') : _('Show Search Bar')}
-          onClick={onToggleSearchBar}
-          className={clsx(
-            'btn btn-ghost left-0 h-8 min-h-8 w-8 p-0',
-            isSearchBarVisible ? 'bg-base-300' : '',
-          )}
-        >
-          <FiSearch size={iconSize18} className='text-base-content' />
-        </button>
         <Dropdown
           label={_('Book Menu')}
           showTooltip={false}
