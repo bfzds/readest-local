@@ -26,4 +26,16 @@ const runSimpleCC = (text: string, variant: ConvertChineseVariant, reverse = fal
   return reverse ? simplecc(text, convertReverseMap[variant]) : simplecc(text, variant);
 };
 
+export const simplifyChineseText = async (text: string): Promise<string> => {
+  if (!text) return text;
+  try {
+    await initSimpleCC();
+    const simplified = runSimpleCC(text, 't2s');
+    return simplified === text ? text : simplified;
+  } catch (error) {
+    console.warn('Failed to simplify Chinese text, keeping original:', error);
+    return text;
+  }
+};
+
 export { initSimpleCC, runSimpleCC };
