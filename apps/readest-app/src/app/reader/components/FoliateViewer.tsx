@@ -10,6 +10,7 @@ import { useEnv } from '@/context/EnvContext';
 import { useThemeStore } from '@/store/themeStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useBookDataStore } from '@/store/bookDataStore';
+import { useSidebarStore } from '@/store/sidebarStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useCustomFontStore } from '@/store/customFontStore';
 import { useMouseEvent, useTouchEvent, useOpenMediaEvent } from '../hooks/useIframeEvents';
@@ -71,7 +72,7 @@ import { footerReservesBand } from '../utils/footerBand';
 import { showTransientSearchHighlight } from '../utils/searchHighlight';
 import { handleA11yNavigation } from '@/utils/a11y';
 import { isCJKLang } from '@/utils/lang';
-import { getLocale } from '@/utils/misc';
+import { getLocale, uniqueId } from '@/utils/misc';
 import { isFontType } from '@/utils/font';
 import { getScrollGapAttr } from '@/utils/webtoon';
 import { useMiddleClickAutoscroll } from '../hooks/useMiddleClickAutoscroll';
@@ -85,6 +86,9 @@ import Spinner from '@/components/Spinner';
 import ImageViewer from './ImageViewer';
 import TableViewer from './TableViewer';
 import { getTTSMiniPlayerClearance } from '../utils/ttsMiniPlayerPosition';
+import { EditorView } from '../editor/EditorView';
+import { readZipEntries, rewriteEpub } from '../editor/epubWriter';
+import { saveEditedEpub } from '../editor/saveEditedEpub';
 
 declare global {
   interface Window {
@@ -116,6 +120,11 @@ const FoliateViewer: React.FC<{
   const getProgress = useReaderStore((s) => s.getProgress);
   const getViewSettings = useReaderStore((s) => s.getViewSettings);
   const setViewSettings = useReaderStore((s) => s.setViewSettings);
+  const setBookKeys = useReaderStore((s) => s.setBookKeys);
+  const initViewState = useReaderStore((s) => s.initViewState);
+  const editing = useReaderStore((s) => s.viewStates[bookKey]?.editing ?? false);
+  const setEditing = useReaderStore((s) => s.setEditing);
+  const { setSideBarBookKey } = useSidebarStore();
   const getBookData = useBookDataStore((s) => s.getBookData);
   const { applyBackgroundTexture } = useBackgroundTexture();
   const { applyEinkMode } = useEinkMode();
@@ -951,6 +960,43 @@ const FoliateViewer: React.FC<{
     viewSettings?.showCurrentBatteryStatus,
   ]);
 
+  const handleSaveEdited = useCallback(
+    async (html: string) => {
+      const currentBook = bookData?.book;
+      if (!appService || !currentBook || currentBook.format !== 'EPUB') return;
+      const { file } = await appService.loadBookContent(currentBook);
+      const entries = await readZipEntries(file);
+      const sectionIndex = viewRef.current?.renderer.primaryIndex ?? 0;
+      const sectionId = bookData?.bookDoc?.sections[sectionIndex]?.id;
+      if (!sectionId) throw new Error('Section not found');
+      const newEpub = await rewriteEpub(entries, sectionId, new TextEncoder().encode(html));
+      const { book: savedBook } = await saveEditedEpub({
+        appService,
+        envConfig,
+        book: currentBook,
+        newEpub,
+      });
+      setEditing(bookKey, false);
+      const newBookKey = `${savedBook.hash}-${uniqueId()}`;
+      const nextKeys = useReaderStore
+        .getState()
+        .bookKeys.map((key) => (key === bookKey ? newBookKey : key));
+      setBookKeys(nextKeys);
+      setSideBarBookKey(newBookKey);
+      void initViewState(envConfig, savedBook.hash, newBookKey, true);
+    },
+    [
+      appService,
+      bookData,
+      bookKey,
+      envConfig,
+      initViewState,
+      setBookKeys,
+      setEditing,
+      setSideBarBookKey,
+    ],
+  );
+
   return (
     <>
       {selectedImage && (
@@ -986,6 +1032,14 @@ const FoliateViewer: React.FC<{
         {...mouseHandlers}
         {...touchHandlers}
       />
+      {editing && bookData?.bookDoc && (
+        <EditorView
+          bookDoc={bookData.bookDoc}
+          sectionIndex={viewRef.current?.renderer.primaryIndex ?? 0}
+          onSave={handleSaveEdited}
+          onCancel={() => setEditing(bookKey, false)}
+        />
+      )}
       {autoscrollAnchor && <AutoscrollIndicator anchor={autoscrollAnchor} />}
       {autoScroll.active && (
         <AutoScrollControl

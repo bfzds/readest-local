@@ -1998,5 +1998,8 @@
   "Danger Zone": "危险区域",
   "Delete All Books": "删除所有图书",
   "All books deleted.": "已删除所有图书。",
-  "Failed to delete books. Please try again later.": "删除图书失败。请稍后重试。"
+  "Failed to delete books. Please try again later.": "删除图书失败。请稍后重试。",
+  "Edit Book Content": "编辑正文",
+  "Only text edits are supported": "仅支持修改文字",
+  "Unsaved changes will be lost": "未保存的修改将丢失"
 }

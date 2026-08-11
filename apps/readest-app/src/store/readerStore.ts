@@ -49,6 +49,8 @@ interface ViewState {
      so the user's actual last-read position isn't overwritten by a preview.
      Cleared on the first user-initiated relocate (page turn / scroll). */
   previewMode: boolean;
+  /* True while the EPUB inline editor is open for this view (editing state). */
+  editing: boolean;
   /* View settings for the view:
     generally view settings have a hierarchy of global settings < book settings < view settings
     view settings for primary view are saved to book config which is persisted to config file
@@ -104,6 +106,7 @@ interface ReaderStore {
   setGridInsets: (key: string, insets: Insets | null) => void;
   setViewInited: (key: string, inited: boolean) => void;
   setPreviewMode: (key: string, previewMode: boolean) => void;
+  setEditing: (key: string, editing: boolean) => void;
   recreateViewer: (envConfig: EnvConfigType, key: string) => void;
 }
 
@@ -168,6 +171,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
           syncing: false,
           gridInsets: null,
           previewMode: false,
+          editing: false,
           viewSettings: null,
         },
       },
@@ -308,6 +312,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
             syncing: false,
             gridInsets: null,
             previewMode: false,
+            editing: false,
             viewSettings: { ...globalViewSettings, ...configViewSettings },
           },
         },
@@ -332,6 +337,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
             syncing: false,
             gridInsets: null,
             previewMode: false,
+            editing: false,
             viewSettings: null,
           },
         },
@@ -542,6 +548,18 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
         },
       },
     })),
+
+  setEditing: (key, editing) =>
+    set((state) => {
+      const current = state.viewStates[key];
+      if (!current) return state;
+      return {
+        viewStates: {
+          ...state.viewStates,
+          [key]: { ...current, editing },
+        },
+      };
+    }),
 
   recreateViewer: (envConfig: EnvConfigType, key: string) => {
     const id = key.split('-')[0]!;
