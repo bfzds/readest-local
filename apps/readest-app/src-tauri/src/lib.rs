@@ -36,10 +36,6 @@ use tauri::webview::ScrollBarStyle;
 use tauri::{command, Emitter, WebviewUrl, WebviewWindowBuilder};
 #[cfg(target_os = "android")]
 use tauri_plugin_native_bridge::register_select_directory_callback;
-#[cfg(target_os = "android")]
-use tauri_plugin_native_bridge::{NativeBridgeExt, OpenExternalUrlRequest};
-#[cfg(not(target_os = "android"))]
-use tauri_plugin_opener::OpenerExt;
 
 #[cfg(any(desktop, target_os = "ios"))]
 fn allow_file_in_scopes(app: &AppHandle, files: Vec<PathBuf>) {
@@ -228,7 +224,6 @@ fn get_executable_dir() -> String {
         .unwrap_or_default()
 }
 
-
 #[derive(Clone, serde::Serialize)]
 #[allow(dead_code)]
 struct SingleInstancePayload {
@@ -410,7 +405,6 @@ pub fn run() {
                 is_appimage = is_appimage,
             );
 
-            let app_handle = app.handle().clone();
             let win_builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
                 .background_throttling(BackgroundThrottlingPolicy::Disabled)
                 .background_color(if is_eink {
@@ -418,31 +412,7 @@ pub fn run() {
                 } else {
                     tauri::window::Color(50, 49, 48, 255)
                 })
-                .initialization_script(&init_script)
-                .on_navigation(move |url| {
-                    if url.scheme() == "alipays" || url.scheme() == "alipay" {
-                        let url_str = url.as_str().to_string();
-                        #[cfg(target_os = "android")]
-                        {
-                            let handle = app_handle.clone();
-                            tauri::async_runtime::spawn(async move {
-                                match handle
-                                    .native_bridge()
-                                    .open_external_url(OpenExternalUrlRequest { url: url_str })
-                                {
-                                    Ok(result) => println!("Result: {:?}", result),
-                                    Err(e) => eprintln!("Error: {:?}", e),
-                                }
-                            });
-                        }
-                        #[cfg(not(target_os = "android"))]
-                        {
-                            let _ = app_handle.opener().open_url(url_str, None::<&str>);
-                        }
-                        return false;
-                    }
-                    true
-                });
+                .initialization_script(&init_script);
 
             #[cfg(target_os = "macos")]
             let win_builder = win_builder.inner_size(1280.0, 800.0).resizable(true);

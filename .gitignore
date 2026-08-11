@@ -17,6 +17,18 @@ docker/.env
 # production
 /build
 
+# local portable release output
+apps/readest-app/release/
+
+# per-task verification logs (not part of the audit artifacts)
+docs/offline-audit/task9-lint.txt
+docs/offline-audit/task9-test.txt
+docs/offline-audit/task9-build.txt
+docs/offline-audit/task9-clippy.txt
+docs/offline-audit/task9-cargo-test.txt
+docs/offline-audit/task9-fmt.txt
+docs/offline-audit/task9-tauri-build.txt
+
 # misc
 .DS_Store
 *.pem

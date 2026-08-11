@@ -1,0 +1,37 @@
+# Task 9 离线防护测试与全量验证（2026-08-11）
+
+## 目标
+
+按计划完成离线防护测试与全量验证，生成离线审计报告与 Windows 便携版。
+
+## 新建
+
+- `apps/readest-app/src/__tests__/offline-guard.test.ts`：可持续离线防护测试，覆盖云域名、网络 token、云依赖、并行阅读残留与支付 scheme。
+- `apps/readest-app/scripts/build-portable.ps1`：便携打包脚本，输出 `release/readest-local/` 并附带 WebView2 说明。
+- `docs/offline-audit/offline-audit-report.txt`：最终网络审计报告。
+
+## 清理
+
+- Rust：移除支付宝支付导航（`lib.rs` 中 `on_navigation` 的 `alipays`/`alipay` 分支）与 capabilities 中 `opener:allow-open-url` 的 `alipays:*` 权限。
+- 删除未被引用的 `src/types/payment.ts`（Stripe 类型残留）。
+- 清理 8 处 Sentry 注释、`layout.tsx` 中 `wss://` 开发注释字面量。
+- 删除 33 个语言文件中的死翻译 key：Wikipedia/Wiktionary/Read on Wikipedia/support@readest.com/URL 校验提示。
+- 修复 `next.config.mjs`：显式 `outputFileTracingRoot`，并手动配置 webpack 源码别名（Next 在 monorepo 下 tsconfig paths 解析不稳定）。
+- `package.json` 的 `build` 改为 `next build --webpack`（Turbopack 在中文路径下会 panic）。
+- `range_file.rs` 的绝对路径测试按 Windows/Unix 平台路径修正。
+
+## 验证
+
+- `pnpm lint`：通过（tsgo 0 错误，biome 1071 文件）。
+- vitest 全量：396 通过 / 1 跳过，5520 通过 / 10 跳过。
+- `next build --webpack`：成功，静态导出 app 路由与 `pages/reader/[ids]`。
+- `cargo clippy -p Readest --no-deps -- -D warnings`：通过。
+- `cargo test -p Readest --lib`：53 通过。
+- `cargo fmt -p Readest --check`：通过。
+- `pnpm tauri build --no-bundle`：成功，产物 `target/release/readest.exe`。
+- `build-portable.ps1`：生成 `release/readest-local/readest-local.exe` 与 README.txt。
+
+## 审计报告结论
+
+- 81 个 URL 命中全部人工审查并分类：本地协议/开发 20、XML/EPUB 命名空间 44、文档链接/许可证 14、示例 URL 3、未分类 0。
+- 无真实联网入口；CSP 仅允许本地协议（asset/rangefile/ipc）。

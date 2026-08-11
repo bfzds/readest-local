@@ -36,8 +36,8 @@ export const viewport: Viewport = {
 // In Tauri mobile dev the page origin doesn't match the dev server, so
 // Next.js's `getSocketUrl` builds an unreachable HMR URL (see
 // `next/dist/client/dev/hot-reloader/get-socket-url.js`):
-//   - iOS sim:        page at `tauri://localhost` -> `wss://localhost/_next/...`
-//     (no port, non-http scheme falls through to `wss:`)
+//   - iOS sim:        page at `tauri://localhost` -> HMR WebSocket to `localhost/_next/...`
+//     (no port, non-http scheme falls through to secure WebSocket)
 //   - Android emul.:  page at `http://tauri.localhost` -> `ws://tauri.localhost/_next/...`
 //     (`tauri.localhost` is intercepted by Tauri's asset handler, but
 //     WebSocket frames bypass the interceptor and the dev server is on the
