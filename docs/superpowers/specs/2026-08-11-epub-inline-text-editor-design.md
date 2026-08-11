@@ -126,3 +126,21 @@
 - `contenteditable` 在 Windows WebView2、macOS WKWebView、Linux WebKitGTK 上的行为有差异，保存前结构净化作为兜底。
 - 少数章节含脚本、复杂 SVG 或不可编辑控件时，净化可能无法完整保留结构；第一版遇到此类情况拒绝保存并提示。
 - 重打包可能改变未编辑条目的压缩参数和时间戳，但内容字节不变；大文件重打包耗时是已知限制，后续可考虑在 Rust 侧做增量替换。
+
+## 实现偏差（2026-08-12）
+
+实现沿计划 `docs/superpowers/plans/2026-08-11-epub-inline-text-editor.md` 落地，六项任务均已完成并提交（`readest-local` 分支，起点 `dcc8273`：`ffa1143` epubWriter、`2e133dc` sectionSerializer、`a3952ab` saveEditedEpub、`639fb66` EditorView、`48390ac` 阅读页集成）。以下为与本文档的差异，均为实现取舍或既有环境限制：
+
+1. **保存不做「备份-恢复」，改为「新目录写入 + 成功后删旧目录」**。本文档 §4 说写盘前备份原文件、失败恢复；实现改为先把新 EPUB 写入 `Books/<newHash>/`，封面/导航/配置迁移、library 更新全部成功后才删旧目录。旧文件从不在写盘窗口期处于半写状态，失败只需清理半成品新目录并 rethrow（`saveEditedEpub.ts`）。语义上更安全，且不依赖临时备份文件。
+
+2. **净化算法由「白名单重建树」简化为「受保护元素签名序列比对」**。本文档 §2.1 描述的按白名单重建树未实现；`sectionSerializer.ts` 改为：`P`/`DIV`/`BR` 之外的所有元素（含 `A`/`IMG`/`SPAN`/`SUP`/`H1-H6`/`LI` 等）的「标签+属性+文档相对顺序」序列必须与原文完全一致，否则抛 `Only text edits are supported`。不重建树、不设属性白名单，而是要求受保护结构整体不变——比白名单更严格（顺序也校验）也更简单。通过校验后直接序列化编辑后文档。
+
+3. **编辑视图相对路径未做 `<base>`/blob 映射**。本文档 §2.2 提到的 iframe 相对路径失效问题未处理：`EditorView` 用 `srcdoc` 渲染原章节，图片等相对资源在编辑视图中可能不显示。但图片 `src` 等受保护属性原样保留，保存后落盘章节保持原始相对路径，最终 EPUB 不受影响。属已知视觉限制。
+
+4. **未保存离开的确认只覆盖编辑视图内的「取消」按钮**。本文档 §2 要求切章节/关闭编辑/离开阅读页都弹确认；实现只在 `EditorView` 的取消按钮用 `window.confirm` 拦截（`Unsaved changes will be lost`）。编辑态下阅读页 HeaderBar 被编辑视图覆盖，切章节入口不可达，故实际路径较窄；v1 未加 `beforeunload`/关书拦截。
+
+5. **编辑视图显示原始（未转换）文本**。阅读器对章节应用 simplecc/标点等展示层转换，编辑器直接加载并编辑原始 XHTML，故简体转换开启时编辑器显示的是原文本（如繁体）。保存后展示层转换仍会在重开时生效，编辑内容落盘在原始文本上，行为自洽，仅是编辑器内视觉与阅读页不一致。
+
+6. **vitest-browser 在本机（Windows）的 `vi.mock` 模块 mock 不生效**，导致既有浏览器测试（如 `dropdown-viewport`、`tts-auto-advance`）报 `useEnv must be used within EnvProvider` 而失败——这是既有环境问题（stash 掉本分支改动后复测同样失败），非本次改动引入。新增的 `EditorView.browser.test.tsx` 通过（其断言依赖的真实 hook 的 `defaultValue` fallback 与 mock 行为一致，故不受影响）。全量浏览器套件需在可正常 mock 的环境跑。
+
+7. **en 翻译文件仅 111 键**（多数英文文案走 key fallback），本次按计划只追加 3 个新 key（`Edit Book Content` / `Only text edits are supported` / `Unsaved changes will be lost`）。
