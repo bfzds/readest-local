@@ -472,6 +472,7 @@ describe('services/constants', () => {
     it('has expected properties', () => {
       expect(typeof DEFAULT_BOOK_LANGUAGE.replaceQuotationMarks).toBe('boolean');
       expect(typeof DEFAULT_BOOK_LANGUAGE.convertChineseVariant).toBe('string');
+      expect(DEFAULT_BOOK_LANGUAGE.convertChineseVariant).toBe('t2s');
     });
   });
 
@@ -769,6 +770,7 @@ describe('services/constants', () => {
       expect(typeof SYSTEM_SETTINGS_VERSION).toBe('number');
       expect(Number.isInteger(SYSTEM_SETTINGS_VERSION)).toBe(true);
       expect(SYSTEM_SETTINGS_VERSION).toBeGreaterThanOrEqual(1);
+      expect(SYSTEM_SETTINGS_VERSION).toBe(2);
     });
   });
 

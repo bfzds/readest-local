@@ -116,6 +116,13 @@ export function migrateLibraryThenSort(settings: SystemSettings): void {
   delete legacy.librarySortBy2;
 }
 
+export const migrateChineseConversion = (settings: SystemSettings, version: number): void => {
+  if (version >= SYSTEM_SETTINGS_VERSION) return;
+  if (settings.globalViewSettings?.convertChineseVariant === 'none') {
+    settings.globalViewSettings.convertChineseVariant = 't2s';
+  }
+};
+
 export async function loadSettings(ctx: Context): Promise<SystemSettings> {
   const defaultSettings: SystemSettings = {
     ...DEFAULT_SYSTEM_SETTINGS,
@@ -138,6 +145,7 @@ export async function loadSettings(ctx: Context): Promise<SystemSettings> {
   );
 
   const version = settings.version ?? 0;
+  migrateChineseConversion(settings, version);
   if (ctx.isAppDataSandbox || version < SYSTEM_SETTINGS_VERSION) {
     settings.version = SYSTEM_SETTINGS_VERSION;
   }
