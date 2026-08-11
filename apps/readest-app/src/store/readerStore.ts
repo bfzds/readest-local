@@ -16,6 +16,7 @@ import { DocumentLoader, TOCItem } from '@/libs/document';
 import { computeBookNav, hydrateBookNav, isBookNavCacheCurrent, updateToc } from '@/services/nav';
 import { formatTitle, getMetadataHash, getPrimaryLanguage } from '@/utils/book';
 import { getBaseFilename } from '@/utils/path';
+import { parsePixivNovelFilename } from '@/utils/pixivNovel';
 import { SUPPORTED_LANGNAMES } from '@/services/constants';
 import { useSettingsStore } from './settingsStore';
 import { BookData, useBookDataStore } from './bookDataStore';
@@ -243,7 +244,8 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
         config.viewSettings?.convertChineseVariant ?? 'none',
       );
       if (!bookDoc.metadata.title && file) {
-        bookDoc.metadata.title = getBaseFilename(file.name);
+        bookDoc.metadata.title =
+          parsePixivNovelFilename(file.name)?.title || getBaseFilename(file.name);
       }
       book.sourceTitle = formatTitle(bookDoc.metadata.title);
       // Correct language codes mistakenly set with language names

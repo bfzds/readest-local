@@ -2,6 +2,7 @@ import { partialMD5 } from './md5';
 import { getBaseFilename } from './path';
 import { detectLanguage } from './lang';
 import { configureZip } from './zip';
+import { parsePixivNovelFilename, parsePixivNovelMetaHeader } from './pixivNovel';
 
 interface Metadata {
   bookTitle: string;
@@ -17,8 +18,16 @@ interface Metadata {
 // 《》 are present.
 export const extractTxtFilenameMetadata = (
   filename: string,
+  sourcePath?: string,
 ): { title: string; author?: string } => {
   const base = getBaseFilename(filename);
+  const pixivMeta = parsePixivNovelFilename(sourcePath || filename);
+  if (pixivMeta) {
+    return {
+      title: pixivMeta.title,
+      ...(pixivMeta.author ? { author: pixivMeta.author } : {}),
+    };
+  }
   const cjkMatch = base.match(/《([^》]+)》(.*)/);
   if (!cjkMatch) {
     // No 《》 wrapper: keep the whole filename as the title (web-novel files use
@@ -86,6 +95,8 @@ interface Txt2EpubOptions {
   file: File;
   author?: string;
   language?: string;
+  /** Original import path; keeps Pixiv directory structure when available. */
+  sourcePath?: string;
 }
 
 interface ExtractChapterOptions {
@@ -139,8 +150,10 @@ export class TxtToEpubConverter {
     const decoder = new TextDecoder(runtimeEncoding);
     const txtContent = decoder.decode(fileContent).trim();
 
-    const filenameMeta = extractTxtFilenameMetadata(txtFile.name);
-    const bookTitle = filenameMeta.title;
+    const sourcePath = options.sourcePath || txtFile.name;
+    const filenameMeta = extractTxtFilenameMetadata(txtFile.name, sourcePath);
+    const headerMeta = parsePixivNovelMetaHeader(txtContent);
+    const bookTitle = headerMeta?.title || filenameMeta.title;
     const fileName = `${bookTitle}.epub`;
 
     const fileHeader = txtContent.slice(0, 1024);
@@ -152,7 +165,8 @@ export class TxtToEpubConverter {
       matchedAuthor = matchedAuthor.replace(/^[\p{P}\p{S}]+|[\p{P}\p{S}]+$/gu, '');
     } catch {}
     const headerAuthor = isPlausibleAuthorName(matchedAuthor) ? matchedAuthor : '';
-    const author = headerAuthor || filenameMeta.author || providedAuthor || '';
+    const author =
+      headerMeta?.author || headerAuthor || filenameMeta.author || providedAuthor || '';
     const language = providedLanguage || detectLanguage(fileHeader);
     // console.log(`Detected language: ${language}`);
     const identifier = await partialMD5(txtFile);
@@ -194,19 +208,21 @@ export class TxtToEpubConverter {
     const runtimeEncoding = this.resolveSupportedEncoding(detectedEncoding);
     // console.log(`Detected encoding: ${detectedEncoding}, runtime encoding: ${runtimeEncoding}`);
 
-    const filenameMeta = extractTxtFilenameMetadata(txtFile.name);
-    const bookTitle = filenameMeta.title;
-    const fileName = `${bookTitle}.epub`;
+    const sourcePath = options.sourcePath || txtFile.name;
+    const filenameMeta = extractTxtFilenameMetadata(txtFile.name, sourcePath);
     const fileHeader = await this.readHeaderTextFromFile(
       txtFile,
       runtimeEncoding,
       HEADER_TEXT_MAX_CHARS,
       HEADER_TEXT_MAX_BYTES,
     );
+    const headerMeta = parsePixivNovelMetaHeader(fileHeader);
+    const bookTitle = headerMeta?.title || filenameMeta.title;
+    const fileName = `${bookTitle}.epub`;
 
     const { author, language } = this.extractAuthorAndLanguage(
       fileHeader,
-      filenameMeta.author ?? providedAuthor,
+      headerMeta?.author || (filenameMeta.author ?? providedAuthor),
       providedLanguage,
     );
     // console.log(`Detected language: ${language}`);

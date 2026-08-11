@@ -58,6 +58,9 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
     [navigationHandlers],
   );
 
+  const showPrevPageButton = viewSettings?.showPrevPageButton;
+  const showNextPageButton = viewSettings?.showNextPageButton;
+
   const classes = clsx(
     'footerbar-progress-mobile not-eink:bg-base-200 eink:bg-base-100 absolute flex w-full flex-col items-center gap-y-8 px-4 transition-all',
     'eink:border-base-content eink:border-t',
@@ -96,55 +99,77 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
           />
         </div>
       </div>
-      <div className='flex w-full items-center justify-between gap-x-6'>
-        <Button
-          icon={getNavigationIcon(
-            viewSettings?.rtl,
-            <RiArrowLeftDoubleLine />,
-            <RiArrowRightDoubleLine />,
+      <div className='grid w-full grid-cols-[1fr_auto_1fr] items-center gap-x-6'>
+        <div className='flex items-center justify-start gap-x-6'>
+          {showPrevPageButton && (
+            <>
+              <Button
+                icon={getNavigationIcon(
+                  viewSettings?.rtl,
+                  <RiArrowLeftDoubleLine />,
+                  <RiArrowRightDoubleLine />,
+                )}
+                onClick={navigationHandlers.onPrevSection}
+                label={_('Previous Section')}
+              />
+              <Button
+                icon={getNavigationIcon(
+                  viewSettings?.rtl,
+                  <RiArrowLeftSLine />,
+                  <RiArrowRightSLine />,
+                )}
+                onClick={navigationHandlers.onPrevPage}
+                label={_('Previous Page')}
+              />
+            </>
           )}
-          onClick={navigationHandlers.onPrevSection}
-          label={_('Previous Section')}
-        />
-        <Button
-          icon={getNavigationIcon(viewSettings?.rtl, <RiArrowLeftSLine />, <RiArrowRightSLine />)}
-          onClick={navigationHandlers.onPrevPage}
-          label={_('Previous Page')}
-        />
-        <Button
-          icon={getNavigationIcon(
-            viewSettings?.rtl,
-            <RiArrowGoBackLine />,
-            <RiArrowGoForwardLine />,
+        </div>
+        <div className='flex items-center justify-center gap-x-6'>
+          <Button
+            icon={getNavigationIcon(
+              viewSettings?.rtl,
+              <RiArrowGoBackLine />,
+              <RiArrowGoForwardLine />,
+            )}
+            onClick={navigationHandlers.onGoBack}
+            label={_('Go Back')}
+            disabled={!view?.history.canGoBack}
+          />
+          <Button
+            icon={getNavigationIcon(
+              viewSettings?.rtl,
+              <RiArrowGoForwardLine />,
+              <RiArrowGoBackLine />,
+            )}
+            onClick={navigationHandlers.onGoForward}
+            label={_('Go Forward')}
+            disabled={!view?.history.canGoForward}
+          />
+        </div>
+        <div className='flex items-center justify-end gap-x-6'>
+          {showNextPageButton && (
+            <>
+              <Button
+                icon={getNavigationIcon(
+                  viewSettings?.rtl,
+                  <RiArrowRightSLine />,
+                  <RiArrowLeftSLine />,
+                )}
+                onClick={navigationHandlers.onNextPage}
+                label={_('Next Page')}
+              />
+              <Button
+                icon={getNavigationIcon(
+                  viewSettings?.rtl,
+                  <RiArrowRightDoubleLine />,
+                  <RiArrowLeftDoubleLine />,
+                )}
+                onClick={navigationHandlers.onNextSection}
+                label={_('Next Section')}
+              />
+            </>
           )}
-          onClick={navigationHandlers.onGoBack}
-          label={_('Go Back')}
-          disabled={!view?.history.canGoBack}
-        />
-        <Button
-          icon={getNavigationIcon(
-            viewSettings?.rtl,
-            <RiArrowGoForwardLine />,
-            <RiArrowGoBackLine />,
-          )}
-          onClick={navigationHandlers.onGoForward}
-          label={_('Go Forward')}
-          disabled={!view?.history.canGoForward}
-        />
-        <Button
-          icon={getNavigationIcon(viewSettings?.rtl, <RiArrowRightSLine />, <RiArrowLeftSLine />)}
-          onClick={navigationHandlers.onNextPage}
-          label={_('Next Page')}
-        />
-        <Button
-          icon={getNavigationIcon(
-            viewSettings?.rtl,
-            <RiArrowRightDoubleLine />,
-            <RiArrowLeftDoubleLine />,
-          )}
-          onClick={navigationHandlers.onNextSection}
-          label={_('Next Section')}
-        />
+        </div>
       </div>
     </div>
   );

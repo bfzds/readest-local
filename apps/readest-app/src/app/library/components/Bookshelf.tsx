@@ -403,10 +403,10 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     [toggleSelectedBook],
   );
 
-  const openSelectedBooks = () => {
+  const openSelectedBooks = async () => {
     handleSetSelectMode(false);
     if (appService?.hasWindow && settings.openBookInNewWindow) {
-      showReaderWindow(appService, getSelectedBooks());
+      await showReaderWindow(appService, getSelectedBooks());
     } else {
       setTimeout(() => setLoading(true), 200);
       navigateToReader(router, getSelectedBooks());

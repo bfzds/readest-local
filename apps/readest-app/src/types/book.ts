@@ -310,6 +310,13 @@ export interface ViewConfig {
   showCurrentBatteryStatus: boolean;
   showBatteryPercentage: boolean;
   showPaginationButtons: boolean;
+  showNotebookButton: boolean;
+  showBookmarkButton: boolean;
+  showPrevPageButton: boolean;
+  showNextPageButton: boolean;
+  showSideBar: boolean;
+  showGoToLibraryButton: boolean;
+  showAnnotationQuickActionButton: boolean;
   progressStyle: 'percentage' | 'fraction' | 'reference';
   referencePageCount: number;
 

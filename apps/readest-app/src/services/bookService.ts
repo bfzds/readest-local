@@ -34,6 +34,7 @@ import { isContentURI, isValidURL, makeSafeFilename } from '@/utils/misc';
 import { deserializeConfig, serializeConfig, serializeRawConfig } from '@/utils/serializer';
 import { ClosableFile } from '@/utils/file';
 import { TxtToEpubConverter } from '@/utils/txt';
+import { parsePixivNovelFilename, type PixivNovelMetadata } from '@/utils/pixivNovel';
 import { svg2png } from '@/utils/svg';
 import { normalizeMetadataIsbn } from '@/utils/isbn';
 import { BookFileNotFoundError } from './errors';
@@ -404,6 +405,7 @@ export async function importBook(
 
   let loadedBook: BookDoc | undefined;
   let fileobj: File | undefined;
+  let pixivMeta: PixivNovelMetadata | null = null;
   try {
     let format: BookFormat;
     let filename: string;
@@ -424,9 +426,10 @@ export async function importBook(
         fileobj = file;
         filename = file.name;
       }
+      const sourcePath = typeof file === 'string' ? file : file.name;
       if (/\.txt$/i.test(filename)) {
         const txt2epub = new TxtToEpubConverter();
-        ({ file: fileobj } = await txt2epub.convert({ file: fileobj }));
+        ({ file: fileobj } = await txt2epub.convert({ file: fileobj, sourcePath }));
       }
       if (!fileobj || fileobj.size === 0) {
         throw new Error('Invalid or empty book file');
@@ -477,8 +480,21 @@ export async function importBook(
       }
       normalizeMetadataIsbn(loadedBook.metadata);
       const metadataTitle = formatTitle(loadedBook.metadata.title);
-      if (!metadataTitle || !metadataTitle.trim() || metadataTitle === filename) {
-        loadedBook.metadata.title = getBaseFilename(filename);
+      pixivMeta = parsePixivNovelFilename(sourcePath);
+      const looksLikeChapterTitle =
+        /^(?:第\s*[0-9一二三四五六七八九十百千万零]*\s*[章话回節卷部]|[上下中]册|[上下中]部|Chapter\s*\d+)\s*$/i.test(
+          metadataTitle?.trim() ?? '',
+        );
+      if (
+        !metadataTitle ||
+        !metadataTitle.trim() ||
+        metadataTitle === filename ||
+        (pixivMeta && looksLikeChapterTitle)
+      ) {
+        loadedBook.metadata.title = pixivMeta?.title || getBaseFilename(filename);
+      }
+      if (pixivMeta?.author && !formatAuthors(loadedBook.metadata.author, 'ja')) {
+        loadedBook.metadata.author = pixivMeta.author;
       }
     } catch (error) {
       throw new Error(`Failed to open the book file: ${(error as Error).message || error}`);
@@ -575,9 +591,17 @@ export async function importBook(
       // Same file hash: preserve user edits
       existingBook.format = book.format;
       existingBook.metaHash = metaHash;
-      existingBook.title = existingBook.title.trim() ? existingBook.title.trim() : book.title;
-      existingBook.sourceTitle = existingBook.sourceTitle ?? book.sourceTitle;
-      existingBook.author = existingBook.author ?? book.author;
+      // A re-import of the same file can carry the canonical title in its
+      // filename (Pixiv novel downloads), so refresh stale titles instead of
+      // keeping whatever the previous import persisted.
+      if (pixivMeta?.title) {
+        existingBook.title = book.title;
+        existingBook.sourceTitle = book.sourceTitle;
+      } else {
+        existingBook.title = existingBook.title.trim() ? existingBook.title.trim() : book.title;
+        existingBook.sourceTitle = existingBook.sourceTitle ?? book.sourceTitle;
+      }
+      existingBook.author = pixivMeta?.title ? book.author : (existingBook.author ?? book.author);
       existingBook.primaryLanguage = existingBook.primaryLanguage ?? book.primaryLanguage;
       existingBook.metadata = book.metadata;
       existingBook.downloadedAt = Date.now();

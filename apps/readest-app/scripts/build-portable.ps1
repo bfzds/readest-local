@@ -21,5 +21,10 @@ Copy-Item $exe (Join-Path $outDir $outName) -Force
 ) | Set-Content -Path (Join-Path $outDir 'README.txt') -Encoding utf8
 
 # Portable mode marker: the app switches to exe-adjacent storage when this file exists.
-[System.IO.File]::WriteAllText((Join-Path $outDir 'settings.json'), '{}')
+# Portable mode marker: create it only when absent so repacking does not wipe
+# the user's settings.json (fonts, themes, library layout, etc).
+$settingsPath = Join-Path $outDir 'settings.json'
+if (-not (Test-Path $settingsPath)) {
+  [System.IO.File]::WriteAllText($settingsPath, '{}')
+}
 Write-Output "Portable build created at $outDir"

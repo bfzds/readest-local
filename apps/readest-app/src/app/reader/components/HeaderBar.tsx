@@ -223,21 +223,23 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
               cut the touch halos short of the 44px target (#5401) —
               `scrollbar-width: none` alone does not remove that strip. */}
           <div className='no-scrollbar flex h-full min-w-0 items-center gap-x-4 overflow-x-auto max-[350px]:gap-x-2'>
-            {!isSideBarVisible && (
+            {isSideBarVisible && (
               <div className='hidden sm:flex'>
                 <SidebarToggler bookKey={bookKey} />
               </div>
             )}
-            <button
-              title={_('Go to Library')}
-              className='btn btn-ghost hidden h-8 min-h-8 w-8 p-0 sm:flex'
-              onClick={onGoToLibrary}
-            >
-              <VscLibrary size={iconSize18} className='fill-base-content' />
-            </button>
-            <BookmarkToggler bookKey={bookKey} />
+            {viewSettings?.showGoToLibraryButton && (
+              <button
+                title={_('Go to Library')}
+                className='btn btn-ghost hidden h-8 min-h-8 w-8 p-0 sm:flex'
+                onClick={onGoToLibrary}
+              >
+                <VscLibrary size={iconSize18} className='fill-base-content' />
+              </button>
+            )}
+            {viewSettings?.showBookmarkButton && <BookmarkToggler bookKey={bookKey} />}
           </div>
-          {enableAnnotationQuickActions && (
+          {enableAnnotationQuickActions && viewSettings?.showAnnotationQuickActionButton && (
             <Dropdown
               label={
                 annotationQuickAction
@@ -296,7 +298,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
 
         <div className='header-tools-end bg-base-100 z-20 ms-auto flex h-full min-w-max items-center gap-x-4 ps-2 max-[350px]:gap-x-2'>
           {!isHeaderCompact && <SettingsToggler bookKey={bookKey} />}
-          <NotebookToggler bookKey={bookKey} />
+          {viewSettings?.showNotebookButton && <NotebookToggler bookKey={bookKey} />}
           <Dropdown
             label={_('View Options')}
             containerClassName='h-8'

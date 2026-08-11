@@ -424,6 +424,9 @@ export const DEFAULT_VIEW_CONFIG: ViewConfig = {
   showBookmarkButton: false,
   showPrevPageButton: false,
   showNextPageButton: false,
+  showSideBar: false,
+  showGoToLibraryButton: false,
+  showAnnotationQuickActionButton: false,
   progressStyle: 'fraction',
   referencePageCount: 0,
 

@@ -77,11 +77,23 @@ function makeSettings(overrides: Partial<SystemSettings> = {}): SystemSettings {
       deviceId: 'gdrive-device-id',
       lastSyncedAt: 777,
     },
+    customFonts: [{ id: 'font-1', path: '/fonts/custom.ttf', name: 'Custom Font' }],
+    customTextures: [{ id: 'texture-1', path: '/textures/paper.png', name: 'Paper' }],
     globalReadSettings: {
       sideBarWidth: '20%',
       customThemes: [{ name: 'mytheme' }],
     },
     globalViewSettings: {
+      defaultFont: 'sans',
+      sansSerifFont: 'Noto Sans CJK SC',
+      defaultFontSize: 20,
+      minimumFontSize: 12,
+      fontWeight: 400,
+      lineHeight: 1.7,
+      theme: 'sepia',
+      backgroundTextureId: 'paper',
+      backgroundOpacity: 0.85,
+      backgroundSize: 'cover',
       userStylesheet: 'body { color: red }',
       uiLanguage: 'en',
     },
@@ -157,6 +169,20 @@ describe('sanitizeSettingsForBackup - blacklist', () => {
     expect(out.kosync.deviceName).toBe('My Phone');
     expect(out.globalReadSettings.customThemes).toEqual([{ name: 'mytheme' }]);
     expect(out.globalViewSettings.userStylesheet).toBe('body { color: red }');
+    expect(out.globalViewSettings.defaultFont).toBe('sans');
+    expect(out.globalViewSettings.sansSerifFont).toBe('Noto Sans CJK SC');
+    expect(out.globalViewSettings.defaultFontSize).toBe(20);
+    expect(out.globalViewSettings.lineHeight).toBe(1.7);
+    expect(out.globalViewSettings.theme).toBe('sepia');
+    expect(out.globalViewSettings.backgroundTextureId).toBe('paper');
+    expect(out.globalViewSettings.backgroundOpacity).toBe(0.85);
+    expect(out.globalViewSettings.backgroundSize).toBe('cover');
+    expect(out.customFonts).toEqual([
+      { id: 'font-1', path: '/fonts/custom.ttf', name: 'Custom Font' },
+    ]);
+    expect(out.customTextures).toEqual([
+      { id: 'texture-1', path: '/textures/paper.png', name: 'Paper' },
+    ]);
   });
 
   it('does not mutate the input settings', () => {
@@ -260,6 +286,29 @@ describe('mergeRestoredSettings', () => {
     expect(merged.kosync.serverUrl).toBe('https://new-kosync.example');
     expect(merged.kosync.deviceName).toBe('Restored Name');
     expect(merged.kosync.deviceId).toBe('kosync-device-id');
+  });
+
+  it('restores reader font and theme preferences from the backup', () => {
+    const current = makeSettings({
+      globalViewSettings: {
+        defaultFont: 'serif',
+        defaultFontSize: 14,
+        lineHeight: 1.5,
+        theme: 'light',
+        backgroundTextureId: '',
+        backgroundOpacity: 1,
+        backgroundSize: 'auto',
+      } as SystemSettings['globalViewSettings'],
+    });
+    const backup = sanitizeSettingsForBackup(makeSettings());
+    const merged = mergeRestoredSettings(current, backup);
+    expect(merged.globalViewSettings.defaultFont).toBe('sans');
+    expect(merged.globalViewSettings.defaultFontSize).toBe(20);
+    expect(merged.globalViewSettings.lineHeight).toBe(1.7);
+    expect(merged.globalViewSettings.theme).toBe('sepia');
+    expect(merged.globalViewSettings.backgroundTextureId).toBe('paper');
+    expect(merged.globalViewSettings.backgroundOpacity).toBe(0.85);
+    expect(merged.globalViewSettings.backgroundSize).toBe('cover');
   });
 
   it('replaces arrays wholesale rather than concatenating', () => {

@@ -3,6 +3,7 @@ import type { AppService, OsPlatform } from '@/types/system';
 import type { SystemSettings } from '@/types/settings';
 import { normalizeFilePathForIndex } from '@/services/bookService';
 import { isContentURI, isValidURL } from '@/utils/misc';
+import { parsePixivNovelFilename } from '@/utils/pixivNovel';
 
 export interface IngestFileDeps {
   appService: AppService;
@@ -191,6 +192,15 @@ export async function ingestFile(
     const key = normalizeFilePathForIndex(opts.file, appService.osPlatform);
     const existing = key ? opts.lookupIndex.byFilePath.get(key) : undefined;
     if (existing) {
+      // Re-import of an in-place Pixiv novel: the filename is the canonical
+      // source for title/author, so refresh stale metadata from earlier
+      // imports instead of returning the old entry verbatim.
+      const pixivMeta = parsePixivNovelFilename(opts.file);
+      if (pixivMeta?.title) {
+        existing.title = pixivMeta.title;
+        existing.sourceTitle = pixivMeta.title;
+        if (pixivMeta.author) existing.author = pixivMeta.author;
+      }
       return existing;
     }
   }

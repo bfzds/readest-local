@@ -516,6 +516,53 @@ describe('extractTxtFilenameMetadata', () => {
 });
 
 describe('author resolution during conversion (issue #4390)', () => {
+  describe('PixivBatchDownloader names', () => {
+    it('extracts title and author from the default layout', () => {
+      expect(extractTxtFilenameMetadata('pixiv/作者A-12345678/23456789-小说标题.txt')).toEqual({
+        title: '小说标题',
+        author: '作者A',
+      });
+    });
+
+    it('extracts title and author from the default layout with sourcePath', () => {
+      expect(
+        extractTxtFilenameMetadata(
+          '23456789-小说标题.txt',
+          'pixiv/作者A-12345678/23456789-小说标题.txt',
+        ),
+      ).toEqual({ title: '小说标题', author: '作者A' });
+    });
+
+    it('prefers the downloader TXT header over the filename', async () => {
+      const converter = new TxtToEpubConverter() as unknown as TxtConverterFlowPrivateAPI;
+      let captured: TestMetadata | undefined;
+      converter.detectEncoding = () => 'utf-8';
+      converter.createEpub = async (_chapters, metadata) => {
+        captured = metadata;
+        return new Blob();
+      };
+      converter.extractChapters = () => [{ title: '第一章', content: '正文', isVolume: false }];
+      const file = new File(
+        [
+          [
+            '小说标题',
+            '',
+            '作者A',
+            '',
+            'https://www.pixiv.net/novel/show.php?id=23456789',
+            '',
+            '----- 下面是正文 -----',
+            '',
+            '正文',
+          ].join('\n'),
+        ],
+        'pixiv/作者A-12345678/23456789-装饰文件名.txt',
+      );
+      await converter.convert({ file });
+      expect(captured).toMatchObject({ bookTitle: '小说标题', author: '作者A' });
+    });
+  });
+
   const convertAndCaptureMetadata = async (name: string, content: string) => {
     const converter = new TxtToEpubConverter() as unknown as TxtConverterFlowPrivateAPI;
     let captured: TestMetadata | undefined;

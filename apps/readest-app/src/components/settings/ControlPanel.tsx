@@ -4,6 +4,7 @@ import { useReaderStore } from '@/store/readerStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useSidebarStore } from '@/store/sidebarStore';
 import { useResetViewSettings } from '@/hooks/useResetSettings';
 import { useEinkMode } from '@/hooks/useEinkMode';
 import { getStyles } from '@/utils/style';
@@ -36,6 +37,7 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
   const { applyEinkMode } = useEinkMode();
   const bookData = getBookData(bookKey);
   const viewSettings = getViewSettings(bookKey) || settings.globalViewSettings;
+  const { isSideBarVisible, setSideBarVisible } = useSidebarStore();
 
   const [isScrolledMode, setScrolledMode] = useState(viewSettings.scrolled);
   const [noContinuousScroll, setNoContinuousScroll] = useState(viewSettings.noContinuousScroll);
@@ -43,6 +45,17 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
   const [hideScrollbar, setHideScrollbar] = useState(viewSettings.hideScrollbar || false);
   const [showPaginationButtons, setShowPaginationButtons] = useState(
     viewSettings.showPaginationButtons,
+  );
+  const [showNotebookButton, setShowNotebookButton] = useState(viewSettings.showNotebookButton);
+  const [showBookmarkButton, setShowBookmarkButton] = useState(viewSettings.showBookmarkButton);
+  const [showPrevPageButton, setShowPrevPageButton] = useState(viewSettings.showPrevPageButton);
+  const [showNextPageButton, setShowNextPageButton] = useState(viewSettings.showNextPageButton);
+  const [showSideBar, setShowSideBar] = useState(viewSettings.showSideBar);
+  const [showGoToLibraryButton, setShowGoToLibraryButton] = useState(
+    viewSettings.showGoToLibraryButton,
+  );
+  const [showAnnotationQuickActionButton, setShowAnnotationQuickActionButton] = useState(
+    viewSettings.showAnnotationQuickActionButton,
   );
   const [isDisableClick, setIsDisableClick] = useState(viewSettings.disableClick);
   const [isDisableSwipe, setIsDisableSwipe] = useState(viewSettings.disableSwipe);
@@ -93,6 +106,13 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
       scrollingOverlap: setScrollingOverlap,
       hideScrollbar: setHideScrollbar,
       showPaginationButtons: setShowPaginationButtons,
+      showNotebookButton: setShowNotebookButton,
+      showBookmarkButton: setShowBookmarkButton,
+      showPrevPageButton: setShowPrevPageButton,
+      showNextPageButton: setShowNextPageButton,
+      showSideBar: setShowSideBar,
+      showGoToLibraryButton: setShowGoToLibraryButton,
+      showAnnotationQuickActionButton: setShowAnnotationQuickActionButton,
       disableClick: setIsDisableClick,
       disableSwipe: setIsDisableSwipe,
       swapClickArea: setSwapClickArea,
@@ -171,6 +191,55 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showPaginationButtons]);
+
+  useEffect(() => {
+    saveViewSettings(envConfig, bookKey, 'showNotebookButton', showNotebookButton, false, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showNotebookButton]);
+
+  useEffect(() => {
+    saveViewSettings(envConfig, bookKey, 'showBookmarkButton', showBookmarkButton, false, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showBookmarkButton]);
+
+  useEffect(() => {
+    saveViewSettings(envConfig, bookKey, 'showPrevPageButton', showPrevPageButton, false, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showPrevPageButton]);
+
+  useEffect(() => {
+    saveViewSettings(envConfig, bookKey, 'showNextPageButton', showNextPageButton, false, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showNextPageButton]);
+
+  useEffect(() => {
+    saveViewSettings(envConfig, bookKey, 'showSideBar', showSideBar, false, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showSideBar]);
+
+  useEffect(() => {
+    saveViewSettings(
+      envConfig,
+      bookKey,
+      'showGoToLibraryButton',
+      showGoToLibraryButton,
+      false,
+      false,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showGoToLibraryButton]);
+
+  useEffect(() => {
+    saveViewSettings(
+      envConfig,
+      bookKey,
+      'showAnnotationQuickActionButton',
+      showAnnotationQuickActionButton,
+      false,
+      false,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showAnnotationQuickActionButton]);
 
   useEffect(() => {
     saveViewSettings(envConfig, bookKey, 'disableClick', isDisableClick, false, false);
@@ -354,6 +423,62 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
           disabled={!viewSettings.scrolled}
           onChange={() => setHideScrollbar(!hideScrollbar)}
           data-setting-id='settings.control.scroll.hideScrollbar'
+        />
+      </BoxedList>
+
+      <BoxedList title={_('Reading Interface')} data-setting-id='settings.control.readerInterface'>
+        <SettingsSwitchRow
+          label={_('Notebook')}
+          description={_('Show the Notebook button in the reader toolbar')}
+          checked={showNotebookButton}
+          onChange={() => setShowNotebookButton(!showNotebookButton)}
+          data-setting-id='settings.control.showNotebookButton'
+        />
+        <SettingsSwitchRow
+          label={_('Bookmark')}
+          description={_('Show the Bookmark button in the reader toolbar')}
+          checked={showBookmarkButton}
+          onChange={() => setShowBookmarkButton(!showBookmarkButton)}
+          data-setting-id='settings.control.showBookmarkButton'
+        />
+        <SettingsSwitchRow
+          label={_('Previous Page')}
+          description={_('Show the Previous Page button')}
+          checked={showPrevPageButton}
+          onChange={() => setShowPrevPageButton(!showPrevPageButton)}
+          data-setting-id='settings.control.showPrevPageButton'
+        />
+        <SettingsSwitchRow
+          label={_('Next Page')}
+          description={_('Show the Next Page button')}
+          checked={showNextPageButton}
+          onChange={() => setShowNextPageButton(!showNextPageButton)}
+          data-setting-id='settings.control.showNextPageButton'
+        />
+        <SettingsSwitchRow
+          label={_('Sidebar')}
+          description={_('Show the Sidebar by default')}
+          checked={isSideBarVisible}
+          onChange={() => {
+            const nextSideBarVisible = !isSideBarVisible;
+            setShowSideBar(nextSideBarVisible);
+            setSideBarVisible(nextSideBarVisible);
+          }}
+          data-setting-id='settings.control.showSideBar'
+        />
+        <SettingsSwitchRow
+          label={_('Go to Library')}
+          description={_('Show the Go to Library button in the reader toolbar')}
+          checked={showGoToLibraryButton}
+          onChange={() => setShowGoToLibraryButton(!showGoToLibraryButton)}
+          data-setting-id='settings.control.showGoToLibraryButton'
+        />
+        <SettingsSwitchRow
+          label={_('Enable Quick Action on Selection')}
+          description={_('Show the Enable Quick Action on Selection button in the reader toolbar')}
+          checked={showAnnotationQuickActionButton}
+          onChange={() => setShowAnnotationQuickActionButton(!showAnnotationQuickActionButton)}
+          data-setting-id='settings.control.showAnnotationQuickActionButton'
         />
       </BoxedList>
 

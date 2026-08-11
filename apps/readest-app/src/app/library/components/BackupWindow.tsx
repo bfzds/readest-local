@@ -11,6 +11,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useFileSelector } from '@/hooks/useFileSelector';
 import { restoreFromBackupZip, saveBackupFile } from '@/services/backupService';
 import { useLibraryStore } from '@/store/libraryStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import Dialog from '@/components/Dialog';
 
 export const setBackupDialogVisible = (visible: boolean) => {
@@ -46,6 +47,7 @@ export const BackupWindow: React.FC<BackupWindowProps> = ({ onPullLibrary }) => 
   const _ = useTranslation();
   const { appService } = useEnv();
   const { setLibrary } = useLibraryStore();
+  const { setSettings } = useSettingsStore();
   const { selectFiles } = useFileSelector(appService, _);
   const [isOpen, setIsOpen] = useState(false);
   const [status, setStatus] = useState<BackupStatus>('idle');
@@ -144,6 +146,13 @@ export const BackupWindow: React.FC<BackupWindowProps> = ({ onPullLibrary }) => 
       const newLibrary = await appService.loadLibraryBooks();
       const booksCount = newLibrary.reduce((sum, book) => sum + (book.deletedAt ? 0 : 1), 0);
       setLibrary(newLibrary);
+      if (settingsRestored) {
+        try {
+          setSettings(await appService.loadSettings());
+        } catch (error) {
+          console.warn('Failed to refresh settings after restore:', error);
+        }
+      }
       setResult({
         type: 'restore',
         booksAdded: Math.min(booksAdded, booksCount),

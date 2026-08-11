@@ -7,7 +7,12 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@tauri-apps/api/window', () => ({
-  getCurrentWindow: vi.fn().mockReturnValue({ label: 'main', close: vi.fn() }),
+  getCurrentWindow: vi.fn().mockReturnValue({
+    label: 'main',
+    close: vi.fn(),
+    innerSize: vi.fn().mockResolvedValue({ width: 1600, height: 1000 }),
+    scaleFactor: vi.fn().mockResolvedValue(1),
+  }),
 }));
 
 vi.mock('@tauri-apps/api/webviewWindow', () => {
@@ -77,6 +82,8 @@ beforeEach(() => {
   vi.mocked(getCurrentWindow).mockReturnValue({
     label: 'main',
     close: vi.fn(),
+    innerSize: vi.fn().mockResolvedValue({ width: 1600, height: 1000 }),
+    scaleFactor: vi.fn().mockResolvedValue(1),
   } as unknown as ReturnType<typeof getCurrentWindow>);
 
   // Reset window.location
@@ -313,9 +320,9 @@ describe('navigateToUpdatePassword', () => {
 });
 
 describe('showReaderWindow', () => {
-  test('creates a new WebviewWindow with correct URL', () => {
+  test('creates a new WebviewWindow with correct URL', async () => {
     const appService = makeAppService();
-    showReaderWindow(appService as never, ['book1', 'book2']);
+    await showReaderWindow(appService as never, ['book1', 'book2']);
 
     expect(WebviewWindow).toHaveBeenCalled();
     const constructorCall = vi.mocked(WebviewWindow).mock.calls[0]!;
@@ -324,10 +331,10 @@ describe('showReaderWindow', () => {
     expect(url).toContain('ids=book1%2Bbook2');
   });
 
-  test('preserves the exact CFI and transient highlight in the reader window URL', () => {
+  test('preserves the exact CFI and transient highlight in the reader window URL', async () => {
     const appService = makeAppService();
     const cfi = 'epubcfi(/6/2!/4/2:1)';
-    showReaderWindow(
+    await showReaderWindow(
       appService as never,
       ['book1'],
       `cfi=${encodeURIComponent(cfi)}&highlight=search`,
@@ -340,9 +347,9 @@ describe('showReaderWindow', () => {
     expect(params.get('highlight')).toBe('search');
   });
 
-  test('uses macOS-specific window options', () => {
+  test('uses macOS-specific window options', async () => {
     const appService = makeAppService(true);
-    showReaderWindow(appService as never, ['book1']);
+    await showReaderWindow(appService as never, ['book1']);
 
     const constructorCall = vi.mocked(WebviewWindow).mock.calls[0]!;
     const options = constructorCall[1]!;
@@ -353,9 +360,9 @@ describe('showReaderWindow', () => {
     expect(options.titleBarStyle).toBe('overlay');
   });
 
-  test('uses non-macOS window options', () => {
+  test('uses non-macOS window options', async () => {
     const appService = makeAppService(false);
-    showReaderWindow(appService as never, ['book1']);
+    await showReaderWindow(appService as never, ['book1']);
 
     const constructorCall = vi.mocked(WebviewWindow).mock.calls[0]!;
     const options = constructorCall[1]!;
@@ -364,12 +371,28 @@ describe('showReaderWindow', () => {
     expect(options.transparent).toBe(true);
     expect(options.shadow).toBe(true);
   });
+
+  test('inherits the current window inner size as logical pixels', async () => {
+    vi.mocked(getCurrentWindow).mockReturnValue({
+      label: 'main',
+      close: vi.fn(),
+      innerSize: vi.fn().mockResolvedValue({ width: 2560, height: 1440 }),
+      scaleFactor: vi.fn().mockResolvedValue(2),
+    } as unknown as ReturnType<typeof getCurrentWindow>);
+    const appService = makeAppService();
+
+    await showReaderWindow(appService as never, ['book1']);
+
+    const options = vi.mocked(WebviewWindow).mock.calls[0]![1]!;
+    expect(options.width).toBe(1280);
+    expect(options.height).toBe(720);
+  });
 });
 
 describe('showLibraryWindow', () => {
-  test('creates a new WebviewWindow with file params', () => {
+  test('creates a new WebviewWindow with file params', async () => {
     const appService = makeAppService();
-    showLibraryWindow(appService as never, ['file1.epub', 'file2.epub']);
+    await showLibraryWindow(appService as never, ['file1.epub', 'file2.epub']);
 
     expect(WebviewWindow).toHaveBeenCalled();
     const constructorCall = vi.mocked(WebviewWindow).mock.calls[0]!;
