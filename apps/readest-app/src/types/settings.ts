@@ -208,7 +208,7 @@ export interface GoogleDriveSettings {
  */
 export interface S3Settings {
   enabled: boolean;
-  /** Service endpoint origin, e.g. `https://<account-id>.r2.cloudflarestorage.com`. */
+  /** Service endpoint origin, without the /api/v1/koreader suffix. */
   endpoint: string;
   /** SigV4 region; 'auto' works for R2/MinIO, AWS wants the bucket region. */
   region?: string;

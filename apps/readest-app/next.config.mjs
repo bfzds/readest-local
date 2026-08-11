@@ -1,4 +1,3 @@
-import withSerwistInit from '@serwist/next';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -7,29 +6,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = process.env['NODE_ENV'] === 'development';
 const appPlatform = process.env['NEXT_PUBLIC_APP_PLATFORM'];
 
-const exportOutput = appPlatform !== 'web' && !isDev;
-// Opt-in standalone output, set only by the Docker production build
-// (Dockerfile). Every other path keeps the original behavior: Tauri `export`,
-// local `build-web` (output undefined), dev, and the Cloudflare/OpenNext
-// deploy — which forces standalone itself via NEXT_PRIVATE_STANDALONE.
-const standaloneOutput = !exportOutput && process.env['BUILD_STANDALONE'] === 'true';
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Ensure Next.js uses SSG instead of SSR
-  // https://nextjs.org/docs/pages/building-your-application/deploying/static-exports
-  // The Docker production image opts into a self-contained `.next/standalone`
-  // tree (see Dockerfile) so it can ship only the traced runtime; all other
-  // web builds fall back to the default server output.
-  output: exportOutput ? 'export' : standaloneOutput ? 'standalone' : undefined,
-  // Emit browser source maps for the Tauri export build so Sentry can
-  // symbolicate crashes. `scripts/upload-sourcemaps.mjs` uploads them after the
-  // build and strips the .map files, so they never ship inside the app bundle.
-  productionBrowserSourceMaps: exportOutput,
-  // Monorepo: trace from the repo root so workspace packages land in the
-  // standalone tree. Only relevant to — and only set for — the Docker build.
-  outputFileTracingRoot: standaloneOutput ? path.join(__dirname, '../../') : undefined,
-  pageExtensions: exportOutput ? ['jsx', 'tsx'] : ['js', 'jsx', 'ts', 'tsx'],
+  output: appPlatform !== 'web' && !isDev ? 'export' : undefined,
+  pageExtensions: appPlatform !== 'web' && !isDev ? ['jsx', 'tsx'] : ['js', 'jsx', 'ts', 'tsx'],
   // Note: This feature is required to use the Next.js Image component in SSG mode.
   // See https://nextjs.org/docs/messages/export-image-api for different workarounds.
   images: {
@@ -43,11 +23,8 @@ const nextConfig = {
     // build mishandles, fanning out workers until it exhausts RAM.
     turbopackFileSystemCacheForDev: true,
   },
-  // Configure assetPrefix or else the server won't properly resolve your assets.
   assetPrefix: '',
   reactStrictMode: true,
-  serverExternalPackages: ['isows'],
-  allowedDevOrigins: ['192.168.2.120'],
   webpack: (config, { isServer }) => {
     config.resolve.alias = {
       ...config.resolve.alias,
@@ -68,7 +45,7 @@ const nextConfig = {
     resolveAlias: {
       nunjucks: 'nunjucks/browser/nunjucks.js',
       // Turbopack rejects absolute paths in resolveAlias ("server relative
-      // imports not implemented") — use a project-relative path.
+      // imports not implemented"); use a project-relative path.
       fflate: './node_modules/fflate',
       ...(appPlatform !== 'web' ? { '@tursodatabase/database-wasm': './src/utils/stub.ts' } : {}),
     },
@@ -98,15 +75,6 @@ const nextConfig = {
   async headers() {
     return [
       {
-        source: '/.well-known/apple-app-site-association',
-        headers: [
-          {
-            key: 'Content-Type',
-            value: 'application/json',
-          },
-        ],
-      },
-      {
         source: '/_next/static/:path*',
         headers: [
           {
@@ -121,18 +89,4 @@ const nextConfig = {
   },
 };
 
-const pwaDisabled = isDev || appPlatform !== 'web';
-
-const withPWA = pwaDisabled
-  ? (config) => config
-  : withSerwistInit({
-      swSrc: 'src/sw.ts',
-      swDest: 'public/sw.js',
-      cacheOnNavigation: true,
-      reloadOnOnline: true,
-      disable: false,
-      register: true,
-      scope: '/',
-    });
-
-export default withPWA(nextConfig);
+export default nextConfig;

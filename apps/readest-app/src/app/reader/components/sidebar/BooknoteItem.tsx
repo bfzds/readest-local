@@ -15,10 +15,9 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { eventDispatcher } from '@/utils/event';
 import { isCfiInLocation } from '@/utils/cfi';
-import { buildAnnotationUrl } from '@/utils/deeplink';
+import { buildAnnotationAppUrl } from '@/utils/deeplink';
 import { buildAnnotationCopyMarkdown } from '@/utils/note';
 import { writeTextToClipboard } from '@/utils/clipboard';
-import { DEFAULT_NOTE_EXPORT_CONFIG } from '@/services/constants';
 import {
   applyNoteBubbleTransition,
   decideNoteBubbleTransition,
@@ -62,7 +61,7 @@ const BooknoteItem: React.FC<BooknoteItemProps> = ({
   const { envConfig } = useEnv();
   const { settings } = useSettingsStore();
   const { getConfig, saveConfig, updateBooknotes } = useBookDataStore();
-  const { getProgress, getView, getViewsById, getViewSettings } = useReaderStore();
+  const { getProgress, getView, getViewsById } = useReaderStore();
   const { setNotebookEditAnnotation, setNotebookVisible } = useNotebookStore();
 
   const globalReadSettings = settings.globalReadSettings;
@@ -126,9 +125,7 @@ const BooknoteItem: React.FC<BooknoteItemProps> = ({
 
   const handleCopyLink = () => {
     const bookHash = item.bookHash || bookKey.split('-')[0]!;
-    const linkType =
-      getViewSettings(bookKey)?.noteExportConfig?.linkType ?? DEFAULT_NOTE_EXPORT_CONFIG.linkType;
-    const url = buildAnnotationUrl({ bookHash, noteId: item.id, cfi: item.cfi }, linkType);
+    const url = buildAnnotationAppUrl({ bookHash, noteId: item.id, cfi: item.cfi });
     const linkLabel = item.page
       ? _('Page: {{number}}', { number: item.page })
       : _('Open in Readest');

@@ -1,150 +1,41 @@
-import { getRuntimeConfig } from '@/services/runtimeConfig';
 import { isCJKEnv } from '@/utils/misc';
 import { getFilename } from '@/utils/path';
 import { md5Fingerprint } from '@/utils/md5';
 
 export type FontFormat = 'ttf' | 'otf' | 'woff' | 'woff2';
 
-const basicGoogleFonts = [
-  { family: 'Bitter', weights: 'ital,wght@0,100..900;1,100..900' },
-  { family: 'Fira Code', weights: 'wght@300..700' },
-  { family: 'Literata', weights: 'ital,opsz,wght@0,7..72,200..900;1,7..72,200..900' },
-  { family: 'Merriweather', weights: 'ital,opsz,wght@0,18..144,300..900;1,18..144,300..900' },
-  { family: 'Noto Sans', weights: 'ital,wght@0,100..900;1,100..900' },
-  { family: 'Open Sans', weights: 'ital,wght@0,300..800;1,300..800' },
-  { family: 'Roboto', weights: 'ital,wght@0,100..900;1,100..900' },
-  { family: 'Roboto Slab', weights: 'ital,wght@0,100..900;1,100..900' },
-  { family: 'Vollkorn', weights: 'ital,wght@0,400..900;1,400..900' },
-  { family: 'PT Sans', weights: 'ital,wght@0,400;0,700;1,400;1,700' },
-  { family: 'PT Serif', weights: 'ital,wght@0,400;0,700;1,400;1,700' },
-  { family: 'PT Mono', weights: '' },
-];
-
-const cjkGoogleFonts = [
-  { family: 'LXGW WenKai TC', weights: '' },
-  { family: 'Noto Sans SC', weights: '' },
-  { family: 'Noto Sans TC', weights: '' },
-  { family: 'Noto Serif JP', weights: '' },
-];
-
-const getAdditionalBasicFontLinks = () => `
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?${basicGoogleFonts
-    .map(
-      ({ family, weights }) =>
-        `family=${encodeURIComponent(family)}${weights ? `:${weights}` : ''}`,
-    )
-    .join('&')}&display=swap" crossorigin="anonymous">
-`;
-
-// CJK bundles Readest serves itself. The default CDN only answers CORS for
-// readest.com origins, so a self-hosted deployment on a custom domain gets each
-// of these blocked unless it points FONT_BASE_URL at a host it controls (#5550).
-const hostedCJKFonts = [
-  'Huiwen-MinchoGBK',
-  'KingHwa_OldSong',
-  'Source Han Serif CN',
-  'GuanKiapTsingKhai-T',
-];
-
-const DEFAULT_FONT_BASE_URL = 'https://storage.readest.com/public/font/dist';
-
-const getFontBaseUrl = () =>
-  (getRuntimeConfig()?.fontBaseUrl || DEFAULT_FONT_BASE_URL).replace(/\/+$/, '');
-
-const getAdditionalCJKFontLinks = () => {
-  const fontBaseUrl = getFontBaseUrl();
-  return `
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/misans-webfont@1.0.4/misans-l3/misans-l3/result.min.css" crossorigin="anonymous" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/lxgw-wenkai-screen-web/1.520.0/lxgwwenkaigbscreen/result.css" crossorigin="anonymous" />
-  ${hostedCJKFonts
-    .map(
-      (family) =>
-        `<link rel='stylesheet' href='${fontBaseUrl}/${encodeURIComponent(family)}/result.css' crossorigin="anonymous" />`,
-    )
-    .join('\n  ')}
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?${cjkGoogleFonts
-    .map(
-      ({ family, weights }) =>
-        `family=${encodeURIComponent(family)}${weights ? `:${weights}` : ''}`,
-    )
-    .join('&')}&display=swap" crossorigin="anonymous" />
-`;
-};
-
+// All webfont CDN loading was removed for the fully offline desktop build.
+// CJK families keep system-font fallbacks only.
 const getAdditionalCJKFontFaces = () => `
   @font-face {
     font-family: "FangSong";
     font-display: swap;
-    src: local("Fang Song"), local("FangSong"), local("Noto Serif CJK"), local("Source Han Serif SC VF"), url("https://db.onlinewebfonts.com/t/2ecbfe1d9bfc191c6f15c0ccc23cbd43.eot");
-    src: url("https://db.onlinewebfonts.com/t/2ecbfe1d9bfc191c6f15c0ccc23cbd43.eot?#iefix") format("embedded-opentype"),
-    url("https://db.onlinewebfonts.com/t/2ecbfe1d9bfc191c6f15c0ccc23cbd43.woff2") format("woff2"),
-    url("https://db.onlinewebfonts.com/t/2ecbfe1d9bfc191c6f15c0ccc23cbd43.woff") format("woff"),
-    url("https://db.onlinewebfonts.com/t/2ecbfe1d9bfc191c6f15c0ccc23cbd43.ttf") format("truetype"),
-    url("https://db.onlinewebfonts.com/t/2ecbfe1d9bfc191c6f15c0ccc23cbd43.svg#FangSong") format("svg");
+    src: local("Fang Song"), local("FangSong"), local("Noto Serif CJK"), local("Source Han Serif SC VF");
   }
   @font-face {
     font-family: "Kaiti";
     font-display: swap;
-    src: local("Kai"), local("KaiTi"), local("AR PL UKai"), local("LXGW WenKai GB Screen"), url("https://db.onlinewebfonts.com/t/1ee9941f1b8c128110ca4307dda59917.eot");
-    src: url("https://db.onlinewebfonts.com/t/1ee9941f1b8c128110ca4307dda59917.eot?#iefix")format("embedded-opentype"),
-    url("https://db.onlinewebfonts.com/t/1ee9941f1b8c128110ca4307dda59917.woff2")format("woff2"),
-    url("https://db.onlinewebfonts.com/t/1ee9941f1b8c128110ca4307dda59917.woff")format("woff"),
-    url("https://db.onlinewebfonts.com/t/1ee9941f1b8c128110ca4307dda59917.ttf")format("truetype"),
-    url("https://db.onlinewebfonts.com/t/1ee9941f1b8c128110ca4307dda59917.svg#STKaiti")format("svg");
+    src: local("Kai"), local("KaiTi"), local("AR PL UKai"), local("LXGW WenKai GB Screen");
   }
   @font-face {
     font-family: "Heiti";
     font-display: swap;
-    src: local("Hei"), local("SimHei"), local("WenQuanYi Zen Hei"), local("Source Han Sans SC VF"), url("https://db.onlinewebfonts.com/t/a4948b9d43a91468825a5251df1ec58d.eot");
-    src: url("https://db.onlinewebfonts.com/t/a4948b9d43a91468825a5251df1ec58d.eot?#iefix")format("embedded-opentype"),
-    url("https://db.onlinewebfonts.com/t/a4948b9d43a91468825a5251df1ec58d.woff2")format("woff2"),
-    url("https://db.onlinewebfonts.com/t/a4948b9d43a91468825a5251df1ec58d.woff")format("woff"),
-    url("https://db.onlinewebfonts.com/t/a4948b9d43a91468825a5251df1ec58d.ttf")format("truetype"),
-    url("https://db.onlinewebfonts.com/t/a4948b9d43a91468825a5251df1ec58d.svg#WenQuanYi Micro Hei")format("svg");
+    src: local("Hei"), local("SimHei"), local("WenQuanYi Zen Hei"), local("Source Han Sans SC VF");
   }
   @font-face {
     font-family: "XiHeiti";
     font-display: swap;
-    src: local("PingFang SC"), local("Microsoft YaHei"), local("WenQuanYi Micro Hei"), local("FZHei-B01"), url("https://db.onlinewebfonts.com/t/4f0b783ba4a1b381fc7e7af81ecab481.eot");
-    src: url("https://db.onlinewebfonts.com/t/4f0b783ba4a1b381fc7e7af81ecab481.eot?#iefix")format("embedded-opentype"),
-    url("https://db.onlinewebfonts.com/t/4f0b783ba4a1b381fc7e7af81ecab481.woff2")format("woff2"),
-    url("https://db.onlinewebfonts.com/t/4f0b783ba4a1b381fc7e7af81ecab481.woff")format("woff"),
-    url("https://db.onlinewebfonts.com/t/4f0b783ba4a1b381fc7e7af81ecab481.ttf")format("truetype"),
-    url("https://db.onlinewebfonts.com/t/4f0b783ba4a1b381fc7e7af81ecab481.svg#STHeiti J Light")format("svg");
-}
+    src: local("PingFang SC"), local("Microsoft YaHei"), local("WenQuanYi Micro Hei"), local("FZHei-B01");
+  }
 `;
 
 export const mountAdditionalFonts = async (document: Document, isCJK = false) => {
   const mountCJKFonts = isCJK || isCJKEnv();
+  if (!mountCJKFonts) return;
 
-  // Mount font stylesheets and @font-face rules
-  let links = getAdditionalBasicFontLinks();
-  let fontFaces = '';
-
-  if (mountCJKFonts) {
-    fontFaces = getAdditionalCJKFontFaces();
-    links = `${links}\n${getAdditionalCJKFontLinks()}`;
-  }
-
-  if (fontFaces) {
-    const style = document.createElement('style');
-    style.textContent = fontFaces;
-    document.head.appendChild(style);
-  }
-
-  const parser = new DOMParser();
-  const linksDocument = parser.parseFromString(links, 'text/html');
-
-  Array.from(linksDocument.head.children).forEach((child) => {
-    if (child.tagName === 'LINK') {
-      const link = document.createElement('link');
-      link.rel = child.getAttribute('rel') || '';
-      link.href = child.getAttribute('href') || '';
-      link.crossOrigin = child.getAttribute('crossorigin') || '';
-
-      document.head.appendChild(link);
-    }
-  });
+  const style = document.createElement('style');
+  style.textContent = getAdditionalCJKFontFaces();
+  document.head.appendChild(style);
 };
 
 export type FontStyle = 'normal' | 'italic' | 'oblique';

@@ -323,24 +323,11 @@ describe('mountAdditionalFonts', () => {
     vi.mocked(isCJKEnv).mockReturnValue(false);
   });
 
-  it('should mount basic Google Fonts link tags', async () => {
-    await mountAdditionalFonts(document);
-
-    const links = document.head.querySelectorAll('link[rel="stylesheet"]');
-    expect(links.length).toBeGreaterThanOrEqual(1);
-
-    // Verify at least one link points to Google Fonts
-    const hrefs = Array.from(links).map((l) => l.getAttribute('href') || '');
-    expect(hrefs.some((h) => h.includes('fonts.googleapis.com'))).toBe(true);
-  });
-
-  it('should set crossOrigin on link tags', async () => {
+  it('should not mount external font links', async () => {
     await mountAdditionalFonts(document);
 
     const links = document.head.querySelectorAll('link');
-    for (const link of Array.from(links)) {
-      expect(link.crossOrigin).toBe('anonymous');
-    }
+    expect(links.length).toBe(0);
   });
 
   it('should not mount CJK fonts when isCJK is false', async () => {
@@ -350,8 +337,7 @@ describe('mountAdditionalFonts', () => {
     expect(styles.length).toBe(0);
 
     const links = document.head.querySelectorAll('link');
-    const hrefs = Array.from(links).map((l) => l.getAttribute('href') || '');
-    expect(hrefs.some((h) => h.includes('jsdelivr.net'))).toBe(false);
+    expect(links.length).toBe(0);
   });
 
   it('should mount CJK fonts when isCJK is true', async () => {
@@ -368,10 +354,9 @@ describe('mountAdditionalFonts', () => {
     expect(styleContent).toContain('Heiti');
     expect(styleContent).toContain('XiHeiti');
 
-    // Should have CJK-specific link tags
+    // Local-only fallbacks: no external links are mounted.
     const links = document.head.querySelectorAll('link');
-    const hrefs = Array.from(links).map((l) => l.getAttribute('href') || '');
-    expect(hrefs.some((h) => h.includes('jsdelivr.net'))).toBe(true);
+    expect(links.length).toBe(0);
   });
 
   it('should mount CJK fonts when isCJKEnv returns true', async () => {

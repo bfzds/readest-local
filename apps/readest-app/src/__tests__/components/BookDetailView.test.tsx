@@ -29,10 +29,6 @@ vi.mock('@/helpers/settings', () => ({
   saveSysSettings: vi.fn(),
 }));
 
-vi.mock('@/utils/open', () => ({
-  openExternalUrl: vi.fn(),
-}));
-
 vi.mock('@/components/BookCover', () => ({
   __esModule: true,
   default: () => null,
@@ -107,19 +103,17 @@ describe('BookDetailView delete dropdown layout', () => {
   });
 });
 
-describe('BookDetailView More menu (Goodreads + Share)', () => {
+describe('BookDetailView More menu', () => {
   const openMore = (container: HTMLElement) => {
     const toggle = container.querySelector('button[aria-label="More Actions"]');
     expect(toggle).toBeTruthy();
     fireEvent.click(toggle!);
   };
 
-  it('folds Goodreads and Share into the hamburger menu', () => {
-    const { container, getByText } = renderView();
-    // Goodreads is no longer a standalone icon button outside the menu.
+  it('opens the More Actions menu', () => {
+    const { container } = renderView();
     expect(container.querySelector('button[aria-label="More Actions"]')).toBeTruthy();
     openMore(container);
-    expect(getByText('Search on Goodreads')).toBeTruthy();
   });
 
   it('keeps Export in the More menu and calls onExport when the file exists', () => {

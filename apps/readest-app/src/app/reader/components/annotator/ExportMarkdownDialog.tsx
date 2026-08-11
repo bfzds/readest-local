@@ -22,12 +22,7 @@ import {
   getHighlightColorLabel,
 } from '@/app/reader/utils/annotatorUtil';
 import { renderNoteTemplate, formatBlockQuote } from '@/utils/note';
-import {
-  AnnotationLinkType,
-  buildAnnotationAppUrl,
-  buildAnnotationUrl,
-  buildAnnotationWebUrl,
-} from '@/utils/deeplink';
+import { buildAnnotationAppUrl } from '@/utils/deeplink';
 import Dialog from '@/components/Dialog';
 
 interface ExportMarkdownDialogProps {
@@ -111,9 +106,6 @@ const ExportMarkdownDialog: React.FC<ExportMarkdownDialogProps> = ({
     const noteExportConfig = viewSettings?.noteExportConfig || DEFAULT_NOTE_EXPORT_CONFIG;
     return {
       ...noteExportConfig,
-      // Configs persisted before link types existed fall back to the
-      // platform-aware default (app in the native app, web on the web).
-      linkType: noteExportConfig.linkType ?? DEFAULT_NOTE_EXPORT_CONFIG.linkType,
       customTemplate: noteExportConfig.customTemplate || defaultTemplate,
       // Configs persisted before color/style filtering existed have no
       // exclusion arrays; default to exporting everything.
@@ -255,11 +247,7 @@ const ExportMarkdownDialog: React.FC<ExportMarkdownDialogProps> = ({
             id: note.id,
             cfi: note.cfi,
             bookHash,
-            link: buildAnnotationUrl(
-              { bookHash, noteId: note.id, cfi: note.cfi },
-              exportConfig.linkType,
-            ),
-            webLink: buildAnnotationWebUrl({ bookHash, noteId: note.id, cfi: note.cfi }),
+            link: buildAnnotationAppUrl({ bookHash, noteId: note.id, cfi: note.cfi }),
             appLink: buildAnnotationAppUrl({ bookHash, noteId: note.id, cfi: note.cfi }),
             text: note.text || '',
             note: note.note || '',
@@ -334,10 +322,7 @@ const ExportMarkdownDialog: React.FC<ExportMarkdownDialogProps> = ({
           if (exportConfig.includePageNumber && note.page) {
             const pageText = _('Page: {{number}}', { number: note.page });
             if (bookHash && note.id) {
-              const url = buildAnnotationUrl(
-                { bookHash, noteId: note.id, cfi: note.cfi },
-                exportConfig.linkType,
-              );
+              const url = buildAnnotationAppUrl({ bookHash, noteId: note.id, cfi: note.cfi });
               pageStr = `[${pageText}](${url})`;
             } else {
               pageStr = pageText;
@@ -391,15 +376,9 @@ const ExportMarkdownDialog: React.FC<ExportMarkdownDialogProps> = ({
   const htmlPreview = useMemo(() => {
     if (!markdownPreview || isJson) return '';
     const html = marked.parse(markdownPreview) as string;
-    return (
-      html
-        .replace(/<a href=/g, '<a target="_blank" rel="noopener noreferrer" href=')
-        // The web app is cross-origin isolated (COEP: require-corp, see
-        // middleware.ts) and R2 attaches no CORP header, so a plain <img> to
-        // assets.readest.com is blocked. Requesting it with CORS satisfies
-        // COEP: the bucket allowlists the app origins for GET.
-        .replace(/<img /g, '<img crossorigin="anonymous" ')
-    );
+    return html
+      .replace(/<a href=/g, '<a target="_blank" rel="noopener noreferrer" href=')
+      .replace(/<img /g, '<img crossorigin="anonymous" ');
   }, [markdownPreview, isJson]);
 
   const handleToggle = (field: keyof NoteExportConfig) => {
@@ -578,23 +557,6 @@ const ExportMarkdownDialog: React.FC<ExportMarkdownDialogProps> = ({
                 />
                 <span className='text-sm'>{_('Note Date')}</span>
               </label>
-            </div>
-
-            <div className='flex items-center justify-between gap-3'>
-              <span className='text-sm'>{_('Annotation Link')}</span>
-              <select
-                value={exportConfig.linkType}
-                onChange={(e) =>
-                  setExportConfig((prev) => ({
-                    ...prev,
-                    linkType: e.target.value as AnnotationLinkType,
-                  }))
-                }
-                className='select select-bordered select-sm eink-bordered'
-              >
-                <option value='app'>{_('App Link')}</option>
-                <option value='web'>{_('Web Link')}</option>
-              </select>
             </div>
           </div>
         )}
@@ -797,15 +759,11 @@ const ExportMarkdownDialog: React.FC<ExportMarkdownDialogProps> = ({
                           </li>
                           <li className='ml-8'>
                             <code className='bg-base-300 rounded px-1'>annotation.link</code> -{' '}
-                            {_('Annotation link (follows the selected Link Type)')}
+                            {_('App deeplink (readest://)')}
                           </li>
                           <li className='ml-8'>
                             <code className='bg-base-300 rounded px-1'>annotation.appLink</code> -{' '}
                             {_('App deeplink (readest://)')}
-                          </li>
-                          <li className='ml-8'>
-                            <code className='bg-base-300 rounded px-1'>annotation.webLink</code> -{' '}
-                            {_('Universal web link (https://)')}
                           </li>
                         </ul>
                       </div>

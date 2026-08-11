@@ -1,0 +1,36 @@
+# Task 8 清理记录（2026-08-11）
+
+## 目标
+
+按计划 Task 8 把 Tauri CSP、字体与 PWA 完全本地化，并清掉 Step 7 扫描出的真实联网入口。
+
+## 已删除/清理
+
+- PWA：`src/sw.ts`、`public/manifest.json`、`public/.well-known/*`、`@serwist/*` 依赖。
+- Demo 书：`src/data/demo`、`src/services/demoBooks.ts`、`src/app/library/hooks/useDemoBooks.ts`，以及 `library/page.tsx` 中的合并逻辑。
+- Goodreads：`src/utils/goodreads.ts` 与测试，`BookshelfItem`/`BookDetailView` 入口，`libraryUtils` 菜单 id。
+- DeepL：`src/utils/deepl.ts` 与测试，`constants.ts` 中 `translationProvider` 默认值改为 `local`，`commandRegistry` 关键词去掉 `deepl`。
+- 外链：`src/components/Link.tsx`、`LegalLinks.tsx`、`SupportLinks.tsx`、`components/landing/*`、`AboutWindow`/`KeyboardShortcutsHelp` 外链、macOS Help 菜单、`_app.tsx` manifest link、`error.tsx` mailto。
+- 死测试：`Link.test.tsx`、`docker/db-bootstrap-migrations.test.ts`（Task 7 已删 docker 目录）。
+
+## 验证
+
+- `pnpm lint`：通过（tsgo 0 错误，biome 1072 文件，0 警告）。
+- vitest 全量：395 文件通过 / 1 跳过，5517 测试通过 / 10 跳过。
+- 未跑 `cargo check`/`clippy`/`tauri build`：留给 Task 9 全量验证。
+
+## 扫描豁免（不实际联网，保留）
+
+- `tauri.conf.json`：`devUrl` localhost、CSP 本地协议 asset/rangefile/ipc。
+- XML/SVG/EPUB/SSML 命名空间：w3.org、purl.org、idpf.org、daisy.org 等。
+- `src/types/opds.ts`：OPDS 协议常量，无网络请求。
+- `src/utils/file.ts`：`http://rangefile.localhost` 本地 range_file 协议。
+- `src/app/layout.tsx`：仅开发模式 HMR 的 `ws://localhost` 注释/补丁。
+- 代码注释中的 GitHub/Chromium 链接。
+- `public/locales`：URL 校验提示文案；`public/vendor/pdfjs`：许可证与 data: SVG。
+- `src-tauri/plugins`：README/Cargo 元数据。
+
+## Task 9 提醒
+
+- Task 9 离线防护测试的 `FORBIDDEN_HOSTS` 用 `includes('deepl')` 会误伤合法 `deeplink` 字样；建议改为 `deepl.com` 或按 token 匹配。
+- 扫描会命中 `types/payment.ts`（stripe）与多处 Sentry 注释；若保持严格字符串扫描，需先清理注释或调整测试范围。
