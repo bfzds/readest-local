@@ -76,8 +76,28 @@ describe('footerReservesBand', () => {
     ).toBe(false);
   });
 
-  it('never reserves the band in scrolled mode, even with info visible', () => {
-    expect(footerReservesBand(settings({ showFooter: true, scrolled: true }))).toBe(false);
+  it('reserves the band in scrolled mode whenever the footer is on', () => {
+    expect(footerReservesBand(settings({ showFooter: true, scrolled: true }))).toBe(true);
+  });
+
+  it('releases the band in scrolled mode when Show Footer is off', () => {
+    expect(footerReservesBand(settings({ showFooter: false, scrolled: true }))).toBe(false);
+  });
+
+  it('keeps the scrolled band even when every widget is disabled', () => {
+    expect(
+      footerReservesBand(
+        settings({
+          showFooter: true,
+          scrolled: true,
+          showRemainingTime: false,
+          showRemainingPages: false,
+          showProgressInfo: false,
+          showCurrentTime: false,
+          showCurrentBatteryStatus: false,
+        }),
+      ),
+    ).toBe(true);
   });
 
   it('keeps the band for the sticky progress bar, scrolled or not', () => {

@@ -17,6 +17,8 @@ import FoliateViewer from './FoliateViewer';
 import SectionInfo from './SectionInfo';
 import HeaderBar from './HeaderBar';
 import PageNavigationButtons from './PageNavigationButtons';
+import LibraryFloatingButton from './LibraryFloatingButton';
+import ReaderNavFloatingButtons from './ReaderNavFloatingButtons';
 import TOCFloatingButton from './TOCFloatingButton';
 import SearchFloatingButton from './SearchFloatingButton';
 import FooterBar from './footerbar/FooterBar';
@@ -78,7 +80,7 @@ interface BookCellProps {
   onGoToLibrary: () => void;
 }
 
-const BookCellInner: React.FC<BookCellProps> = ({
+export const BookCellInner: React.FC<BookCellProps> = ({
   bookKey,
   index,
   gridInsets,
@@ -263,6 +265,10 @@ const BookCellInner: React.FC<BookCellProps> = ({
       </div>
       <BookmarkPullDown bookKey={bookKey} ribbonHidden={!!hoveredBookKey} slideRef={slideRef} />
       <PageNavigationButtons bookKey={bookKey} isDropdownOpen={isDropdownOpen} />
+      <ReaderNavFloatingButtons bookKey={bookKey} />
+      {viewSettings.showGoToLibraryButton && (
+        <LibraryFloatingButton onGoToLibrary={onGoToLibrary} />
+      )}
       <SearchFloatingButton bookKey={bookKey} />
       <TOCFloatingButton bookKey={bookKey} />
       <Annotator bookKey={bookKey} contentInsets={contentInsets} />
@@ -282,7 +288,7 @@ const BookCellInner: React.FC<BookCellProps> = ({
   );
 };
 
-const BookCell = React.memo(BookCellInner);
+export const BookCell = React.memo(BookCellInner);
 
 const BooksGrid: React.FC<BooksGridProps> = ({ bookKey, onCloseBook, onGoToLibrary }) => {
   const _ = useTranslation();

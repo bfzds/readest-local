@@ -105,5 +105,9 @@
   "Failed to download {{count}} book(s)_one": "Failed to download {{count}} book",
   "Failed to download {{count}} book(s)_other": "Failed to download {{count}} books",
   "Sidebar": "Sidebar",
-  "Show the Sidebar by default": "Show the Sidebar by default"
+  "Show the Sidebar by default": "Show the Sidebar by default",
+  "Chapter Navigation": "Chapter Navigation",
+  "Page Navigation Control": "Page Navigation Control",
+  "Show or hide the Previous Chapter and Next Chapter buttons only. Does not affect page navigation.": "Show or hide the Previous Chapter and Next Chapter buttons only. Does not affect page navigation.",
+  "Show or hide the Previous Page and Next Page buttons only. Does not affect chapter navigation.": "Show or hide the Previous Page and Next Page buttons only. Does not affect chapter navigation."
 }

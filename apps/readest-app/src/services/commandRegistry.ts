@@ -453,6 +453,18 @@ const controlPanelItems = [
     section: 'Pagination',
   },
   {
+    id: 'settings.control.showPageNavigationButtons',
+    labelKey: _('Page Navigation Control'),
+    keywords: ['show', 'hide', 'previous', 'next', 'page', 'navigation', 'turn'],
+    section: 'Reading Interface',
+  },
+  {
+    id: 'settings.control.showChapterNavigationButtons',
+    labelKey: _('Chapter Navigation'),
+    keywords: ['show', 'hide', 'previous', 'next', 'chapter', 'section', 'navigation', 'jump'],
+    section: 'Reading Interface',
+  },
+  {
     id: 'settings.control.enableQuickActions',
     labelKey: _('Enable Quick Actions'),
     keywords: ['quick', 'actions', 'annotation', 'enable'],

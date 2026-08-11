@@ -11,6 +11,28 @@ export const stampBookConfigSchema = <T extends Partial<BookConfig>>(config: T):
   return { ...config, schemaVersion: BOOK_CONFIG_SCHEMA_VERSION };
 };
 
+type LegacyPageNavigationFields = {
+  showPrevPageButton?: boolean;
+  showNextPageButton?: boolean;
+};
+
+/**
+ * Fold the old independent Previous/Next Page toggles into the unified page
+ * navigation switch, and keep the chapter buttons enabled for users who had
+ * either direction on (the legacy switches controlled both button groups).
+ */
+export const migratePageNavigationSettings = (viewSettings: Partial<ViewSettings>): void => {
+  const legacy = viewSettings as unknown as LegacyPageNavigationFields;
+  if (legacy.showPrevPageButton === undefined && legacy.showNextPageButton === undefined) {
+    return;
+  }
+  const enabled = Boolean(legacy.showPrevPageButton || legacy.showNextPageButton);
+  viewSettings.showPageNavigationButtons = enabled;
+  viewSettings.showChapterNavigationButtons = enabled;
+  delete legacy.showPrevPageButton;
+  delete legacy.showNextPageButton;
+};
+
 export const serializeRawConfig = (config: Partial<BookConfig>): string => {
   return JSON.stringify(stampBookConfigSchema(config));
 };
@@ -74,6 +96,7 @@ export const deserializeConfig = (
   const config = JSON.parse(str) as BookConfig;
   const { viewSettings, searchConfig } = config;
   config.viewSettings = { ...globalViewSettings, ...viewSettings };
+  migratePageNavigationSettings(config.viewSettings);
   config.searchConfig = { ...defaultSearchConfig, ...searchConfig };
   // v2 -> v3: search gained a `mode` enum (contains/whole-words/regex/nearby-words)
   // replacing the `matchWholeWords` boolean. Derive `mode` from the boolean when a

@@ -603,8 +603,8 @@ describe('services/constants', () => {
       expect(typeof DEFAULT_VIEW_CONFIG.showPaginationButtons).toBe('boolean');
       expect(typeof DEFAULT_VIEW_CONFIG.showNotebookButton).toBe('boolean');
       expect(typeof DEFAULT_VIEW_CONFIG.showBookmarkButton).toBe('boolean');
-      expect(typeof DEFAULT_VIEW_CONFIG.showPrevPageButton).toBe('boolean');
-      expect(typeof DEFAULT_VIEW_CONFIG.showNextPageButton).toBe('boolean');
+      expect(typeof DEFAULT_VIEW_CONFIG.showPageNavigationButtons).toBe('boolean');
+      expect(typeof DEFAULT_VIEW_CONFIG.showChapterNavigationButtons).toBe('boolean');
     });
 
     it('hides the sidebar by default', () => {
