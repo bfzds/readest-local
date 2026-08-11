@@ -1,0 +1,99 @@
+# Readest Local Offline Audit Report
+
+Generated: 2026-08-11 (Task 9)
+Scan command:
+  rg -n -i "https?://|wss?://" apps/readest-app/src apps/readest-app/src-tauri apps/readest-app/public --glob "!**/__tests__/**" --glob "!**/gen/**" --glob "!**/target/**" --glob "!**/.next/**" --glob "!**/out/**" --glob "!**/plugins/**"
+Excluded: public/vendor/pdfjs/** (vendored dist files contain only Apache/Liberation license URLs)
+
+Result: 81 URL hits; 0 real network entry points. All hits are reviewed exemptions below.
+
+## 1. Local protocols / dev-only (20)
+apps/readest-app/src-tauri\tauri.conf.json:9: http://localhost:3000
+apps/readest-app/src-tauri\tauri.conf.json:18: http://asset.localhost
+apps/readest-app/src-tauri\tauri.conf.json:18: http://rangefile.localhost
+apps/readest-app/src-tauri\tauri.conf.json:18: http://ipc.localhost
+apps/readest-app/src-tauri\tauri.conf.json:19: http://asset.localhost
+apps/readest-app/src-tauri\tauri.conf.json:19: http://rangefile.localhost
+apps/readest-app/src-tauri\tauri.conf.json:19: http://ipc.localhost
+apps/readest-app/src-tauri\tauri.conf.json:20: http://asset.localhost
+apps/readest-app/src-tauri\tauri.conf.json:21: http://asset.localhost
+apps/readest-app/src-tauri\tauri.conf.json:22: http://asset.localhost
+apps/readest-app/src-tauri\tauri.conf.json:23: http://asset.localhost
+apps/readest-app/src-tauri\tauri.conf.json:24: http://asset.localhost
+apps/readest-app/src-tauri\src\range_file.rs:25: http://rangefile.localhost/`.
+apps/readest-app/src-tauri\capabilities\webdriver-remote.json:7: http://localhost:*
+apps/readest-app/src-tauri\capabilities\webdriver-remote.json:7: http://127.0.0.1:*
+apps/readest-app/src-tauri\capabilities-extra\webdriver.json:5: http://127.0.0.1:*
+apps/readest-app/src-tauri\capabilities-extra\webdriver.json:5: http://localhost:*
+apps/readest-app/src-tauri\src\lib.rs:323: http://127.0.0.1:*)
+apps/readest-app/src\utils\file.ts:299: http://rangefile.localhost
+apps/readest-app/src\app\layout.tsx:41: http://tauri.localhost`
+
+## 2. XML/SVG/EPUB namespace URIs (44)
+apps/readest-app/src-tauri\Info-ios.plist:2: http://www.apple.com/DTDs/PropertyList-1.0.dtd
+apps/readest-app/src-tauri\Info.plist:2: http://www.apple.com/DTDs/PropertyList-1.0.dtd
+apps/readest-app/src\app\reader\utils\iframeEventHandlers.ts:404: http://www.w3.org/1999/xlink
+apps/readest-app/src-tauri\src\epub_parser.rs:887: http://www.idpf.org/2007/opf
+apps/readest-app/src-tauri\src\epub_parser.rs:888: http://purl.org/dc/elements/1.1/
+apps/readest-app/src-tauri\src\epub_parser.rs:888: http://www.idpf.org/2007/opf
+apps/readest-app/src-tauri\src\epub_parser.rs:917: http://www.idpf.org/2007/opf
+apps/readest-app/src-tauri\src\epub_parser.rs:918: http://purl.org/dc/elements/1.1/
+apps/readest-app/src-tauri\src\epub_parser.rs:942: http://www.idpf.org/2007/opf
+apps/readest-app/src-tauri\src\epub_parser.rs:943: http://purl.org/dc/elements/1.1/
+apps/readest-app/src-tauri\src\epub_parser.rs:971: http://www.idpf.org/2007/opf
+apps/readest-app/src-tauri\src\epub_parser.rs:992: http://www.idpf.org/2007/opf
+apps/readest-app/src-tauri\src\epub_parser.rs:1353: http://www.idpf.org/2007/opf
+apps/readest-app/src-tauri\src\epub_parser.rs:1354: http://purl.org/dc/elements/1.1/
+apps/readest-app/src\app\reader\utils\documentImages.ts:33: http://www.w3.org/1999/xlink
+apps/readest-app/src-tauri\profiles\direct-entitlements.plist:2: http://www.apple.com/DTDs/PropertyList-1.0.dtd
+apps/readest-app/src\utils\md.ts:22: http://www.w3.org/1999/xhtml
+apps/readest-app/src\utils\style.ts:947: http://www.idpf.org/2007/ops
+apps/readest-app/src\utils\ssml.ts:22: http://www.w3.org/2001/10/synthesis
+apps/readest-app/src-tauri\icons\android\mipmap-anydpi-v26\ic_launcher.xml:1: http://schemas.android.com/apk/res/android
+apps/readest-app/src\types\opds.ts:9: http://opds-spec.org/acquisition
+apps/readest-app/src\types\opds.ts:10: http://opds-spec.org/facet
+apps/readest-app/src\types\opds.ts:11: http://opds-spec.org/group
+apps/readest-app/src\types\opds.ts:12: http://opds-spec.org/image
+apps/readest-app/src\types\opds.ts:12: http://opds-spec.org/cover
+apps/readest-app/src\types\opds.ts:14: http://opds-spec.org/image/thumbnail
+apps/readest-app/src\types\opds.ts:15: http://opds-spec.org/thumbnail
+apps/readest-app/src\types\opds.ts:18: http://vaemendis.net/opds-pse/stream
+apps/readest-app/src\components\Alert.tsx:49: http://www.w3.org/2000/svg
+apps/readest-app/src\utils\txt.ts:847: http://www.daisy.org/z3986/2005/ncx/
+apps/readest-app/src\utils\txt.ts:898: http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd
+apps/readest-app/src\utils\txt.ts:899: http://www.w3.org/1999/xhtml
+apps/readest-app/src\utils\txt.ts:919: http://www.idpf.org/2007/opf
+apps/readest-app/src\utils\txt.ts:920: http://purl.org/dc/elements/1.1/
+apps/readest-app/src\components\Dialog.tsx:281: http://www.w3.org/2000/svg
+apps/readest-app/src\components\WindowButtons.tsx:204: http://www.w3.org/2000/svg
+apps/readest-app/src\components\WindowButtons.tsx:216: http://www.w3.org/2000/svg
+apps/readest-app/src\components\WindowButtons.tsx:228: http://www.w3.org/2000/svg
+apps/readest-app/src\app\reader\components\tts\TTSPlayerSheet.tsx:252: http://www.w3.org/2000/svg
+apps/readest-app/src\app\reader\components\BookmarkPullDown.tsx:359: http://www.w3.org/2000/svg
+apps/readest-app/src\app\reader\components\Ribbon.tsx:24: http://www.w3.org/2000/svg
+apps/readest-app/src\services\nav\enrichment.ts:16: http://www.idpf.org/2007/ops
+apps/readest-app/src\services\transformers\sanitizer.ts:7: http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd
+apps/readest-app/src\services\tts\mediaOverlay\MediaOverlaySection.ts:27: http://www.w3.org/2001/10/synthesis
+
+## 3. Documentation links / vendored licenses (14)
+apps/readest-app/src-tauri\src\window_state.rs:9: https://github.com/readest/readest/issues/4398.
+apps/readest-app/src-tauri\Cargo.toml:11: https://doc.rust-lang.org/cargo/reference/manifest.html
+apps/readest-app/src-tauri\src\lib.rs:298: https://github.com/readest/readest/issues/4398.
+apps/readest-app/src\utils\highlightjs.ts:75: https://github.com/highlightjs/highlight.js/wiki/security
+apps/readest-app/src\utils\highlightjs.ts:103: https://github.com/primer/github-syntax-light
+apps/readest-app/src\utils\highlightjs.ts:116: https://github.com/primer/github-syntax-dark
+apps/readest-app/src\app\reader\hooks\useAutoHideScrollbar.ts:5: https://github.com/readest/readest/issues/600
+apps/readest-app/src\styles\globals.css:35: https://github.com/saadeghi/daisyui/issues/3040#issuecomment-2250530354
+apps/readest-app/src\styles\globals.css:451: https://varundhawan.com/blog/2022/01/18/skeuomorphic-book-cover-css
+apps/readest-app/src\app\library\page.tsx:366: https://github.com/readest/readest/issues/3782.
+apps/readest-app/src\hooks\useSafeAreaInsets.ts:42: https://issues.chromium.org/issues/40699457
+apps/readest-app/src\services\dictionaries\slobReader.ts:2: https://github.com/itkach/slob
+apps/readest-app/src\services\dictionaries\bglReader.ts:3: https://github.com/ilius/pyglossary,
+apps/readest-app/src\services\nativeAppService.ts:582: https://github.com/tauri-apps/tauri/issues/3716
+
+## 4. Placeholder / example URLs (3)
+apps/readest-app/src\utils\mdFrontmatter.ts:37: https://host/img.jpg#anchor`
+apps/readest-app/src\types\settings.ts:90: https://books.example.com
+apps/readest-app/src\services\tts\mediaOverlay\parseSmil.ts:67: https://invalid.invalid/${base}`);
+
+## 5. Unclassified (0)

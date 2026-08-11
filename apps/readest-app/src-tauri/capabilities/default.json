@@ -109,14 +109,6 @@
     "process:allow-restart",
     "opener:default",
     {
-      "identifier": "opener:allow-open-url",
-      "allow": [
-        {
-          "url": "alipays:*"
-        }
-      ]
-    },
-    {
       "identifier": "shell:allow-spawn",
       "allow": [
         {

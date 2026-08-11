@@ -234,10 +234,18 @@ mod tests {
 
     #[test]
     fn safe_path_accepts_absolute_traversal_free() {
-        assert!(is_safe_path(Path::new(
+        let book = if cfg!(windows) {
+            r"C:\data\user\0\com.bilingify.readest\Readest\Books\a.epub"
+        } else {
             "/data/user/0/com.bilingify.readest/Readest/Books/a.epub"
-        )));
-        assert!(is_safe_path(Path::new("/书/堂吉诃德.mobi")));
+        };
+        assert!(is_safe_path(Path::new(book)));
+        let unicode = if cfg!(windows) {
+            r"C:\书\堂吉诃德.mobi"
+        } else {
+            "/书/堂吉诃德.mobi"
+        };
+        assert!(is_safe_path(Path::new(unicode)));
     }
 
     #[test]
