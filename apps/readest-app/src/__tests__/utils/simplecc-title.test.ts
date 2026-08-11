@@ -19,7 +19,7 @@ beforeEach(() => {
 
 describe('simplifyChineseText', () => {
   it('converts traditional Chinese text', async () => {
-    mockSimplecc.mockImplementation((text: string, variant: string) => {
+    mockSimplecc.mockImplementation((text: string) => {
       if (text === '紅樓夢') return '红楼梦';
       if (text === '葉嘉瑩') return '叶嘉莹';
       return text;
