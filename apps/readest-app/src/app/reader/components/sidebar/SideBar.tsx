@@ -63,13 +63,6 @@ const SideBar = ({}) => {
     }
   };
 
-  const onNavigateEvent = async () => {
-    const { isSideBarPinned } = useSidebarStore.getState();
-    if (!isSideBarPinned) {
-      setSideBarVisible(false);
-    }
-  };
-
   const {
     panelRef: sidebarRef,
     overlayRef,
@@ -100,10 +93,8 @@ const SideBar = ({}) => {
 
   useEffect(() => {
     eventDispatcher.on('search-term', onSearchEvent);
-    eventDispatcher.on('navigate', onNavigateEvent);
     return () => {
       eventDispatcher.off('search-term', onSearchEvent);
-      eventDispatcher.off('navigate', onNavigateEvent);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -152,7 +143,6 @@ const SideBar = ({}) => {
   ]);
 
   const handleSearchResultClick = (cfi: string) => {
-    onNavigateEvent();
     getView(sideBarBookKey)?.goTo(cfi);
   };
 
@@ -171,7 +161,7 @@ const SideBar = ({}) => {
 
   return isSideBarVisible ? (
     <>
-      {!isSideBarPinned && (
+      {isMobile && (
         <Overlay
           className={clsx('z-[45]', viewSettings?.isEink ? '' : 'bg-black/50 sm:bg-black/20')}
           onDismiss={handleClickOverlay}
@@ -184,8 +174,8 @@ const SideBar = ({}) => {
           'full-height transition-[padding-top] duration-300',
           viewSettings?.isEink ? 'bg-base-100' : 'bg-base-200',
           appService?.hasRoundedWindow && 'rounded-window-top-left rounded-window-bottom-left',
-          isSideBarPinned ? 'z-20' : 'z-[45] shadow-2xl',
-          !isSideBarPinned && viewSettings?.isEink && 'border-base-content border-e',
+          isMobile ? 'z-[45] shadow-2xl' : 'z-20',
+          !isMobile && viewSettings?.isEink && 'border-base-content border-e',
         )}
         role='navigation'
         aria-label={_('Sidebar')}
@@ -193,7 +183,7 @@ const SideBar = ({}) => {
         style={{
           width: isMobile ? '100%' : `${sideBarWidth}`,
           maxWidth: isMobile ? '100%' : `${MAX_SIDEBAR_WIDTH * 100}%`,
-          position: isMobile ? 'fixed' : isSideBarPinned ? 'relative' : 'absolute',
+          position: isMobile ? 'fixed' : 'relative',
           paddingTop: `${getPanelTopInset({
             isMobile,
             isFullHeightInMobile,
