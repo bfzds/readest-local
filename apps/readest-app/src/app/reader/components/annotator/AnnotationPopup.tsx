@@ -95,7 +95,6 @@ const AnnotationPopup: React.FC<AnnotationPopupProps> = ({
               triangleDir={trianglePosition.dir!}
               popupWidth={isVertical ? popupHeight : popupWidth}
               popupHeight={isVertical ? popupWidth : popupHeight}
-              onDismiss={onDismiss}
             />
           ) : (
             highlightOptionsVisible && (

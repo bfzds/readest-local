@@ -2,9 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useSettingsStore } from '@/store/settingsStore';
-import { useDeviceControlStore } from '@/store/deviceStore';
-import { saveSysSettings, saveViewSettings } from '@/helpers/settings';
-import { useResetViewSettings } from '@/hooks/useResetSettings';
+import { saveSysSettings } from '@/helpers/settings';
 import { eventDispatcher } from '@/utils/event';
 import {
   normalizeNativeKey,
@@ -14,30 +12,14 @@ import {
 } from '@/utils/keybinding';
 import { HardwarePageTurnerSettings, KeyBinding } from '@/types/settings';
 import { BoxedList, SettingsRow, SettingsSwitchRow } from './primitives';
-import { useReaderStore } from '@/store/readerStore';
 
 type Slot = PageTurnAction;
 const LEARN_TIMEOUT_MS = 8000;
 
-interface PageTurnerSettingsProps {
-  bookKey: string;
-  onRegisterReset?: (resetFn: () => void) => void;
-}
-
-const PageTurnerSettings: React.FC<PageTurnerSettingsProps> = ({ bookKey, onRegisterReset }) => {
+const PageTurnerSettings: React.FC = () => {
   const _ = useTranslation();
   const { envConfig } = useEnv();
-  const { getViewSettings } = useReaderStore();
-  const { setKeyLearnMode, acquireVolumeKeyInterception, releaseVolumeKeyInterception } =
-    useDeviceControlStore();
   const { settings } = useSettingsStore();
-  // The app targets desktop only; mobile-only page-turner paths stay disabled.
-  const isMobileApp = false;
-  const isAndroidApp = false;
-  const viewSettings = getViewSettings(bookKey) || settings.globalViewSettings;
-  const resetToDefaults = useResetViewSettings();
-
-  const [volumeKeysToFlip, setVolumeKeysToFlip] = useState(viewSettings.volumeKeysToFlip);
   const [config, setConfig] = useState<HardwarePageTurnerSettings>(settings.hardwarePageTurner);
   const configRef = useRef(config);
   configRef.current = config;
@@ -49,16 +31,9 @@ const PageTurnerSettings: React.FC<PageTurnerSettingsProps> = ({ bookKey, onRegi
     saveSysSettings(envConfig, 'hardwarePageTurner', next);
   };
 
-  // Native key interception exists only on mobile; on web and desktop
-  // learn mode relies on standard DOM keydown events alone.
-  const setNativeLearnMode = (enabled: boolean) => {
-    if (isMobileApp) setKeyLearnMode(enabled);
-  };
-
   const stopListening = () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     timeoutRef.current = null;
-    setNativeLearnMode(false);
     setListening(null);
   };
 
@@ -98,7 +73,6 @@ const PageTurnerSettings: React.FC<PageTurnerSettingsProps> = ({ bookKey, onRegi
       captureBinding(listening, normalizeDomKeyEvent(event));
     };
 
-    setNativeLearnMode(true);
     eventDispatcher.on('native-key-down', onNativeKey);
     window.addEventListener('keydown', onDomKey, true);
     timeoutRef.current = setTimeout(stopListening, LEARN_TIMEOUT_MS);
@@ -108,27 +82,9 @@ const PageTurnerSettings: React.FC<PageTurnerSettingsProps> = ({ bookKey, onRegi
       window.removeEventListener('keydown', onDomKey, true);
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
-      setNativeLearnMode(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listening]);
-
-  useEffect(() => {
-    saveViewSettings(envConfig, bookKey, 'volumeKeysToFlip', volumeKeysToFlip, false, false);
-    if (isMobileApp) {
-      if (volumeKeysToFlip) {
-        acquireVolumeKeyInterception();
-      } else {
-        releaseVolumeKeyInterception();
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [volumeKeysToFlip]);
-
-  useEffect(() => {
-    onRegisterReset?.(() => resetToDefaults({ volumeKeysToFlip: setVolumeKeysToFlip }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useEffect(() => {
     if (!config.enabled && listening) stopListening();
@@ -180,13 +136,6 @@ const PageTurnerSettings: React.FC<PageTurnerSettingsProps> = ({ bookKey, onRegi
           'Press a button on your remote controller or keyboard after tapping "Set key".',
         )}
       >
-        {isMobileApp && (
-          <SettingsSwitchRow
-            label={_('Use Volume Keys')}
-            checked={volumeKeysToFlip}
-            onChange={() => setVolumeKeysToFlip(!volumeKeysToFlip)}
-          />
-        )}
         <SettingsSwitchRow
           label={_('Custom Page Turner')}
           checked={config.enabled}
@@ -196,9 +145,6 @@ const PageTurnerSettings: React.FC<PageTurnerSettingsProps> = ({ bookKey, onRegi
         {renderSlot('pageNext', _('Next Page'))}
         {renderSlot('sectionPrev', _('Previous Section'))}
         {renderSlot('sectionNext', _('Next Section'))}
-        {/* Deep e-ink refresh clears ghosting; only meaningful in e-ink mode
-            on Android, where the native bridge can drive the panel. */}
-        {isAndroidApp && viewSettings.isEink && renderSlot('refresh', _('Refresh Page'))}
       </BoxedList>
     </div>
   );

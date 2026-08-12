@@ -30,13 +30,10 @@ vi.mock('@/store/settingsStore', () => ({
 }));
 
 vi.mock('@tauri-apps/api/path', () => ({
-  documentDir: vi.fn(async () => '/docs'),
   join: vi.fn(async (...parts: string[]) => parts.join('/')),
 }));
 vi.mock('@tauri-apps/plugin-process', () => ({ relaunch: vi.fn() }));
 vi.mock('@tauri-apps/plugin-opener', () => ({ revealItemInDir: vi.fn() }));
-vi.mock('@/utils/bridge', () => ({ getExternalSDCardPath: vi.fn(async () => ({ path: '' })) }));
-vi.mock('@/utils/permission', () => ({ requestStoragePermission: vi.fn(async () => true) }));
 
 // Preserve the dialog id so the component's getElementById event wiring works.
 vi.mock('@/components/Dialog', () => ({

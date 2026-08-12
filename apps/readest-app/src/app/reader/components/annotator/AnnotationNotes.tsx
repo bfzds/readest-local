@@ -15,7 +15,6 @@ interface AnnotationNotesProps {
   triangleDir: 'up' | 'down' | 'left' | 'right';
   popupWidth: number;
   popupHeight: number;
-  onDismiss: () => void;
 }
 
 const AnnotationNotes: React.FC<AnnotationNotesProps> = ({
@@ -26,10 +25,7 @@ const AnnotationNotes: React.FC<AnnotationNotesProps> = ({
   triangleDir,
   popupWidth,
   popupHeight,
-  onDismiss,
 }) => {
-  // The app targets desktop only; the mobile popup-dismiss path is disabled.
-  const isMobile = false;
   const { getConfig, setConfig } = useBookDataStore();
   const { setHoveredBookKey } = useReaderStore();
   const { setSideBarVisible } = useSidebarStore();
@@ -42,10 +38,6 @@ const AnnotationNotes: React.FC<AnnotationNotesProps> = ({
 
   const handleShowAnnotation = (note: BookNote) => {
     if (!note.id) return;
-
-    if (isMobile) {
-      onDismiss();
-    }
 
     setHoveredBookKey('');
     setSideBarVisible(true);
