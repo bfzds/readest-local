@@ -67,6 +67,7 @@ const baseProps = {
   handleBookUpload: noop,
   handleBookDownload: noop,
   showBookDetailsModal: noop,
+  handleBookPurge: async () => true,
   showTimeRemaining: false,
   isSelectMode: false,
   selectedBooks: new Set<string>(),

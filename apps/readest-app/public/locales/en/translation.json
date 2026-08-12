@@ -112,5 +112,7 @@
   "Show or hide the Previous Page and Next Page buttons only. Does not affect chapter navigation.": "Show or hide the Previous Page and Next Page buttons only. Does not affect chapter navigation.",
   "Edit Book Content": "Edit Book Content",
   "Only text edits are supported": "Only text edits are supported",
-  "Unsaved changes will be lost": "Unsaved changes will be lost"
+  "Unsaved changes will be lost": "Unsaved changes will be lost",
+  "Delete Book": "Delete Book",
+  "Confirm Delete": "Confirm Delete"
 }

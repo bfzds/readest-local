@@ -124,6 +124,7 @@ interface BookshelfItemProps {
   toggleSelection: (hash: string) => void;
   handleGroupBooks: () => void;
   handleBookDelete: (book: Book, syncBooks?: boolean) => Promise<boolean>;
+  handleBookPurge: (book: Book, syncBooks?: boolean) => Promise<boolean>;
   handleSetSelectMode: (selectMode: boolean) => void;
   handleShowDetailsBook: (book: Book) => void;
   handleLibraryNavigation: (targetGroup: string) => void;
@@ -139,6 +140,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
   itemSelected,
   toggleSelection,
   handleGroupBooks,
+  handleBookPurge,
   handleSetSelectMode,
   handleShowDetailsBook,
   handleLibraryNavigation,
@@ -445,6 +447,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
               isSelectMode={isSelectMode}
               bookSelected={itemSelected}
               showBookDetailsModal={showBookDetailsModal}
+              handleBookPurge={handleBookPurge}
               showTimeRemaining={showTimeRemaining}
             />
           ) : (

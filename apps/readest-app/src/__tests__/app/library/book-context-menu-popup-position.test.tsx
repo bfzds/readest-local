@@ -76,6 +76,7 @@ const renderItem = () =>
       toggleSelection={vi.fn()}
       handleGroupBooks={vi.fn()}
       handleBookDelete={vi.fn(async () => true)}
+      handleBookPurge={vi.fn(async () => true)}
       handleSetSelectMode={vi.fn()}
       handleShowDetailsBook={vi.fn()}
       handleLibraryNavigation={vi.fn()}

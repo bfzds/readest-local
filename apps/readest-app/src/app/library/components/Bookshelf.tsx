@@ -719,6 +719,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           toggleSelection={toggleSelection}
           handleSetSelectMode={handleSetSelectMode}
           showBookDetailsModal={handleShowDetailsBook}
+          handleBookPurge={handleBookPurge}
           showTimeRemaining={showTimeRemaining}
         />
       ) : null,
@@ -807,6 +808,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           toggleSelection={toggleSelection}
           handleGroupBooks={groupSelectedBooks}
           handleBookDelete={handleBookDelete}
+          handleBookPurge={handleBookPurge}
           handleSetSelectMode={handleSetSelectMode}
           handleShowDetailsBook={handleShowDetailsBook}
           handleLibraryNavigation={handleLibraryNavigation}
