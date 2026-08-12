@@ -5,8 +5,9 @@ import { defineConfig } from 'vitest/config';
 import { playwright } from '@vitest/browser-playwright';
 import { loadEnvFile } from './vitest.env.mts';
 
-// Load .env and .env.web so browser tests have the same env as the web app.
-const env = { ...loadEnvFile('.env'), ...loadEnvFile('.env.web') };
+// Load .env and explicitly inject the desktop tauri platform so browser
+// component tests run against the desktop code paths.
+const env = { ...loadEnvFile('.env'), NEXT_PUBLIC_APP_PLATFORM: 'tauri' };
 
 export default defineConfig({
   plugins: [tsconfigPaths(), react()],
