@@ -1,17 +1,16 @@
 ## Project Overview
 
-Readest is a cross-platform ebook reader built as a **Next.js 16 + Tauri v2** hybrid app. It's part of a pnpm monorepo at `/apps/readest-app/`. The app runs on web (CloudFlare Workers), desktop (macOS/Windows/Linux via Tauri), and mobile (iOS/Android via Tauri).
+Readest is a cross-platform ebook reader built as a **Next.js 16 + Tauri v2** app. It's part of a pnpm monorepo at `/apps/readest-app/`. The app runs on desktop (macOS/Windows/Linux via Tauri).
 
 ## Common Commands
 
 ```bash
 # Development
-pnpm dev-web               # Web-only dev server (no Rust compilation needed)
+pnpm dev                   # Next.js dev server (HMR)
 pnpm tauri dev             # Desktop dev with Tauri (compiles Rust backend)
 
 # Building
 pnpm build                 # Build Next.js for Tauri
-pnpm build-web             # Build Next.js for web deployment
 
 # Testing (see [docs/testing.md](docs/testing.md) for full details)
 pnpm test                  # Unit tests (vitest + jsdom)
@@ -54,7 +53,7 @@ pnpm clippy:check          # Lint Rust code (src-tauri)
 
 ### Rust Backend (`src-tauri/`)
 
-Platform-specific code lives in `src-tauri/src/{macos,windows,android,ios}/`. Custom Tauri plugins are in `src-tauri/plugins/`.
+Platform-specific code lives in `src-tauri/src/{macos,windows,linux}/`. Custom Tauri plugins are in `src-tauri/plugins/`.
 
 ## Git Worktrees
 
