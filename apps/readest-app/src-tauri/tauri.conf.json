@@ -31,8 +31,7 @@
             "$APPDATA/**/*",
             "$APPCACHE/**/*",
             "$TEMP/**/*",
-            "**/Readest/**/*",
-            "/private/var/mobile/Containers/Data/Application/**/*"
+            "**/Readest/**/*"
           ],
           "deny": []
         }
@@ -67,14 +66,6 @@
       "deb": {
         "section": "text"
       }
-    },
-    "android": {
-      "minSdkVersion": 26
-    },
-    "iOS": {
-      "developmentTeam": "J5W48D69VR",
-      "infoPlist": "./Info-ios.plist",
-      "minimumSystemVersion": "15.0"
     },
     "fileAssociations": [
       {
