@@ -1626,9 +1626,6 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           isOpen={!!showDetailsBook}
           book={showDetailsBook}
           onClose={() => setShowDetailsBook(null)}
-          handleBookDelete={handleBookDelete('both')}
-          handleBookDeleteLocalCopy={handleBookDelete('local')}
-          handleBookPurge={handleBookDelete('purge')}
           handleBookMetadataUpdate={handleUpdateMetadata}
           onMetadataValueClick={handleMetadataValueClick}
         />
