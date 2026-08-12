@@ -4,15 +4,14 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const isDev = process.env['NODE_ENV'] === 'development';
-const appPlatform = process.env['NEXT_PUBLIC_APP_PLATFORM'];
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: appPlatform !== 'web' && !isDev ? 'export' : undefined,
+  output: !isDev ? 'export' : undefined,
   // Pin the monorepo root explicitly; Next otherwise picks a lockfile in the
   // user home directory and resolves `@/*` aliases against the wrong tree.
   outputFileTracingRoot: path.join(__dirname, '../..'),
-  pageExtensions: appPlatform !== 'web' && !isDev ? ['jsx', 'tsx'] : ['js', 'jsx', 'ts', 'tsx'],
+  pageExtensions: !isDev ? ['jsx', 'tsx'] : ['js', 'jsx', 'ts', 'tsx'],
   // Note: This feature is required to use the Next.js Image component in SSG mode.
   // See https://nextjs.org/docs/messages/export-image-api for different workarounds.
   images: {
@@ -28,7 +27,7 @@ const nextConfig = {
   },
   assetPrefix: '',
   reactStrictMode: true,
-  webpack: (config, { isServer }) => {
+  webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,
       // Next's tsconfig-paths integration is unreliable here (monorepo root
@@ -48,10 +47,7 @@ const nextConfig = {
       // Without an alias, webpack walks up from that source location and
       // can't find fflate (only installed in this app's node_modules).
       fflate: path.resolve(__dirname, 'node_modules/fflate'),
-      ...(appPlatform !== 'web' ? { '@tursodatabase/database-wasm': false } : {}),
-      ...(isServer && appPlatform === 'web'
-        ? { '@readest/turso-database-wasm/webpack': false, 'jieba-wasm': false }
-        : {}),
+      '@tursodatabase/database-wasm': false,
     };
     return config;
   },
@@ -61,7 +57,7 @@ const nextConfig = {
       // Turbopack rejects absolute paths in resolveAlias ("server relative
       // imports not implemented"); use a project-relative path.
       fflate: './node_modules/fflate',
-      ...(appPlatform !== 'web' ? { '@tursodatabase/database-wasm': './src/utils/stub.ts' } : {}),
+      '@tursodatabase/database-wasm': './src/utils/stub.ts',
     },
   },
   transpilePackages: [

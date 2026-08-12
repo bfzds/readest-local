@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { isTauriAppPlatform, isWebAppPlatform } from '@/services/environment';
+import { isTauriAppPlatform } from '@/services/environment';
 
 export const useScreenWakeLock = (lock: boolean, hasWindow?: boolean) => {
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
@@ -61,7 +61,7 @@ export const useScreenWakeLock = (lock: boolean, hasWindow?: boolean) => {
       releaseWakeLock();
     }
 
-    const useDocumentVisibility = isWebAppPlatform() || hasWindow === false;
+    const useDocumentVisibility = hasWindow === false;
     if (useDocumentVisibility && lock) {
       document.addEventListener('visibilitychange', handleVisibilityChange);
     } else if (isTauriAppPlatform() && hasWindow && lock) {

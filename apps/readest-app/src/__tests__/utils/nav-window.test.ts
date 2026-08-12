@@ -24,8 +24,6 @@ vi.mock('@tauri-apps/api/window', () => ({
 
 vi.mock('@/services/environment', () => ({
   isTauriAppPlatform: () => true,
-  isWebAppPlatform: () => false,
-  isPWA: () => false,
 }));
 
 import { showReaderWindow } from '@/utils/nav';

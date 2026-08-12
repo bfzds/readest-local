@@ -7,9 +7,7 @@ declare global {
 }
 
 export const isTauriAppPlatform = () => process.env['NEXT_PUBLIC_APP_PLATFORM'] === 'tauri';
-export const isWebAppPlatform = () => process.env['NEXT_PUBLIC_APP_PLATFORM'] === 'web';
 export const hasCli = () => window.__READEST_CLI_ACCESS === true;
-export const isPWA = () => window.matchMedia('(display-mode: standalone)').matches;
 
 export const isMacPlatform = () =>
   typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
@@ -30,23 +28,9 @@ const getNativeAppService = async () => {
   return nativeAppService;
 };
 
-let webAppService: AppService | null = null;
-const getWebAppService = async () => {
-  if (!webAppService) {
-    const { WebAppService } = await import('@/services/webAppService');
-    webAppService = new WebAppService();
-    await webAppService.init();
-  }
-  return webAppService;
-};
-
 const environmentConfig: EnvConfigType = {
   getAppService: async () => {
-    if (isTauriAppPlatform()) {
-      return getNativeAppService();
-    } else {
-      return getWebAppService();
-    }
+    return getNativeAppService();
   },
 };
 
@@ -57,6 +41,6 @@ const environmentConfig: EnvConfigType = {
  * that run well after startup (e.g. capability checks during reader render),
  * where the singleton is guaranteed to exist.
  */
-export const getInitializedAppService = (): AppService | null => nativeAppService ?? webAppService;
+export const getInitializedAppService = (): AppService | null => nativeAppService;
 
 export default environmentConfig;

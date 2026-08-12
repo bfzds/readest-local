@@ -25,8 +25,6 @@ vi.mock('@tauri-apps/api/webviewWindow', () => {
 });
 
 vi.mock('@/services/environment', () => ({
-  isPWA: vi.fn().mockReturnValue(false),
-  isWebAppPlatform: vi.fn().mockReturnValue(false),
   isTauriAppPlatform: vi.fn().mockReturnValue(false),
 }));
 
@@ -37,7 +35,7 @@ vi.mock('@/services/constants', () => ({
 import { redirect } from 'next/navigation';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { isPWA, isTauriAppPlatform, isWebAppPlatform } from '@/services/environment';
+import { isTauriAppPlatform } from '@/services/environment';
 import {
   navigateToReader,
   navigateToLogin,
@@ -74,8 +72,6 @@ beforeEach(() => {
   vi.clearAllMocks();
 
   // Reset default environment mock returns
-  vi.mocked(isWebAppPlatform).mockReturnValue(false);
-  vi.mocked(isPWA).mockReturnValue(false);
   vi.mocked(isTauriAppPlatform).mockReturnValue(false);
 
   // Reset getCurrentWindow default
@@ -108,29 +104,6 @@ describe('navigateToReader', () => {
     expect(url).toContain('ids=book1%2Bbook2');
   });
 
-  test('navigates to /reader/id for web platform (non-PWA)', () => {
-    vi.mocked(isWebAppPlatform).mockReturnValue(true);
-    vi.mocked(isPWA).mockReturnValue(false);
-
-    const router = mockRouter();
-    navigateToReader(router, ['book1']);
-
-    const url = router.push.mock.calls[0]![0] as string;
-    expect(url).toBe('/reader/book1');
-  });
-
-  test('web platform with PWA uses query param format', () => {
-    vi.mocked(isWebAppPlatform).mockReturnValue(true);
-    vi.mocked(isPWA).mockReturnValue(true);
-
-    const router = mockRouter();
-    navigateToReader(router, ['book1']);
-
-    const url = router.push.mock.calls[0]![0] as string;
-    expect(url).toContain('/reader?');
-    expect(url).toContain('ids=book1');
-  });
-
   test('joins multiple book IDs with + separator', () => {
     const router = mockRouter();
     navigateToReader(router, ['a', 'b', 'c']);
@@ -146,17 +119,6 @@ describe('navigateToReader', () => {
     const url = router.push.mock.calls[0]![0] as string;
     expect(url).toContain('view=scroll');
     expect(url).toContain('ids=book1');
-  });
-
-  test('appends additional query params for web platform', () => {
-    vi.mocked(isWebAppPlatform).mockReturnValue(true);
-    vi.mocked(isPWA).mockReturnValue(false);
-
-    const router = mockRouter();
-    navigateToReader(router, ['book1'], 'view=scroll');
-
-    const url = router.push.mock.calls[0]![0] as string;
-    expect(url).toBe('/reader/book1?view=scroll');
   });
 
   test('passes navOptions through', () => {
