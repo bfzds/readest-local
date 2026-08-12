@@ -120,10 +120,12 @@ const FoliateViewer: React.FC<{
   const setViewSettings = useReaderStore((s) => s.setViewSettings);
   const setBookKeys = useReaderStore((s) => s.setBookKeys);
   const initViewState = useReaderStore((s) => s.initViewState);
+  const clearViewState = useReaderStore((s) => s.clearViewState);
   const editing = useReaderStore((s) => s.viewStates[bookKey]?.editing ?? false);
   const setEditing = useReaderStore((s) => s.setEditing);
   const { setSideBarBookKey } = useSidebarStore();
   const getBookData = useBookDataStore((s) => s.getBookData);
+  const clearBookData = useBookDataStore((s) => s.clearBookData);
   const { applyBackgroundTexture } = useBackgroundTexture();
   const { registerBrightnessListeners, overlayVisible, overlayLevel } =
     useBrightnessGesture(bookKey);
@@ -925,12 +927,18 @@ const FoliateViewer: React.FC<{
         .bookKeys.map((key) => (key === bookKey ? newBookKey : key));
       setBookKeys(nextKeys);
       setSideBarBookKey(newBookKey);
+      // 旧版本已从书库移除且目录被删，丢弃其在内存中的视图状态与 bookData，
+      // 避免残留的旧版本被引用或重新打开。
+      clearViewState(bookKey);
+      clearBookData(bookKey);
       void initViewState(envConfig, savedBook.hash, newBookKey, true);
     },
     [
       appService,
       bookData,
       bookKey,
+      clearBookData,
+      clearViewState,
       envConfig,
       initViewState,
       setBookKeys,

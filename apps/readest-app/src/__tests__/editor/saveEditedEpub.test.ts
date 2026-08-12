@@ -76,6 +76,9 @@ describe('saveEditedEpub', () => {
     expect(appService.deleteDir).toHaveBeenCalledWith('oldhash', 'Books', true);
     expect(mocks.setLibrary).toHaveBeenCalledTimes(1);
     expect(mocks.saveLibraryBooks).toHaveBeenCalledTimes(1);
+    // 编辑保存是刻意的"同书换版本"：必须 replace 整份 library.json，
+    // 否则 merge-floor 会把旧 hash 记录留在磁盘，形成两本书且旧书打不开。
+    expect(mocks.saveLibraryBooks).toHaveBeenCalledWith(expect.any(Array), { replace: true });
   });
 
   it('throws and keeps the old directory when writing fails', async () => {
