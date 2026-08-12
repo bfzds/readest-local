@@ -421,19 +421,27 @@ export async function importBook(
     }
 
     try {
-      if (typeof file === 'string') {
-        fileobj = await fs.openFile(file, 'None');
-        filename = fileobj.name || getFilename(file);
-      } else {
-        fileobj = file;
-        filename = file.name;
-      }
       const sourcePath = typeof file === 'string' ? file : file.name;
-      if (/\.txt$/i.test(filename)) {
-        const txt2epub = new TxtToEpubConverter();
-        ({ file: fileobj } = await txt2epub.convert({ file: fileobj, sourcePath }));
+      filename = typeof file === 'string' ? getFilename(file) : file.name;
+      const isTxt = /\.txt$/i.test(filename);
+      // Materialize the file into webview memory only when the JS path needs it
+      // (TXT conversion, or the native-parser fallback below). Desktop EPUB/MOBI
+      // imports go through the Rust parser, which reads the file natively —
+      // loading the whole file here (hundreds of MB for large books) just to
+      // hand it back to copyFile or discard it is a wasted memory spike.
+      if (typeof file !== 'string' || isTxt) {
+        if (typeof file === 'string') {
+          fileobj = await fs.openFile(file, 'None');
+        } else {
+          // A File object (web) is the content itself — nothing to open.
+          fileobj = file;
+        }
+        if (isTxt && fileobj) {
+          const txt2epub = new TxtToEpubConverter();
+          ({ file: fileobj } = await txt2epub.convert({ file: fileobj, sourcePath }));
+        }
       }
-      if (!fileobj || fileobj.size === 0) {
+      if (fileobj && fileobj.size === 0) {
         throw new Error('Invalid or empty book file');
       }
       // Q1 fast path: when running under Tauri with a real file
@@ -455,13 +463,17 @@ export async function importBook(
       // tests.
       let nativeBookDoc: BookDoc | undefined;
       let nativeFormat: BookFormat | undefined;
-      if (typeof file === 'string' && !/\.txt$/i.test(filename)) {
+      if (typeof file === 'string' && !isTxt) {
         const nativeEpub = await tryNativeParseEpub(file);
         if (nativeEpub) {
           nativeBookDoc = nativeEpub.bookDoc;
           nativeFormat = 'EPUB' as BookFormat;
           nativeHash = nativeEpub.partialMd5;
         } else {
+          // MOBI's native parse still needs the file in webview memory (foliate
+          // reads the PDB header for the full metadata shape), so materialize
+          // it only here — EPUB native parse above never touches it.
+          if (!fileobj) fileobj = await fs.openFile(file, 'None');
           const nativeMobi = await tryNativeParseMobi(file, fileobj);
           if (nativeMobi) {
             nativeBookDoc = nativeMobi.bookDoc;
@@ -475,6 +487,13 @@ export async function importBook(
         format = nativeFormat;
         usedNativeParser = true;
       } else {
+        if (!fileobj) {
+          if (typeof file === 'string') {
+            fileobj = await fs.openFile(file, 'None');
+          } else {
+            fileobj = file;
+          }
+        }
         ({ book: loadedBook, format } = await new DocumentLoader(fileobj).open());
       }
       if (!loadedBook) {
@@ -628,11 +647,12 @@ export async function importBook(
       saveBook &&
       !transient &&
       !inPlace &&
-      !!fileobj &&
+      (typeof file === 'string' || !!fileobj) &&
       (!(await fs.exists(bookFilename, 'Books')) || overwrite);
-    if (willWriteBookFile && fileobj) {
+    if (willWriteBookFile && (typeof file === 'string' || fileobj)) {
       if (/\.txt$/i.test(filename)) {
-        await fs.writeFile(bookFilename, 'Books', fileobj);
+        // TXT always goes through the JS converter, so fileobj is present.
+        await fs.writeFile(bookFilename, 'Books', fileobj!);
       } else if (typeof file === 'string' && isContentURI(file)) {
         await fs.copyFile(file, 'None', bookFilename, 'Books');
       } else if (typeof file === 'string' && !isValidURL(file)) {
@@ -642,10 +662,14 @@ export async function importBook(
           // due to permission issues, then fallback to read and write files
           await fs.copyFile(file, 'None', bookFilename, 'Books');
         } catch {
-          await fs.writeFile(bookFilename, 'Books', await fileobj.arrayBuffer());
+          // The native-parser path skips reading the file into webview memory;
+          // only materialize it here if the direct copy actually failed.
+          const fallback = fileobj ?? (await fs.openFile(file, 'None'));
+          await fs.writeFile(bookFilename, 'Books', await fallback.arrayBuffer());
         }
       } else {
-        await fs.writeFile(bookFilename, 'Books', fileobj);
+        // A File object (web) or a URL-backed source; fileobj is the file.
+        await fs.writeFile(bookFilename, 'Books', fileobj!);
       }
     }
     if (saveCover && (!(await fs.exists(getCoverFilename(book), 'Books')) || overwrite)) {
