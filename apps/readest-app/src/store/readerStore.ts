@@ -16,6 +16,7 @@ import { DocumentLoader, TOCItem } from '@/libs/document';
 import { computeBookNav, hydrateBookNav, isBookNavCacheCurrent, updateToc } from '@/services/nav';
 import { formatTitle, getMetadataHash, getPrimaryLanguage } from '@/utils/book';
 import { getBaseFilename } from '@/utils/path';
+import { perfMark } from '@/utils/perf';
 import { parsePixivNovelFilename } from '@/utils/pixivNovel';
 import { SUPPORTED_LANGNAMES } from '@/services/constants';
 import { useSettingsStore } from './settingsStore';
@@ -152,6 +153,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
     isPrimary = true,
     reload = false,
   ) => {
+    const t0 = perfMark('initViewState', 'start');
     const booksData = useBookDataStore.getState().booksData;
     const bookData = booksData[id];
     set((state) => ({
@@ -207,7 +209,9 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
       if (!bookDoc) {
         throw new Error('Failed to load book document');
       }
+      perfMark('initViewState', 'parse', t0);
       const config = await appService.loadBookConfig(book, settings);
+      perfMark('initViewState', 'config', t0);
       // Import annotations from third-party readers on first open
       if (bookDoc.metadata.identifier) {
         const { getAnnotationProviders } = await import('@/services/annotation');
@@ -247,6 +251,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
         config.viewSettings?.sortedTOC ?? false,
         config.viewSettings?.convertChineseVariant ?? 't2s',
       );
+      perfMark('initViewState', 'nav', t0);
       if (!bookDoc.metadata.title && file) {
         bookDoc.metadata.title =
           parsePixivNovelFilename(file.name)?.title || getBaseFilename(file.name);
@@ -294,6 +299,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
       }));
       const configViewSettings = config.viewSettings!;
       const globalViewSettings = settings.globalViewSettings;
+      perfMark('initViewState', 'total', t0);
       set((state) => ({
         viewStates: {
           ...state.viewStates,
