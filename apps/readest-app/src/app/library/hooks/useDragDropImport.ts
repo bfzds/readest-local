@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useEnv } from '@/context/EnvContext';
-import { impactFeedback } from '@tauri-apps/plugin-haptics';
 import { eventDispatcher } from '@/utils/event';
 import { SelectedFile } from '@/hooks/useFileSelector';
 import { isTauriAppPlatform } from '@/services/environment';
@@ -55,10 +54,6 @@ export const useDragDropImport = () => {
         type: 'error',
       });
       return;
-    }
-
-    if (appService.hasHaptics) {
-      impactFeedback('medium');
     }
 
     if (fileSelections.length > 0) {

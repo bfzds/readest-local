@@ -19,7 +19,6 @@ dependencies = [
  "futures",
  "futures-util",
  "image",
- "libc",
  "log",
  "md-5",
  "minisign-verify",
@@ -39,13 +38,11 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-build 2.6.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "tauri-plugin-biometric",
  "tauri-plugin-cli",
  "tauri-plugin-clipboard-manager",
  "tauri-plugin-device-info",
  "tauri-plugin-dialog",
  "tauri-plugin-fs",
- "tauri-plugin-haptics",
  "tauri-plugin-log",
  "tauri-plugin-native-bridge",
  "tauri-plugin-native-tts",
@@ -7307,21 +7304,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tauri-plugin-biometric"
-version = "2.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "306175b744890b5e4aeb8add6aae7debec1b1504c5087bd0310ed7c9c6feae38"
-dependencies = [
- "log",
- "serde",
- "serde_json",
- "serde_repr",
- "tauri",
- "tauri-plugin",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "tauri-plugin-cli"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7412,20 +7394,6 @@ dependencies = [
  "thiserror 2.0.18",
  "toml 1.1.2+spec-1.1.0",
  "url",
-]
-
-[[package]]
-name = "tauri-plugin-haptics"
-version = "2.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01b167d598ada05c599f4460595108c8d1aa636030a97d19796c1bcda97d881d"
-dependencies = [
- "log",
- "serde",
- "serde_json",
- "tauri",
- "tauri-plugin",
- "thiserror 2.0.18",
 ]
 
 [[package]]

@@ -47,8 +47,6 @@ tauri-plugin-os = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-process = "2"
 tauri-plugin-opener = "2"
-tauri-plugin-haptics = "2"
-tauri-plugin-biometric = "2"
 tauri-plugin-persisted-scope = "2"
 tauri-plugin-native-bridge = { path = "./plugins/tauri-plugin-native-bridge" }
 tauri-plugin-native-tts = { path = "./plugins/tauri-plugin-native-tts" }
@@ -108,6 +106,3 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-window-state = "2"
 
 [target.'cfg(windows)'.dependencies]
-
-[target.'cfg(target_os = "android")'.dependencies]
-libc = "0.2"

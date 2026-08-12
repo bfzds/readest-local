@@ -8,7 +8,6 @@ import { useDrag } from '@/hooks/useDrag';
 import { useThemeStore } from '@/store/themeStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
-import { impactFeedback } from '@tauri-apps/plugin-haptics';
 import { getDirFromUILanguage } from '@/utils/rtl';
 import { Overlay } from './Overlay';
 
@@ -169,9 +168,6 @@ const Dialog: React.FC<DialogProps> = ({
       modal.style.transition = `transform 0.3s ease-out`;
       modal.style.transform = `translateY(0%)`;
       overlay.style.opacity = '0';
-    }
-    if (appService?.hasHaptics) {
-      impactFeedback('medium');
     }
   };
 

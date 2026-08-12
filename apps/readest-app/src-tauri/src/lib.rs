@@ -9,9 +9,6 @@ extern crate objc;
 #[cfg(target_os = "windows")]
 mod windows;
 
-#[cfg(target_os = "android")]
-mod android;
-
 use tauri::utils::config::BackgroundThrottlingPolicy;
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
@@ -34,10 +31,8 @@ mod window_state;
 #[cfg(target_os = "windows")]
 use tauri::webview::ScrollBarStyle;
 use tauri::{command, Emitter, WebviewUrl, WebviewWindowBuilder};
-#[cfg(target_os = "android")]
-use tauri_plugin_native_bridge::register_select_directory_callback;
 
-#[cfg(any(desktop, target_os = "ios"))]
+#[cfg(desktop)]
 fn allow_file_in_scopes(app: &AppHandle, files: Vec<PathBuf>) {
     let fs_scope = app.fs_scope();
     let asset_protocol_scope = app.asset_protocol_scope();
@@ -96,24 +91,6 @@ fn allow_dir_in_scopes(app: &AppHandle, dir: &PathBuf) {
 ///     arbitrary path like `/` or `~/.ssh` and gain persistent read
 ///     access to the entire user home directory via the asset
 ///     protocol.
-///
-///   - On iOS, the `fs_scope` gate is intentionally skipped: the iOS
-///     directory/file picker (`UIDocumentPickerViewController`) does
-///     not flow through Tauri's dialog plugin, and we keep the only
-///     persistent record of user-authorised paths inside the
-///     native-bridge plugin's security-scoped bookmark store
-///     (`FolderBookmarkStore` in NativeBridgePlugin.swift). The
-///     OS sandbox itself is the access-control boundary: the process
-///     can only read paths for which it holds a security-scoped
-///     resource (granted by the system picker, persisted via
-///     bookmark). Widening Tauri's `fs_scope`/`asset_protocol_scope`
-///     to those same paths cannot escalate access beyond what the OS
-///     already grants — it just lets the fs / dir-scanner layers
-///     route reads through the path the WebView gave them. The
-///     frontend layer also keeps the list of folder roots in
-///     `settings.externalLibraryFolders` and re-issues this call on
-///     every launch, so the in-memory scope set stays in sync with
-///     the user's persisted intent.
 #[command]
 fn allow_paths_in_scopes(_app: AppHandle, _paths: Vec<String>, _is_directory: bool) {
     #[cfg(desktop)]
@@ -134,34 +111,6 @@ fn allow_paths_in_scopes(_app: AppHandle, _paths: Vec<String>, _is_directory: bo
                 allow_file_in_scopes(&_app, vec![path]);
             }
         }
-    }
-    #[cfg(target_os = "ios")]
-    {
-        // The iOS picker hands us a security-scoped URL whose POSIX
-        // path lives outside any of our static fs_scope globs (e.g.
-        // File Provider Storage, iCloud Drive, third-party providers).
-        // Without explicitly widening fs_scope/asset_protocol_scope
-        // here, both `dir_scanner::read_dir` and the fs plugin's
-        // `readDir` would reject the path even though the OS sandbox
-        // already grants us access via the held security-scoped
-        // resource. See the security comment above.
-        for raw in _paths {
-            if raw.is_empty() {
-                continue;
-            }
-            let path = PathBuf::from(&raw);
-            if _is_directory {
-                allow_dir_in_scopes(&_app, &path);
-            } else {
-                allow_file_in_scopes(&_app, vec![path]);
-            }
-        }
-    }
-    #[cfg(target_os = "android")]
-    {
-        // Android picker already routes through register_select_directory_callback
-        // for directories; files go through SAF / content-URIs and don't use
-        // asset_protocol_scope. Nothing to do here.
     }
 }
 
@@ -231,7 +180,6 @@ struct SingleInstancePayload {
     cwd: String,
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(
@@ -308,12 +256,6 @@ pub fn run() {
     #[cfg(target_os = "macos")]
     let builder = builder.plugin(macos::window::init());
 
-    #[cfg(any(target_os = "ios", target_os = "android"))]
-    let builder = builder.plugin(tauri_plugin_haptics::init());
-
-    #[cfg(any(target_os = "ios", target_os = "android"))]
-    let builder = builder.plugin(tauri_plugin_biometric::init());
-
     #[cfg(feature = "webdriver")]
     let builder = builder.plugin(tauri_plugin_webdriver::init());
 
@@ -345,26 +287,14 @@ pub fn run() {
                 allow_dir_in_scopes(app.handle(), &PathBuf::from(get_executable_dir()));
             }
 
-            #[cfg(target_os = "android")]
-            register_select_directory_callback(app.handle(), move |app, path| {
-                allow_dir_in_scopes(app, path);
-            });
-
             #[cfg(desktop)]
             {
                 app.handle().plugin(tauri_plugin_cli::init())?;
             }
 
-            // Check for e-ink device on Android before building the window
-            #[cfg(target_os = "android")]
-            let is_eink = android::is_eink_device();
-            #[cfg(not(target_os = "android"))]
             let is_eink = false;
 
-            #[cfg(desktop)]
             let cli_access = true;
-            #[cfg(not(desktop))]
-            let cli_access = false;
 
             #[cfg(target_os = "linux")]
             let is_appimage = std::env::var("APPIMAGE").is_ok()
