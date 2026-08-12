@@ -38,3 +38,26 @@
 
 - `docs/architecture.md` 等文档中仍有少数更早的过时引用（s3/storage/sync 等），与 web/移动端无关，未处理。
 - `src-tauri/src/` 实际只有 `macos/`、`windows/` 目录（linux 用 `#[cfg]` 内联），AGENTS.md 写的是 `{macos,windows,linux}` 便于表达。
+
+## 性能优化（2026-08-12，追加）
+
+方案：`docs/superpowers/plans/2026-08-11-epub-inline-text-editor.md` 之外的独立性能计划（`~/.claude/plans/squishy-gathering-trinket.md` 已更新为此方案）。
+
+### 已完成提交
+
+- `1404b59` perf(import): cap cover size and adapt batch concurrency —— 封面最长边封顶 800px；批量导入按文件大小开窗（≤4 文件且 ≤256MiB 在途），压峰值内存。
+- `da969a7` perf(import): skip loading large files into the webview when the native parser handles them —— 桌面 EPUB 走 Rust 解析器时不再 `fs.openFile` 整文件进 webview；TXT/MOBI/JS 回退仍按需懒加载。
+- `ca8647e` perf: add [perf] markers for import and book-open timing —— 埋点：导入（parse/hash/copy/cover/total）、打开（initViewState load/parse/config/nav/total、view open/init/firstPaint），日志前缀 `[perf]`。
+- `8a3683e` perf(reader): reuse a single reader window (Plan A) —— 单 `reader` 窗口复用：书库经 `open-book` 跨窗口事件 SPA 原地切书（不重载 bundle），关最后一本书改隐藏（保 TTS 停止）；移除每书一窗的计数器/label/尺寸匹配代码。
+
+### 对比方法（测优化前后提升）
+
+1. 构建并运行桌面端（`pnpm tauri build` / dev）。
+2. **导入**：导入同一批真实 EPUB，抓 `[perf] importBook.*` 各阶段耗时。想对比"优化前"，可临时 `git stash` 上述 perf 提交或签出旧版本再跑同样导入。
+3. **打开（冷 vs 复用）**：冷开第一本书抓 `[perf] initViewState.*` 与 `[perf] view.*`（含 `firstPaint`）；关闭（隐藏）后开第二本，对比同一组数字 —— 复用切书应显著低于冷开（省掉 WebView 冷启动 + bundle 重载，只剩 foliate 解析 + React 重渲染）。
+4. 命令行过滤：`grep '\[perf\]'` 或跑多轮取中位数。
+
+### 未做（评估后）
+
+- 导入"元数据专用解析"：实测 foliate `EPUB.init()` 的 section 为懒加载，急切仅解压 OPF+nav（小），桌面端又有原生解析器，收益低且有 metadata 形态分叉风险，跳过。
+
