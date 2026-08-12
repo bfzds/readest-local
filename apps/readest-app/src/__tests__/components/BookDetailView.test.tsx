@@ -66,42 +66,9 @@ const makeBook = (overrides?: Partial<Book>): Book =>
 const renderView = (extra?: Partial<React.ComponentProps<typeof BookDetailView>>) =>
   render(
     <DropdownProvider>
-      <BookDetailView
-        book={makeBook()}
-        metadata={null}
-        fileSize={1024}
-        onDelete={vi.fn()}
-        onDeleteCloudBackup={vi.fn()}
-        onDeleteLocalCopy={vi.fn()}
-        {...extra}
-      />
+      <BookDetailView book={makeBook()} metadata={null} fileSize={1024} {...extra} />
     </DropdownProvider>,
   );
-
-describe('BookDetailView delete dropdown layout', () => {
-  it('places dropdown-center on the parent dropdown so the menu stays in flow', () => {
-    const { container } = renderView();
-    const toggle = container.querySelector('button[aria-label="Delete Book Options"]');
-    expect(toggle).toBeTruthy();
-    fireEvent.click(toggle!);
-
-    // The parent <details> should center its absolutely positioned content.
-    const details = container.querySelector('details.dropdown');
-    expect(details).toBeTruthy();
-    expect(details!.className).toContain('dropdown-center');
-
-    // The inner menu must NOT carry dropdown-center (which would force
-    // position: absolute on it and detach the menu from its anchor — the bug
-    // reported in https://github.com/readest/readest/issues/3940 where the
-    // menu shifted to the right when items were clicked).
-    const menu = container.querySelector('.delete-menu');
-    expect(menu).toBeTruthy();
-    expect(menu!.className).not.toContain('dropdown-center');
-    // It should keep position: relative via the !relative override so it
-    // anchors against the centered parent.
-    expect(menu!.className).toContain('!relative');
-  });
-});
 
 describe('BookDetailView More menu', () => {
   const openMore = (container: HTMLElement) => {
@@ -135,20 +102,6 @@ describe('BookDetailView More menu', () => {
     expect(exportButton!.disabled).toBe(true);
     fireEvent.click(exportButton!);
     expect(onExport).not.toHaveBeenCalled();
-  });
-});
-
-describe('BookDetailView delete dropdown (purge folded into the confirm alert)', () => {
-  it('no longer offers a Purge Data action and keeps the three remove options', () => {
-    const { container, queryByText } = renderView();
-    const toggle = container.querySelector('button[aria-label="Delete Book Options"]');
-    fireEvent.click(toggle!);
-    // Purge is now an opt-in toggle on the delete confirmation alert, not a
-    // standalone menu item.
-    expect(queryByText('Purge Data')).toBeNull();
-    expect(queryByText('Remove from Cloud & Device')).toBeTruthy();
-    expect(queryByText('Remove from Cloud Only')).toBeTruthy();
-    expect(queryByText('Remove from Device Only')).toBeTruthy();
   });
 });
 
