@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "desktop-capability",
-  "windows": ["main", "reader-*"],
+  "windows": ["main", "reader", "reader-*"],
   "platforms": ["linux", "macOS", "windows"],
   "permissions": ["cli:default"]
 }

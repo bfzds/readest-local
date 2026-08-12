@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "enables the default permissions",
-  "windows": ["main", "reader-*"],
+  "windows": ["main", "reader", "reader-*"],
   "permissions": [
     "core:default",
     "fs:default",
