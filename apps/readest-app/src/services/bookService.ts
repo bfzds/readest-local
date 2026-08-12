@@ -24,6 +24,7 @@ import {
 } from '@/utils/book';
 import type { BookNav } from '@/services/nav';
 import { partialMD5, md5 } from '@/utils/md5';
+import { perfMark } from '@/utils/perf';
 import { getBaseFilename, getFilename } from '@/utils/path';
 import { BookDoc, DocumentLoader } from '@/libs/document';
 import { hasMediaOverlays } from '@/services/tts/mediaOverlay';
@@ -405,6 +406,8 @@ export async function importBook(
     osPlatform,
   } = options;
 
+  const t0 = perfMark('importBook', 'start');
+
   let loadedBook: BookDoc | undefined;
   let fileobj: File | undefined;
   let pixivMeta: PixivNovelMetadata | null = null;
@@ -520,8 +523,10 @@ export async function importBook(
     } catch (error) {
       throw new Error(`Failed to open the book file: ${(error as Error).message || error}`);
     }
+    perfMark('importBook', 'parse', t0);
 
     const hash = usedNativeParser ? nativeHash! : await partialMD5(fileobj!);
+    perfMark('importBook', 'hash', t0);
 
     // PDF metadata is often generic boilerplate (e.g. every PowerPoint export
     // is titled "PowerPoint Presentation" by the same author), so metadata
@@ -672,6 +677,7 @@ export async function importBook(
         await fs.writeFile(bookFilename, 'Books', fileobj!);
       }
     }
+    perfMark('importBook', 'copy', t0);
     if (saveCover && (!(await fs.exists(getCoverFilename(book), 'Books')) || overwrite)) {
       let cover = await loadedBook.getCover();
       if (cover?.type === 'image/svg+xml') {
@@ -689,6 +695,7 @@ export async function importBook(
         await fs.writeFile(getCoverFilename(book), 'Books', coverBytes);
       }
     }
+    perfMark('importBook', 'cover', t0);
     // Maintain coverHash === partialMD5(cover.png) so cross-device cover sync
     // can detect changes (issue #4544). Read from disk regardless of whether we
     // just wrote it — a hash-match reimport may reuse an existing cover.
@@ -776,6 +783,7 @@ export async function importBook(
     }
     book.coverImageUrl = await generateCoverImageUrlFn(book);
 
+    perfMark('importBook', 'total', t0);
     return existingBook || book;
   } catch (error) {
     console.error('Error importing book:', error);

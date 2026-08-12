@@ -71,6 +71,7 @@ import { showTransientSearchHighlight } from '../utils/searchHighlight';
 import { handleA11yNavigation } from '@/utils/a11y';
 import { isCJKLang } from '@/utils/lang';
 import { getLocale, uniqueId } from '@/utils/misc';
+import { perfMark } from '@/utils/perf';
 import { isFontType } from '@/utils/font';
 import { getScrollGapAttr } from '@/utils/webtoon';
 import { useMiddleClickAutoscroll } from '../hooks/useMiddleClickAutoscroll';
@@ -473,6 +474,7 @@ const FoliateViewer: React.FC<{
   }, []);
 
   const stabilizedHandler = useCallback(() => {
+    perfMark('view', 'firstPaint');
     setLoading(false);
     // Layout/relayout warichu after paginator has set column-width via columnize()
     const contents = viewRef.current?.renderer?.getContents?.() || [];
@@ -604,6 +606,7 @@ const FoliateViewer: React.FC<{
     setTimeout(() => setLoading(true), 200);
 
     const openBook = async () => {
+      const t0 = perfMark('view', 'start');
       console.log('Opening book', bookKey);
       await import('foliate-js/view.js');
       const view = wrappedFoliateView(document.createElement('foliate-view') as FoliateView);
@@ -629,6 +632,7 @@ const FoliateViewer: React.FC<{
       }
 
       await view.open(bookDoc);
+      perfMark('view', 'open', t0);
       // make sure we can listen renderer events after opening book
       viewRef.current = view;
       setFoliateView(bookKey, view);
@@ -716,6 +720,7 @@ const FoliateViewer: React.FC<{
       } else {
         await view.goToFraction(0);
       }
+      perfMark('view', 'init', t0);
       setViewInited(bookKey, true);
 
       // The reader is showing a deep-link target, not the user's actual reading
