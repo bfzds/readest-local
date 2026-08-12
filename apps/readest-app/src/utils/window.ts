@@ -75,12 +75,30 @@ export const tauriHandleOnCloseWindow = async (callback: () => void) => {
     if (currentWindow.label === 'main' && (await osType()) === 'macos') {
       return;
     }
-    await callback();
-    if (currentWindow.label.startsWith('reader')) {
-      await emitTo('main', 'close-reader-window', { label: currentWindow.label });
-      setTimeout(() => currentWindow.destroy(), 300);
+    const isReader = currentWindow.label.startsWith('reader');
+    // Schedule the destroy up-front: a hung or failed save/emit below must
+    // never strand a reader window whose content is already gone (blank
+    // window). The 500ms is a grace period for the async save to land.
+    if (isReader) {
+      setTimeout(() => currentWindow.destroy(), 500);
+    }
+    try {
+      await callback();
+    } catch (error) {
+      console.error('Error saving on window close:', error);
+    }
+    if (isReader) {
+      try {
+        await emitTo('main', 'close-reader-window', { label: currentWindow.label });
+      } catch (error) {
+        console.error('Error notifying main window:', error);
+      }
     } else if (currentWindow.label === 'main') {
-      await currentWindow.destroy();
+      try {
+        await currentWindow.destroy();
+      } catch (error) {
+        console.error('Error destroying main window:', error);
+      }
     }
   });
 };
