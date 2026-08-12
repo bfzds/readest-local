@@ -30,9 +30,13 @@ const createReaderWindow = async (
     resizable: true,
     title: 'Readest',
     decorations: !!appService.isMacOSApp,
-    // Linux stays opaque: a transparent WebKitGTK window turns invisible when
-    // its web process is busy (#3682). macOS uses native decorations instead.
-    transparent: !appService.isMacOSApp && !appService.isLinuxApp,
+    // Opaque: the reused reader window is hidden on close and shown again for
+    // the next open, and a transparent WebView2 window does not repaint after
+    // that hide/show cycle — the page shows through to the desktop. The app
+    // has no rounded-window chrome (hasRoundedWindow is false), so opacity
+    // costs nothing visually. (Linux transparent windows were already avoided
+    // for the same class of bug, #3682.)
+    transparent: false,
     shadow: appService.isMacOSApp ? undefined : true,
     titleBarStyle: appService.isMacOSApp ? 'overlay' : undefined,
     // Enum ScrollBarStyle is exported as type by tauri, so it cannot be used directly.

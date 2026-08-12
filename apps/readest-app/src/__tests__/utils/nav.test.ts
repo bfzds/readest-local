@@ -327,7 +327,7 @@ describe('showReaderWindow', () => {
     expect(options.titleBarStyle).toBe('overlay');
   });
 
-  test('uses non-macOS window options', async () => {
+  test('uses non-macOS window options (reader window is opaque)', async () => {
     const appService = makeAppService(false);
     await showReaderWindow(appService as never, ['book1']);
 
@@ -335,7 +335,9 @@ describe('showReaderWindow', () => {
     const options = constructorCall[1]!;
     expect(options.title).toBe('Readest');
     expect(options.decorations).toBe(false);
-    expect(options.transparent).toBe(true);
+    // Opaque: the reused reader window must not be transparent, or it fails to
+    // repaint after the hide/show reuse cycle.
+    expect(options.transparent).toBe(false);
     expect(options.shadow).toBe(true);
   });
 
