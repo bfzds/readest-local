@@ -782,15 +782,54 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       }
     };
 
-    const concurrency = 4;
-    for (let i = 0; i < files.length; i += concurrency) {
-      const batch = files.slice(i, i + concurrency);
+    // Adaptive concurrency: every file is buffered into the webview for
+    // parsing, so importing several large books at once spikes memory. Window
+    // the batch by size — no window holds more than MAX_CONCURRENT_FILES and
+    // total in-flight bytes stays under MAX_INFLIGHT_BYTES — so a single large
+    // book never shares a window with others while small books still batch up.
+    const MAX_CONCURRENT_FILES = 4;
+    const MAX_INFLIGHT_BYTES = 256 * 1024 * 1024;
+    const sizedFiles = await Promise.all(
+      files.map(async (selectedFile) => {
+        let size = 0;
+        if (selectedFile.file) {
+          size = selectedFile.file.size;
+        } else if (selectedFile.path && appService) {
+          try {
+            size = (await appService.stats(selectedFile.path, 'None')).size ?? 0;
+          } catch {
+            // Unknown size — treat as light so it never throttles the batch.
+          }
+        }
+        return { selectedFile, size };
+      }),
+    );
+    const batches: SelectedFile[][] = [];
+    let currentBatch: SelectedFile[] = [];
+    let currentBytes = 0;
+    for (const { selectedFile, size } of sizedFiles) {
+      if (
+        currentBatch.length >= MAX_CONCURRENT_FILES ||
+        (currentBatch.length > 0 && currentBytes + size > MAX_INFLIGHT_BYTES)
+      ) {
+        batches.push(currentBatch);
+        currentBatch = [];
+        currentBytes = 0;
+      }
+      currentBatch.push(selectedFile);
+      currentBytes += size;
+    }
+    if (currentBatch.length > 0) batches.push(currentBatch);
+
+    for (const batch of batches) {
       const importedBooks = (await Promise.all(batch.map(processFile))).filter((book) => !!book);
       // Update store state per batch (so the UI can render imported books
       // incrementally) but defer disk persistence until the entire batch is
       // done — saving library.json once per batch of 4 books was the dominant
       // cost for large imports.
-      await updateBooks(envConfig, importedBooks, { skipSave: true });
+      if (importedBooks.length > 0) {
+        await updateBooks(envConfig, importedBooks, { skipSave: true });
+      }
     }
 
     // Persist the full library once after every file in the batch is done.

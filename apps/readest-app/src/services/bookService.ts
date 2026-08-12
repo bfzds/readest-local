@@ -36,6 +36,7 @@ import { ClosableFile } from '@/utils/file';
 import { TxtToEpubConverter } from '@/utils/txt';
 import { parsePixivNovelFilename, type PixivNovelMetadata } from '@/utils/pixivNovel';
 import { svg2png } from '@/utils/svg';
+import { downscaleImageBlob } from '@/utils/image';
 import { normalizeMetadataIsbn } from '@/utils/isbn';
 import { BookFileNotFoundError } from './errors';
 import { simplifyChineseText } from '@/utils/simplecc';
@@ -656,7 +657,11 @@ export async function importBook(
         } catch {}
       }
       if (cover) {
-        const coverBytes = await cover.arrayBuffer();
+        // High-resolution covers can be megabytes; cap the stored cover's
+        // longest side so library covers stay small. Best-effort — any decode
+        // failure keeps the original bytes.
+        const resized = await downscaleImageBlob(cover);
+        const coverBytes = await resized.arrayBuffer();
         await fs.writeFile(getCoverFilename(book), 'Books', coverBytes);
       }
     }
