@@ -46,7 +46,6 @@ import { getLibraryViewSettings } from '@/helpers/settings';
 import { useReadingWidget } from '@/hooks/useReadingWidget';
 import { useKeyDownActions } from '@/hooks/useKeyDownActions';
 import { SelectedFile, useFileSelector } from '@/hooks/useFileSelector';
-import { useAndroidPickedBooks } from '@/hooks/useAndroidFilePicker';
 import { SUPPORTED_BOOK_EXTS } from '@/services/constants';
 import {
   tauriHandleClose,
@@ -986,10 +985,6 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       importBooks(result.files, getImportTargetGroupId());
     });
   };
-
-  useAndroidPickedBooks(appService, (files) => {
-    importBooks(files, getImportTargetGroupId());
-  });
 
   const handleImportBooksFromDirectory = async (dirPath?: string) => {
     if (!appService || !isTauriAppPlatform()) return;

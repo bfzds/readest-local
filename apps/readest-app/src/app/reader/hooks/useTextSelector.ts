@@ -4,12 +4,10 @@ import { Insets } from '@/types/misc';
 import { useReaderStore } from '@/store/readerStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { eventDispatcher } from '@/utils/event';
-import { setSelectionSuppressed } from '@/utils/bridge';
 import {
   focusCaretWindowPos,
   getCaretPointFromPoint,
   getWordRangeFromPoint,
-  isHyphenHandleBugProneRange,
   isPointerInsideSelection,
   Point,
   TextSelection,
@@ -89,40 +87,17 @@ export const useTextSelector = (
   const instantHoldTarget = useRef<HTMLElement | null>(null);
   const instantHoldStartClient = useRef<Point | null>(null);
   const instantHoldStartWindow = useRef<{ x: number; y: number } | null>(null);
-  // Latest pointer position in window coords (from pointermove or, on Android,
-  // native touchmove): an auto-turn engagement signal alongside the caret, and
-  // the finger position the Android hyphen repair rebuilds from.
+  // Latest pointer position in window coords (from pointermove or native
+  // touchmove): an auto-turn engagement signal alongside the caret.
   const pointerPos = useRef<{ x: number; y: number } | null>(null);
   const mouseDoubleClickRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
 
-  // Android hyphen selection-bounds bug (#1553): the selection anchor captured
-  // at the first selectionchange of a touch gesture, plus whether that initial
-  // range is prone to the bug (starts at the first word of a hyphenated
-  // paragraph). Evaluated once per gesture.
-  const gestureInitialRef = useRef<{ node: Node; offset: number; prone: boolean } | null>(null);
   // While we mutate the DOM selection ourselves (handle suppression, custom
   // handle drags), selectionchange events are echoes of our own writes —
   // handleSelectionchange must ignore them. Cleared on a delay because
   // selectionchange dispatches a task after the mutation.
   const programmaticSelectionRef = useRef(false);
   const programmaticClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // #5427: whether the native layer is currently refusing the system
-  // selection toolbar (MainActivity hands out a no-op ActionMode while set).
-  const selectionMenuSuppressedRef = useRef(false);
-
-  // Chromium can (re)show the floating selection ActionMode through paths
-  // that never fire a cancelable contextmenu event (handle-drag release,
-  // window focus regain, TextClassifier callbacks), so handleContextmenu's
-  // preventDefault alone cannot keep it off Readest's own toolbar. Keep the
-  // native gate set exactly while reader text is selected — with no reader
-  // selection the flag is off, so system Cut/Copy/Paste menus in editable
-  // fields keep working.
-  const syncSelectionMenuSuppression = (suppressed: boolean) => {
-    if (selectionMenuSuppressedRef.current === suppressed) return;
-    selectionMenuSuppressedRef.current = suppressed;
-    setSelectionSuppressed({ target: 'menu', suppressed }).catch(() => {});
-  };
 
   const guardProgrammaticSelection = () => {
     if (programmaticClearTimer.current) clearTimeout(programmaticClearTimer.current);
@@ -497,7 +472,6 @@ export const useTextSelector = (
   const handleTouchStart = () => {
     isTouchStarted.current = true;
     pendingTouchSelection.current = false;
-    gestureInitialRef.current = null;
     // Pointer positions are per-gesture: a stale point from a previous touch
     // must not steer this gesture's selection repair. Touch moves re-feed it.
     pointerPos.current = null;
@@ -547,33 +521,17 @@ export const useTextSelector = (
     // custom-handle drag) — not user input.
     if (programmaticSelectionRef.current) return;
 
-    // Available on iOS, Android and Desktop, fired when the selection is changed.
-    // On Android native app, this is the primary way to detect text selection.
-    // On web with touch/pen in scroll mode, pointerup never fires (pointercancel
-    // fires instead when browser takes over for scrolling), so we also handle
+    // Fired on every platform when the selection is changed. On web with
+    // touch/pen in scroll mode, pointerup never fires (pointercancel fires
+    // instead when browser takes over for scrolling), so we also handle
     // selectionchange for touch/pen input to pick up native text selections.
-    const isAndroid = false;
     const isTouchInput = lastPointerType.current === 'touch' || lastPointerType.current === 'pen';
     const sel = doc.getSelection() as Selection;
     const viewSettings = getViewSettings(bookKey);
 
-    if (isAndroid) syncSelectionMenuSuppression(isValidSelection(sel));
-
-    // First selection of an Android touch gesture: remember the anchor and
-    // whether it is prone to the hyphen bounds bug (#1553), before any
-    // drag-extension can corrupt it.
-    if (isAndroid && !gestureInitialRef.current && isValidSelection(sel) && sel.anchorNode) {
-      gestureInitialRef.current = {
-        node: sel.anchorNode,
-        offset: sel.anchorOffset,
-        prone: isHyphenHandleBugProneRange(sel.getRangeAt(0), viewSettings?.vertical),
-      };
-    }
-
     // Auto page-turn (#1354): the selection caret is one of the engagement
-    // signals on every platform (and the only one on Android during a native
-    // selection drag, where pointer/touch-move don't fire). Feed it into the same
-    // dwell machine the pointer uses.
+    // signals on every platform. Feed it into the same dwell machine the
+    // pointer uses.
     if (isValidSelection(sel)) {
       noteCorner(!viewSettings?.scrolled ? caretCornerNow(doc) : null, (c) => inCorner(c, doc));
     } else {
@@ -583,15 +541,13 @@ export const useTextSelector = (
     // Desktop mouse selections defer to pointerup, but a keyboard selection
     // adjustment (#4728) has no pointerup — process it as long as a pointer drag
     // isn't in progress (mid-drag still defers to pointerup).
-    if (!isAndroid && !isTouchInput && isPointerDown.current) return;
+    if (!isTouchInput && isPointerDown.current) return;
     // Touch drags in paginated mode (iOS/web): the system handle drag streams
     // selectionchange while the Annotator's touchmove handler hides the popup;
     // processing each change re-showed it and made the toolbar flash. Defer to
     // the gesture end (handleTouchEnd). Scroll mode keeps the immediate path —
     // there the gesture can end in pointercancel with no processing after it.
-    // Android keeps it too: selectionchange is its primary selection signal
-    // and its popup-hiding touchmove never fires.
-    if (!isAndroid && isTouchInput && isTouchStarted.current && !viewSettings?.scrolled) {
+    if (isTouchInput && isTouchStarted.current && !viewSettings?.scrolled) {
       pendingTouchSelection.current = true;
       return;
     }

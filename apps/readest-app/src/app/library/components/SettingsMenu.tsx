@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { PiGear } from 'react-icons/pi';
 import { PiSun, PiMoon } from 'react-icons/pi';
 import { TbSunMoon } from 'react-icons/tb';
@@ -7,7 +7,6 @@ import { MdOutlineSensors } from 'react-icons/md';
 
 import { isTauriAppPlatform } from '@/services/environment';
 import { setBackupDialogVisible } from '@/app/library/components/BackupWindow';
-import { setCacheManagerDialogVisible } from '@/app/library/components/CacheManagerWindow';
 import { useEnv } from '@/context/EnvContext';
 import { useThemeStore } from '@/store/themeStore';
 import { useLibraryStore } from '@/store/libraryStore';
@@ -16,14 +15,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { tauriHandleSetAlwaysOnTop, tauriHandleToggleFullScreen } from '@/utils/window';
 import { setAboutDialogVisible } from '@/components/AboutWindow';
 import { setMigrateDataDirDialogVisible } from '@/app/library/components/MigrateDataWindow';
-import { requestStoragePermission } from '@/utils/permission';
 import { saveSysSettings } from '@/helpers/settings';
-import {
-  getBiometricStatus,
-  getBiometryLabelKey,
-  isBiometricSupported,
-} from '@/services/biometric';
-import { selectDirectory } from '@/utils/bridge';
 import { nextThemeMode } from '@/utils/ambientLight';
 import MenuItem from '@/components/MenuItem';
 import Menu from '@/components/Menu';
@@ -40,42 +32,15 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onPullLibrary, setIsDropdow
   const { themeMode, setThemeMode } = useThemeStore();
   const { settings, setSettingsDialogOpen } = useSettingsStore();
   const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(settings.alwaysOnTop);
-  const [isAlwaysShowStatusBar, setIsAlwaysShowStatusBar] = useState(settings.alwaysShowStatusBar);
   const [isOpenLastBooks, setIsOpenLastBooks] = useState(settings.openLastBooks);
   const [isAutoImportBooksOnOpen, setIsAutoImportBooksOnOpen] = useState(
     settings.autoImportBooksOnOpen,
-  );
-  const [savedBookCoverForLockScreen, setSavedBookCoverForLockScreen] = useState(
-    settings.savedBookCoverForLockScreen || '',
   );
 
   const [isRefreshingMetadata, setIsRefreshingMetadata] = useState(false);
   const [refreshMetadataProgress, setRefreshMetadataProgress] = useState('');
   const { openDialog: openAppLockDialogInStore } = useAppLockStore();
   const isPinEnabled = !!settings.pinCodeEnabled;
-  // The app targets desktop only; mobile-only menu entries stay disabled.
-  const isMobileApp = false;
-  const isAndroidApp = false;
-  const [biometricAvailable, setBiometricAvailable] = useState(false);
-  const [biometryLabelKey, setBiometryLabelKey] = useState('');
-  const showBiometricToggle = !!isMobileApp && isPinEnabled && biometricAvailable;
-
-  useEffect(() => {
-    if (!isBiometricSupported(appService) || !isPinEnabled) return;
-    let cancelled = false;
-    void getBiometricStatus().then(({ available, biometryType }) => {
-      if (cancelled) return;
-      setBiometricAvailable(available);
-      setBiometryLabelKey(getBiometryLabelKey(biometryType));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [appService, isPinEnabled]);
-
-  const toggleBiometricUnlock = () => {
-    void saveSysSettings(envConfig, 'biometricUnlockEnabled', !settings.biometricUnlockEnabled);
-  };
 
   const openAppLockDialog = (mode: AppLockDialogMode) => {
     openAppLockDialogInStore(mode);
@@ -110,12 +75,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onPullLibrary, setIsDropdow
     setIsDropdownOpen?.(false);
   };
 
-  const toggleAlwaysShowStatusBar = () => {
-    const newValue = !settings.alwaysShowStatusBar;
-    saveSysSettings(envConfig, 'alwaysShowStatusBar', newValue);
-    setIsAlwaysShowStatusBar(newValue);
-  };
-
   const toggleAutoImportBooksOnOpen = () => {
     const newValue = !settings.autoImportBooksOnOpen;
     saveSysSettings(envConfig, 'autoImportBooksOnOpen', newValue);
@@ -136,11 +95,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onPullLibrary, setIsDropdow
   const handleBackupRestore = () => {
     setIsDropdownOpen?.(false);
     setBackupDialogVisible(true);
-  };
-
-  const handleManageCache = () => {
-    setIsDropdownOpen?.(false);
-    setCacheManagerDialogVisible(true);
   };
 
   const handleRefreshMetadata = async () => {
@@ -184,20 +138,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onPullLibrary, setIsDropdow
     setSettingsDialogOpen(true);
   };
 
-  const handleSetSavedBookCoverForLockScreen = async () => {
-    if (!(await requestStoragePermission())) return;
-
-    const newValue = settings.savedBookCoverForLockScreen ? '' : 'default';
-    if (newValue) {
-      const response = await selectDirectory();
-      if (response.path) {
-        saveSysSettings(envConfig, 'savedBookCoverForLockScreenPath', response.path);
-      }
-    }
-    saveSysSettings(envConfig, 'savedBookCoverForLockScreen', newValue);
-    setSavedBookCoverForLockScreen(newValue);
-  };
-
   const themeModeLabel =
     themeMode === 'dark'
       ? _('Dark Mode')
@@ -206,10 +146,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onPullLibrary, setIsDropdow
         : themeMode === 'ambient'
           ? _('Ambient Mode')
           : _('Auto Mode');
-
-  const savedBookCoverPath = settings.savedBookCoverForLockScreenPath;
-  const coverDir = savedBookCoverPath ? savedBookCoverPath.split('/').pop() : 'Images';
-  const savedBookCoverDescription = `📁 ${coverDir}/last-book-cover.png`;
 
   return (
     <Menu
@@ -245,13 +181,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onPullLibrary, setIsDropdow
       {appService?.hasWindow && (
         <MenuItem label={_('Always on Top')} toggled={isAlwaysOnTop} onClick={toggleAlwaysOnTop} />
       )}
-      {isMobileApp && (
-        <MenuItem
-          label={_('Always Show Status Bar')}
-          toggled={isAlwaysShowStatusBar}
-          onClick={toggleAlwaysShowStatusBar}
-        />
-      )}
       <MenuItem
         label={themeModeLabel}
         Icon={
@@ -279,15 +208,10 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onPullLibrary, setIsDropdow
             onClick={handleRefreshMetadata}
             disabled={isRefreshingMetadata}
           />
-          {isMobileApp && <MenuItem label={_('Manage Cache')} onClick={handleManageCache} />}
           {!isPinEnabled && (
             <MenuItem
               label={_('Set PIN…')}
-              tooltip={
-                isMobileApp
-                  ? _('Require a PIN (and biometrics, if available) to open Readest')
-                  : _('Require a 4-digit PIN to open Readest')
-              }
+              tooltip={_('Require a 4-digit PIN to open Readest')}
               onClick={() => openAppLockDialog('set')}
             />
           )}
@@ -296,22 +220,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onPullLibrary, setIsDropdow
           )}
           {isPinEnabled && (
             <MenuItem label={_('Disable PIN…')} onClick={() => openAppLockDialog('disable')} />
-          )}
-          {showBiometricToggle && (
-            <MenuItem
-              label={_('Unlock with {{biometry}}', { biometry: _(biometryLabelKey) })}
-              toggled={!!settings.biometricUnlockEnabled}
-              onClick={toggleBiometricUnlock}
-            />
-          )}
-          {isAndroidApp && (
-            <MenuItem
-              label={_('Save Book Cover')}
-              tooltip={_('Auto-save last book cover')}
-              description={savedBookCoverForLockScreen ? savedBookCoverDescription : ''}
-              toggled={!!savedBookCoverForLockScreen}
-              onClick={handleSetSavedBookCoverForLockScreen}
-            />
           )}
         </ul>
       </MenuItem>

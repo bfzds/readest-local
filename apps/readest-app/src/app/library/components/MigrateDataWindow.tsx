@@ -1,4 +1,3 @@
-import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 import {
   RiFolderOpenLine,
@@ -6,7 +5,7 @@ import {
   RiErrorWarningFill,
   RiLoader2Line,
 } from 'react-icons/ri';
-import { documentDir, join } from '@tauri-apps/api/path';
+import { join } from '@tauri-apps/api/path';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -17,12 +16,8 @@ import { FileItem } from '@/types/system';
 import { getDirPath } from '@/utils/path';
 import { formatBytes } from '@/utils/book';
 import { getOSPlatform } from '@/utils/misc';
-import { getExternalSDCardPath, selectDirectory } from '@/utils/bridge';
 import { FILE_REVEAL_LABELS, FILE_REVEAL_PLATFORMS } from '@/utils/os';
-import { requestStoragePermission } from '@/utils/permission';
 import Dialog from '@/components/Dialog';
-import Dropdown from '@/components/Dropdown';
-import MenuItem from '@/components/MenuItem';
 
 export const setMigrateDataDirDialogVisible = (visible: boolean) => {
   const dialog = document.getElementById('migrate_data_dir_window');
@@ -46,8 +41,6 @@ export const MigrateDataWindow = () => {
   const _ = useTranslation();
   const { appService, envConfig } = useEnv();
   const { settings, setSettings, saveSettings } = useSettingsStore();
-  // The app targets desktop only; the Android migration source is disabled.
-  const isAndroid = false;
   const [isOpen, setIsOpen] = useState(false);
   const [currentDataDir, setCurrentDataDir] = useState('');
   const [newDataDir, setNewDataDir] = useState('');
@@ -60,14 +53,12 @@ export const MigrateDataWindow = () => {
   const [filesToMigrate, setFilesToMigrate] = useState<FileItem[]>([]);
   const [currentDirFileCount, setCurrentDirFileCount] = useState('');
   const [currentDirFileSize, setCurrentDirFileSize] = useState(0);
-  const [androidNewDirs, setAndroidNewDirs] = useState<{ path: string; label: string }[]>([]);
 
   useEffect(() => {
     const handleCustomEvent = (event: CustomEvent) => {
       setIsOpen(event.detail.visible);
       if (event.detail.visible) {
         loadCurrentDataDir();
-        loadAndroidDirs();
       }
     };
 
@@ -99,37 +90,6 @@ export const MigrateDataWindow = () => {
     }
   };
 
-  const loadAndroidDirs = async () => {
-    try {
-      if (isAndroid) {
-        const sdCardPathResponse = await getExternalSDCardPath();
-        let sdcardDirs = [
-          { path: '/storage/emulated/0', label: '/sdcard/0' },
-          { path: '/storage/emulated/0/Books', label: '/sdcard/0/Books' },
-          { path: '/storage/emulated/0/Documents', label: '/sdcard/0/Documents' },
-          { path: '/storage/emulated/0/Download', label: '/sdcard/0/Download' },
-        ];
-        if (sdCardPathResponse.path) {
-          const externalSdCardPath = sdCardPathResponse.path;
-          sdcardDirs = [
-            ...sdcardDirs,
-            { path: externalSdCardPath, label: '/sdcard/1' },
-            { path: `${externalSdCardPath}/Books`, label: '/sdcard/1/Books' },
-            { path: `${externalSdCardPath}/Documents`, label: '/sdcard/1/Documents' },
-            { path: `${externalSdCardPath}/Download`, label: '/sdcard/1/Download' },
-          ];
-        }
-        const localDocumentDir = await documentDir();
-        setAndroidNewDirs([
-          ...sdcardDirs,
-          { path: localDocumentDir, label: '/sdcard/APPDATA/Documents' },
-        ]);
-      }
-    } catch (error) {
-      console.error('Error loading app local data directory:', error);
-    }
-  };
-
   const handleSelectNewDir = async () => {
     setMigrationStatus('selecting');
     setErrorMessage('');
@@ -143,41 +103,6 @@ export const MigrateDataWindow = () => {
         setMigrationStatus('idle');
       } else {
         setMigrationStatus('idle');
-      }
-    } catch (error) {
-      console.error('Error selecting directory:', error);
-      setErrorMessage(_('Failed to select directory'));
-      setMigrationStatus('error');
-    }
-  };
-
-  const handleSelectedNewDir = async (dir: string) => {
-    setErrorMessage('');
-
-    if (!dir.includes('Android/data')) {
-      if (!(await requestStoragePermission())) return;
-    }
-
-    try {
-      const newDataDir = await join(dir, DATA_SUBDIR);
-      await appService?.createDir(newDataDir, 'None', true);
-      setNewDataDir(newDataDir);
-      setMigrationStatus('idle');
-    } catch (error) {
-      console.error('Error selecting directory:', error);
-      setErrorMessage(_('Failed to select directory'));
-      setMigrationStatus('error');
-    }
-  };
-
-  // The preset shortcuts only cover the well-known shared-storage folders. Open
-  // the system folder picker so any folder can become the data location (#2862);
-  // it hands back an absolute path that All Files Access makes writable.
-  const handleBrowseNewDir = async () => {
-    try {
-      const response = await selectDirectory();
-      if (response.path) {
-        await handleSelectedNewDir(response.path);
       }
     } catch (error) {
       console.error('Error selecting directory:', error);
@@ -333,45 +258,16 @@ export const MigrateDataWindow = () => {
                 </span>
               </button>
             )}
-            {isAndroid ? (
-              <Dropdown
-                label={_('Choose New Folder')}
-                className='dropdown-bottom flex w-full justify-center'
-                buttonClassName='btn btn-ghost btn-outline w-full'
-                toggleButton={
-                  <div>{newDataDir ? _('Choose Different Folder') : _('Choose New Folder')}</div>
-                }
-              >
-                <div
-                  className={clsx(
-                    'folder-menu dropdown-content no-triangle left-0',
-                    'border-base-300 !bg-base-200 z-20 mt-1 max-w-[90vw] shadow-2xl',
-                  )}
-                >
-                  {androidNewDirs.map((dir) => (
-                    <MenuItem
-                      key={dir.path}
-                      toggled={newDataDir.split(`/${DATA_SUBDIR}`)[0] === dir.path}
-                      transient
-                      label={dir.label}
-                      onClick={() => handleSelectedNewDir(dir.path)}
-                    />
-                  ))}
-                  <MenuItem transient label={_('Choose a folder')} onClick={handleBrowseNewDir} />
-                </div>
-              </Dropdown>
-            ) : (
-              <button
-                className='btn btn-outline btn-sm w-full'
-                onClick={handleSelectNewDir}
-                disabled={migrationStatus === 'migrating' || migrationStatus === 'selecting'}
-              >
-                {migrationStatus === 'selecting' && (
-                  <RiLoader2Line className='h-4 w-4 animate-spin' />
-                )}
-                {newDataDir ? _('Choose Different Folder') : _('Choose New Folder')}
-              </button>
-            )}
+            <button
+              className='btn btn-outline btn-sm w-full'
+              onClick={handleSelectNewDir}
+              disabled={migrationStatus === 'migrating' || migrationStatus === 'selecting'}
+            >
+              {migrationStatus === 'selecting' && (
+                <RiLoader2Line className='h-4 w-4 animate-spin' />
+              )}
+              {newDataDir ? _('Choose Different Folder') : _('Choose New Folder')}
+            </button>
           </div>
 
           {/* Migration Progress */}

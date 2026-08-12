@@ -62,7 +62,6 @@ const renderNotes = () =>
       triangleDir='up'
       popupWidth={240}
       popupHeight={120}
-      onDismiss={() => {}}
     />,
   );
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -87,7 +87,6 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
   const [allowScript, setAllowScript] = useState(viewSettings.allowScript);
 
   const resetToDefaults = useResetViewSettings();
-  const pageTurnerResetRef = useRef<() => void>(() => {});
   const canShare = canShareText();
 
   // The layered styles need an engine with full View Transitions support or
@@ -136,7 +135,6 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
       false,
       true,
     );
-    pageTurnerResetRef.current();
   };
 
   useEffect(() => {
@@ -545,12 +543,7 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
         />
       </BoxedList>
 
-      <PageTurnerSettings
-        bookKey={bookKey}
-        onRegisterReset={(fn) => {
-          pageTurnerResetRef.current = fn;
-        }}
-      />
+      <PageTurnerSettings />
 
       <BoxedList
         title={_('Annotation Tools')}
