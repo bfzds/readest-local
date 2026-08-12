@@ -1,5 +1,6 @@
 import { redirect, useRouter } from 'next/navigation';
 import { getAllWindows, getCurrentWindow, ScrollBarStyle } from '@tauri-apps/api/window';
+import { LogicalSize } from '@tauri-apps/api/dpi';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { isTauriAppPlatform } from '@/services/environment';
 import { BOOK_IDS_SEPARATOR } from '@/services/constants';
@@ -25,12 +26,15 @@ const createReaderWindow = async (appService: AppService, url: string) => {
   }
   const scaleFactor = await templateWindow.scaleFactor();
   const { width, height } = await templateWindow.innerSize();
+  const logicalWidth = Math.round(width / scaleFactor);
+  const logicalHeight = Math.round(height / scaleFactor);
+  const matchedReader = templateWindow.label.startsWith('reader');
   const win = new WebviewWindow(`${newLabelPrefix}-${readerWindowsCount}`, {
     url,
     // Match the window the reader was opened from so switching from the
     // library to a book does not snap the window back to a default size.
-    width: Math.round(width / scaleFactor),
-    height: Math.round(height / scaleFactor),
+    width: logicalWidth,
+    height: logicalHeight,
     center: true,
     resizable: true,
     title: 'Readest',
@@ -45,6 +49,17 @@ const createReaderWindow = async (appService: AppService, url: string) => {
       ? 'fluentOverlay'
       : 'default') as unknown as ScrollBarStyle,
   });
+  // When a reader window is already open, force the new window to its size
+  // after creation: the window-state plugin restores a saved size on the Rust
+  // side during creation (all reader windows share one "reader" key), which
+  // would otherwise override the matched size and make book windows differ.
+  if (matchedReader) {
+    win.once('tauri://created', () => {
+      setTimeout(() => {
+        win.setSize(new LogicalSize(logicalWidth, logicalHeight)).catch(() => {});
+      }, 50);
+    });
+  }
   win.once('tauri://created', () => {
     console.log('new window created');
     readerWindowsCount += 1;

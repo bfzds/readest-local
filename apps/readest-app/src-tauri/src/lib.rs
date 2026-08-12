@@ -247,8 +247,15 @@ pub fn run() {
     #[cfg(desktop)]
     let builder = builder.plugin(window_state::init());
 
+    // Map every reader window onto a single "reader" state key so all book
+    // windows share one remembered size/position — opening a second book no
+    // longer restores a stale per-label size that differs from the first.
     #[cfg(desktop)]
-    let builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
+    let builder = builder.plugin(
+        tauri_plugin_window_state::Builder::default()
+            .map_label(|label| if label.starts_with("reader") { "reader" } else { label })
+            .build(),
+    );
 
     #[cfg(target_os = "macos")]
     let builder = builder.plugin(macos::traffic_light::init());
