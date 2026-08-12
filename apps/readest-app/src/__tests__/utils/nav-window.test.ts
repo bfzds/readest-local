@@ -10,6 +10,10 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
     }
     once() {}
     show() {}
+    static getByLabel() {
+      // No reused window: the showReaderWindow tests exercise the create path.
+      return null;
+    }
   },
 }));
 

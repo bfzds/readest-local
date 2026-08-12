@@ -1,40 +1,31 @@
 import { redirect, useRouter } from 'next/navigation';
-import { getAllWindows, getCurrentWindow, ScrollBarStyle } from '@tauri-apps/api/window';
-import { LogicalSize } from '@tauri-apps/api/dpi';
+import { getCurrentWindow, ScrollBarStyle } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { emitTo } from '@tauri-apps/api/event';
 import { isTauriAppPlatform } from '@/services/environment';
 import { BOOK_IDS_SEPARATOR } from '@/services/constants';
 import { AppService } from '@/types/system';
 
-let readerWindowsCount = 0;
-const createReaderWindow = async (appService: AppService, url: string) => {
+// Single reused reader window (Plan A): created on the first open, hidden (not
+// destroyed) on close, then reused by routing new books in-place via a
+// cross-window event. A fixed label lets callers find it, and the Rust
+// window-state map_label keeps one remembered size/position for it.
+const READER_WINDOW_LABEL = 'reader';
+
+const createReaderWindow = async (
+  appService: AppService,
+  url: string,
+  label = READER_WINDOW_LABEL,
+) => {
   const currentWindow = getCurrentWindow();
-  const label = currentWindow.label;
-  const newLabelPrefix = label === 'main' ? 'reader' : label;
-  // Size the new book window to match an already-open reader window (the
-  // previously opened book) so all book windows stay consistent, rather than
-  // snapping to the library window. Fall back to the window the book was
-  // opened from when no reader window is open yet or the lookup fails.
-  let templateWindow = currentWindow;
-  if (!label.startsWith('reader')) {
-    try {
-      const readers = (await getAllWindows()).filter((w) => w.label.startsWith('reader'));
-      if (readers.length > 0) templateWindow = readers[0]!;
-    } catch {
-      // Window list unavailable mid-teardown; keep the current window.
-    }
-  }
-  const scaleFactor = await templateWindow.scaleFactor();
-  const { width, height } = await templateWindow.innerSize();
-  const logicalWidth = Math.round(width / scaleFactor);
-  const logicalHeight = Math.round(height / scaleFactor);
-  const matchedReader = templateWindow.label.startsWith('reader');
-  const win = new WebviewWindow(`${newLabelPrefix}-${readerWindowsCount}`, {
+  const scaleFactor = await currentWindow.scaleFactor();
+  const { width, height } = await currentWindow.innerSize();
+  const win = new WebviewWindow(label, {
     url,
     // Match the window the reader was opened from so switching from the
     // library to a book does not snap the window back to a default size.
-    width: logicalWidth,
-    height: logicalHeight,
+    width: Math.round(width / scaleFactor),
+    height: Math.round(height / scaleFactor),
     center: true,
     resizable: true,
     title: 'Readest',
@@ -49,26 +40,8 @@ const createReaderWindow = async (appService: AppService, url: string) => {
       ? 'fluentOverlay'
       : 'default') as unknown as ScrollBarStyle,
   });
-  // When a reader window is already open, force the new window to its size
-  // after creation: the window-state plugin restores a saved size on the Rust
-  // side during creation (all reader windows share one "reader" key), which
-  // would otherwise override the matched size and make book windows differ.
-  if (matchedReader) {
-    win.once('tauri://created', () => {
-      setTimeout(() => {
-        win.setSize(new LogicalSize(logicalWidth, logicalHeight)).catch(() => {});
-      }, 50);
-    });
-  }
-  win.once('tauri://created', () => {
-    console.log('new window created');
-    readerWindowsCount += 1;
-  });
   win.once('tauri://error', (e) => {
     console.error('error creating window', e);
-  });
-  win.once('tauri://destroyed', () => {
-    readerWindowsCount -= 1;
   });
 };
 
@@ -77,10 +50,21 @@ export const showReaderWindow = async (
   bookIds: string[],
   queryParams?: string,
 ) => {
-  const ids = bookIds.join(BOOK_IDS_SEPARATOR);
   const params = new URLSearchParams(queryParams || '');
-  params.set('ids', ids);
+  params.set('ids', bookIds.join(BOOK_IDS_SEPARATOR));
   const url = `/reader?${params.toString()}`;
+
+  // Reuse the existing reader window: route the new book to it in-place (SPA,
+  // no reload of the app bundle), then show + focus. Create it on first open.
+  const existing = await WebviewWindow.getByLabel(READER_WINDOW_LABEL);
+  if (existing) {
+    const cfi = params.get('cfi') ?? undefined;
+    const highlight = params.get('highlight') === 'search' ? 'search' : undefined;
+    await emitTo(READER_WINDOW_LABEL, 'open-book', { bookHash: bookIds[0], cfi, highlight });
+    await existing.show();
+    await existing.setFocus();
+    return;
+  }
   await createReaderWindow(appService, url);
 };
 
@@ -88,7 +72,9 @@ export const showLibraryWindow = async (appService: AppService, filenames: strin
   const params = new URLSearchParams();
   filenames.forEach((filename) => params.append('file', filename));
   const url = `/library?${params.toString()}`;
-  await createReaderWindow(appService, url);
+  // A separate window from the reused reader window: it hosts /library with
+  // open-with files, not a book.
+  await createReaderWindow(appService, url, 'library');
 };
 
 // Bring the main library window back when a reader window asks to "go to library".

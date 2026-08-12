@@ -12,10 +12,9 @@ import { useSidebarStore } from '@/store/sidebarStore';
 import { useGamepad } from '@/hooks/useGamepad';
 import { useTranslation } from '@/hooks/useTranslation';
 import { SystemSettings } from '@/types/settings';
-import { parseOpenWithFiles } from '@/helpers/openWith';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { UnlistenFn, emitTo } from '@tauri-apps/api/event';
-import { tauriHandleClose, tauriHandleOnCloseWindow } from '@/utils/window';
+import { UnlistenFn, emitTo, listen } from '@tauri-apps/api/event';
+import { tauriHandleOnCloseWindow } from '@/utils/window';
 import { isTauriAppPlatform } from '@/services/environment';
 import { uniqueId } from '@/utils/misc';
 import { throttle } from '@/utils/throttle';
@@ -165,6 +164,22 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
     return () => clearInterval(timer);
   }, [appService?.hasWindow]);
 
+  // Plan A window reuse: the library routes a newly-opened book to this window
+  // via a cross-window `open-book` event. Forward it to the existing
+  // open-book-in-reader flow, which swaps the current book in-place (no reload).
+  useEffect(() => {
+    if (!appService?.hasWindow) return;
+    const unlisten = listen<{ bookHash?: string; cfi?: string }>('open-book', (event) => {
+      const { bookHash, cfi } = event.payload;
+      if (bookHash) {
+        eventDispatcher.dispatch('open-book-in-reader', { bookHash, cfi });
+      }
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [appService?.hasWindow]);
+
   const saveBookConfig = async (bookKey: string) => {
     const config = getConfig(bookKey);
     const { book } = getBookData(bookKey) || {};
@@ -220,8 +235,8 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
 
   const handleCloseBooksToLibrary = async () => {
     // SPA navigation in the main window (or on web) keeps the webview alive:
-    // TTS may continue headless. Non-main Tauri windows close their webview
-    // below, but their per-window TTS dies with the window either way.
+    // TTS may continue headless. Non-main Tauri windows hide their webview
+    // (Plan A reuse), but their per-window TTS dies with the window either way.
     handleCloseBooks(true);
     if (isTauriAppPlatform()) {
       const currentWindow = getCurrentWindow();
@@ -231,7 +246,8 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
         if (appService) {
           await ensureMainLibraryWindow(appService);
         }
-        currentWindow.close();
+        // Hide the reused reader window instead of destroying it.
+        await currentWindow.hide();
       }
     } else {
       navigateBackToLibrary();
@@ -240,24 +256,21 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
 
   const handleCloseBook = async (bookKey: string) => {
     // Header X / pane close: an SPA-side close on web and the main window.
-    // The Tauri reader-window branches below destroy their webview, which
-    // takes the per-window TTS with it either way.
+    // The Tauri reader-window branches below hide the reused reader window
+    // (Plan A) instead of destroying it, taking the per-window TTS with it.
     const isLastBook = bookKeys.filter((key) => key !== bookKey).length === 0;
     if (isLastBook && appService?.hasWindow) {
-      // Dedicated reader window: close the window directly. Its onCloseRequested
-      // handler saves the book and destroys the window, so bookKeys is not
-      // cleared first — never render a blank reader window while the deferred
-      // destroy is pending.
       const currentWindow = getCurrentWindow();
       if (currentWindow.label.startsWith('reader')) {
-        const openWithFiles = (await parseOpenWithFiles()) || [];
-        if (openWithFiles.length > 0) {
-          void tauriHandleOnCloseWindow(handleCloseBooks).catch((error) => {
-            console.info('Failed to register close-window listener:', error);
-          });
-          return await tauriHandleClose();
-        }
-        return await currentWindow.close();
+        // Plan A reuse: hide (not destroy) the reader window so it stays warm
+        // for the next open. bookKeys is not cleared — the window keeps the
+        // current book until the next open swaps it in-place, so we never
+        // render a blank window. Stop the book's TTS (it would otherwise keep
+        // playing in the hidden window), then bring the library to the front.
+        eventDispatcher.dispatch('tts-stop', { bookKey });
+        await ensureMainLibraryWindow(appService);
+        await currentWindow.hide();
+        return;
       }
     }
     saveConfigAndCloseBook(bookKey, true);

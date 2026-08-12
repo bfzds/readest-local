@@ -32,9 +32,14 @@ vi.mock('@/services/constants', () => ({
   BOOK_IDS_SEPARATOR: '+',
 }));
 
+vi.mock('@tauri-apps/api/event', () => ({
+  emitTo: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { redirect } from 'next/navigation';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { emitTo } from '@tauri-apps/api/event';
 import { isTauriAppPlatform } from '@/services/environment';
 import {
   navigateToReader,
@@ -348,6 +353,30 @@ describe('showReaderWindow', () => {
     const options = vi.mocked(WebviewWindow).mock.calls[0]![1]!;
     expect(options.width).toBe(1280);
     expect(options.height).toBe(720);
+  });
+
+  test('reuses an existing reader window via the open-book event instead of creating one', async () => {
+    const existing = {
+      show: vi.fn().mockResolvedValue(undefined),
+      setFocus: vi.fn().mockResolvedValue(undefined),
+    };
+    (WebviewWindow.getByLabel as unknown as ReturnType<typeof vi.fn>).mockReturnValue(existing);
+    const appService = makeAppService();
+
+    await showReaderWindow(
+      appService as never,
+      ['book1'],
+      'cfi=epubcfi%28%2F6%2F2%21%2F4%2F2%3A1%29',
+    );
+
+    expect(vi.mocked(emitTo)).toHaveBeenCalledWith('reader', 'open-book', {
+      bookHash: 'book1',
+      cfi: 'epubcfi(/6/2!/4/2:1)',
+      highlight: undefined,
+    });
+    expect(existing.show).toHaveBeenCalled();
+    expect(existing.setFocus).toHaveBeenCalled();
+    expect(WebviewWindow).not.toHaveBeenCalled();
   });
 });
 
