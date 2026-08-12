@@ -67,7 +67,7 @@ jobs:
         working-directory: apps/readest-app/src-tauri
         run: cargo test -p Readest --lib
 
-  build_web_app:
+  lint_app:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -97,43 +97,9 @@ jobs:
         run: |
           pnpm lint
 
-      - name: build the web app
-        working-directory: apps/readest-app
-        run: |
-          pnpm build-web && pnpm check:all
-
-      - name: cache playwright browsers
-        id: playwright-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-
-      - name: install playwright browsers
-        working-directory: apps/readest-app
-        run: |
-          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = 'true' ]; then
-            npx playwright install-deps chromium
-          else
-            npx playwright install --with-deps chromium
-          fi
-
-      - name: run web e2e tests
-        id: web_e2e
-        working-directory: apps/readest-app
-        run: pnpm test:e2e:web
-
-      - name: upload e2e report
-        if: ${{ failure() && steps.web_e2e.outcome == 'failure' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: playwright-report
-          path: apps/readest-app/playwright-report/
-          retention-days: 7
-
   # The jsdom unit suite is the slowest part of the PR checks, so it is split
-  # across two parallel shards (vitest --shard). The browser tests need
-  test_web_app:
+  # across two parallel shards (vitest --shard); shard 1 also runs the browser tests.
+  test_app:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
