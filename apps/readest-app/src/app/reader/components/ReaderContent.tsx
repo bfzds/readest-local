@@ -14,7 +14,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { SystemSettings } from '@/types/settings';
 import { parseOpenWithFiles } from '@/helpers/openWith';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { UnlistenFn } from '@tauri-apps/api/event';
+import { UnlistenFn, emitTo } from '@tauri-apps/api/event';
 import { tauriHandleClose, tauriHandleOnCloseWindow } from '@/utils/window';
 import { isTauriAppPlatform } from '@/services/environment';
 import { uniqueId } from '@/utils/misc';
@@ -130,6 +130,41 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookKeys, appService?.hasWindow]);
 
+  // Safety net: if a reader window ever finds itself with no books open (e.g.
+  // a close raced the store update), close the window instead of leaving a
+  // blank reader page behind. Only fires after this window has had books, so
+  // the initial empty state before initViewState populates bookKeys is ignored.
+  const hadBooksRef = useRef(false);
+  const closedEmptyReaderRef = useRef(false);
+  useEffect(() => {
+    if (bookKeys && bookKeys.length > 0) {
+      hadBooksRef.current = true;
+      return;
+    }
+    if (hadBooksRef.current && !closedEmptyReaderRef.current && appService?.hasWindow) {
+      const currentWindow = getCurrentWindow();
+      if (currentWindow.label.startsWith('reader')) {
+        closedEmptyReaderRef.current = true;
+        void closeReaderWindowOrGoToLibrary(appService, router);
+      }
+    }
+  }, [bookKeys, appService, router]);
+
+  // Heartbeat for the main window's reader-window watchdog: a crashed webview
+  // (blank window) stops emitting, so the watchdog can destroy it instead of
+  // leaving it as a permanent blank window.
+  useEffect(() => {
+    if (!appService?.hasWindow) return;
+    const currentWindow = getCurrentWindow();
+    if (!currentWindow.label.startsWith('reader')) return;
+    const heartbeat = () => {
+      emitTo('main', 'reader-window-alive', { label: currentWindow.label }).catch(() => {});
+    };
+    heartbeat();
+    const timer = setInterval(heartbeat, 3000);
+    return () => clearInterval(timer);
+  }, [appService?.hasWindow]);
+
   const saveBookConfig = async (bookKey: string) => {
     const config = getConfig(bookKey);
     const { book } = getBookData(bookKey) || {};
@@ -207,22 +242,27 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
     // Header X / pane close: an SPA-side close on web and the main window.
     // The Tauri reader-window branches below destroy their webview, which
     // takes the per-window TTS with it either way.
-    saveConfigAndCloseBook(bookKey, true);
-    dismissBook(bookKey);
-    if (bookKeys.filter((key) => key !== bookKey).length == 0) {
-      const openWithFiles = (await parseOpenWithFiles()) || [];
-      if (appService?.hasWindow) {
+    const isLastBook = bookKeys.filter((key) => key !== bookKey).length === 0;
+    if (isLastBook && appService?.hasWindow) {
+      // Dedicated reader window: close the window directly. Its onCloseRequested
+      // handler saves the book and destroys the window, so bookKeys is not
+      // cleared first — never render a blank reader window while the deferred
+      // destroy is pending.
+      const currentWindow = getCurrentWindow();
+      if (currentWindow.label.startsWith('reader')) {
+        const openWithFiles = (await parseOpenWithFiles()) || [];
         if (openWithFiles.length > 0) {
           void tauriHandleOnCloseWindow(handleCloseBooks).catch((error) => {
             console.info('Failed to register close-window listener:', error);
           });
           return await tauriHandleClose();
         }
-        const currentWindow = getCurrentWindow();
-        if (currentWindow.label.startsWith('reader')) {
-          return await currentWindow.close();
-        }
+        return await currentWindow.close();
       }
+    }
+    saveConfigAndCloseBook(bookKey, true);
+    dismissBook(bookKey);
+    if (isLastBook) {
       saveSettingsAndGoToLibrary();
     }
   };

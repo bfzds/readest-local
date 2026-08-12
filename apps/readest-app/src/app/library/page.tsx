@@ -21,6 +21,7 @@ import { clearLibrarySearchHistory, loadLibrarySearchHistory } from './utils/sea
 import type { LibrarySearchTarget } from '@/types/book';
 import { navigateToLibrary, navigateToReader } from '@/utils/nav';
 import { getBookWithUpdatedMetadata, listFormater } from '@/utils/book';
+import { startReaderWindowWatchdog } from '@/utils/readerWindowWatchdog';
 import { getImportErrorMessage } from '@/services/errors';
 import { ingestFile } from '@/services/ingestService';
 import { eventDispatcher } from '@/utils/event';
@@ -438,6 +439,16 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     return;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appService, envConfig]);
+
+  // Watch for reader windows whose webview has crashed (blank window): they
+  // stop heartbeating and never emit close-reader-window, so the watchdog
+  // destroys them instead of leaving them open forever.
+  useEffect(() => {
+    if (!appService?.hasWindow) return;
+    const stopWatchdog = startReaderWindowWatchdog();
+    return stopWatchdog;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appService?.hasWindow]);
 
   const handleImportBookFiles = useCallback(async (event: CustomEvent) => {
     const selectedFiles: SelectedFile[] = event.detail.files;

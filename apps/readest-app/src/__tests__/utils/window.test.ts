@@ -102,7 +102,7 @@ describe('tauriHandleOnCloseWindow', () => {
     expect(win.destroy).toHaveBeenCalled();
   });
 
-  test('on macOS, dedicated reader windows still destroy after 300ms', async () => {
+  test('on macOS, dedicated reader windows still destroy after 500ms', async () => {
     vi.mocked(osType).mockReturnValue('macos');
     const { win, trigger } = makeWindow('reader-0');
     vi.mocked(getCurrentWindow).mockReturnValue(
@@ -114,7 +114,7 @@ describe('tauriHandleOnCloseWindow', () => {
     await trigger();
 
     expect(win.destroy).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(500);
     expect(win.destroy).toHaveBeenCalled();
   });
 });
