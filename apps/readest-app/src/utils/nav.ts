@@ -1,5 +1,5 @@
 import { redirect, useRouter } from 'next/navigation';
-import { getCurrentWindow, ScrollBarStyle } from '@tauri-apps/api/window';
+import { getAllWindows, getCurrentWindow, ScrollBarStyle } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { isTauriAppPlatform } from '@/services/environment';
 import { BOOK_IDS_SEPARATOR } from '@/services/constants';
@@ -10,8 +10,21 @@ const createReaderWindow = async (appService: AppService, url: string) => {
   const currentWindow = getCurrentWindow();
   const label = currentWindow.label;
   const newLabelPrefix = label === 'main' ? 'reader' : label;
-  const scaleFactor = await currentWindow.scaleFactor();
-  const { width, height } = await currentWindow.innerSize();
+  // Size the new book window to match an already-open reader window (the
+  // previously opened book) so all book windows stay consistent, rather than
+  // snapping to the library window. Fall back to the window the book was
+  // opened from when no reader window is open yet or the lookup fails.
+  let templateWindow = currentWindow;
+  if (!label.startsWith('reader')) {
+    try {
+      const readers = (await getAllWindows()).filter((w) => w.label.startsWith('reader'));
+      if (readers.length > 0) templateWindow = readers[0]!;
+    } catch {
+      // Window list unavailable mid-teardown; keep the current window.
+    }
+  }
+  const scaleFactor = await templateWindow.scaleFactor();
+  const { width, height } = await templateWindow.innerSize();
   const win = new WebviewWindow(`${newLabelPrefix}-${readerWindowsCount}`, {
     url,
     // Match the window the reader was opened from so switching from the

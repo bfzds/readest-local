@@ -247,8 +247,17 @@ pub fn run() {
     #[cfg(desktop)]
     let builder = builder.plugin(window_state::init());
 
+    // Reader windows are ephemeral (one per open book) and always sized to
+    // match the window the book was opened from, so persisting their state by
+    // label would restore a stale size onto a later window that reused the
+    // label (e.g. reader-0 from a previous session), making book windows
+    // inconsistent. Exclude them from window-state tracking entirely.
     #[cfg(desktop)]
-    let builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
+    let builder = builder.plugin(
+        tauri_plugin_window_state::Builder::default()
+            .with_filter(|label| !label.starts_with("reader"))
+            .build(),
+    );
 
     #[cfg(target_os = "macos")]
     let builder = builder.plugin(macos::traffic_light::init());
