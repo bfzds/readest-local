@@ -6,7 +6,6 @@ import {
   RiErrorWarningFill,
   RiLoader2Line,
 } from 'react-icons/ri';
-import { documentDir, join } from '@tauri-apps/api/path';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { formatBytes } from '@/utils/book';
@@ -33,24 +32,13 @@ export const setCacheManagerDialogVisible = (visible: boolean) => {
 type CacheStatus = 'scanning' | 'idle' | 'confirming' | 'clearing' | 'done' | 'error';
 
 /**
- * Locations Manage Cache clears (mobile only). Both iOS and Android clear the
- * app Cache and Temp bases; iOS additionally clears the `Documents/Inbox`
- * folder, where "Open in Readest" leaves already-imported book copies that
- * otherwise linger forever.
+ * Locations Manage Cache clears. Clears the app Cache and Temp bases.
  */
-const getCacheSources = async (appService: AppService): Promise<CacheSource[]> => {
+const getCacheSources = async (_appService: AppService): Promise<CacheSource[]> => {
   const sources: CacheSource[] = [
     { base: 'Cache', dir: '' },
     { base: 'Temp', dir: '' },
   ];
-  if (appService.isIOSApp) {
-    try {
-      const inboxDir = await join(await documentDir(), 'Inbox');
-      sources.push({ base: 'None', dir: inboxDir });
-    } catch {
-      // Documents dir unavailable — skip the inbox source.
-    }
-  }
   return sources;
 };
 

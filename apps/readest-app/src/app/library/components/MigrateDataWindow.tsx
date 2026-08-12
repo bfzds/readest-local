@@ -46,6 +46,8 @@ export const MigrateDataWindow = () => {
   const _ = useTranslation();
   const { appService, envConfig } = useEnv();
   const { settings, setSettings, saveSettings } = useSettingsStore();
+  // The app targets desktop only; the Android migration source is disabled.
+  const isAndroid = false;
   const [isOpen, setIsOpen] = useState(false);
   const [currentDataDir, setCurrentDataDir] = useState('');
   const [newDataDir, setNewDataDir] = useState('');
@@ -99,7 +101,7 @@ export const MigrateDataWindow = () => {
 
   const loadAndroidDirs = async () => {
     try {
-      if (appService?.isAndroidApp) {
+      if (isAndroid) {
         const sdCardPathResponse = await getExternalSDCardPath();
         let sdcardDirs = [
           { path: '/storage/emulated/0', label: '/sdcard/0' },
@@ -259,7 +261,7 @@ export const MigrateDataWindow = () => {
   };
 
   const handleRevealDir = (dataDir: string) => {
-    if (dataDir && appService?.isDesktopApp) {
+    if (dataDir) {
       revealItemInDir(dataDir);
     }
   };
@@ -331,7 +333,7 @@ export const MigrateDataWindow = () => {
                 </span>
               </button>
             )}
-            {appService?.isAndroidApp ? (
+            {isAndroid ? (
               <Dropdown
                 label={_('Choose New Folder')}
                 className='dropdown-bottom flex w-full justify-center'

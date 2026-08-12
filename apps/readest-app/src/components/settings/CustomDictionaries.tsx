@@ -258,7 +258,9 @@ const CustomDictionaries: React.FC<CustomDictionariesProps> = ({ onBack }) => {
   // surfaces for the narrow case that can get "stuck" on one app.
   const [rememberedLookupApp, setRememberedLookupApp] = useState<RememberedLookupApp | null>(null);
   useEffect(() => {
-    if (!appService?.isAndroidApp) return;
+    // Android only: the remembered browser-excluding lookup chooser (#4559).
+    const isAndroidApp = false;
+    if (!isAndroidApp) return;
     let cancelled = false;
     void getRememberedLookupApp().then((app) => {
       if (!cancelled) setRememberedLookupApp(app);

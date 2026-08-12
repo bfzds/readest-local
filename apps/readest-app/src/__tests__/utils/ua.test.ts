@@ -19,31 +19,6 @@ afterEach(() => {
 });
 
 describe('parseWebViewInfo', () => {
-  it('should detect Android WebView', () => {
-    setUserAgent(
-      'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36',
-    );
-    const appService = { isAndroidApp: true } as unknown as AppServiceParam;
-    const result = parseWebViewInfo(appService);
-    expect(result).toBe('WebView 120.0.6099.230');
-  });
-
-  it('should fallback for Android WebView without Chrome version', () => {
-    setUserAgent('Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Mobile Safari/537.36');
-    const appService = { isAndroidApp: true } as unknown as AppServiceParam;
-    const result = parseWebViewInfo(appService);
-    expect(result).toBe('Android WebView');
-  });
-
-  it('should detect iOS WebView', () => {
-    setUserAgent(
-      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148',
-    );
-    const appService = { isIOSApp: true } as unknown as AppServiceParam;
-    const result = parseWebViewInfo(appService);
-    expect(result).toBe('WebView 605.1.15');
-  });
-
   it('should detect macOS WebView', () => {
     setUserAgent(
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko)',
@@ -127,14 +102,5 @@ describe('parseWebViewVersion', () => {
     setUserAgent('SomeUnknownBrowser/1.0');
     const result = parseWebViewVersion(null);
     expect(result).toBe(0);
-  });
-
-  it('should extract version from Android WebView', () => {
-    setUserAgent(
-      'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36',
-    );
-    const appService = { isAndroidApp: true } as unknown as AppServiceParam;
-    const result = parseWebViewVersion(appService);
-    expect(result).toBe(120);
   });
 });

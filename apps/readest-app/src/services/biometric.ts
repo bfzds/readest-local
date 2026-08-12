@@ -11,8 +11,7 @@ import { stubTranslation as _ } from '@/utils/misc';
  * missing plugin can never throw into the UI.
  */
 
-export const isBiometricSupported = (appService: AppService | null): boolean =>
-  !!(appService?.isIOSApp || appService?.isAndroidApp);
+export const isBiometricSupported = (_appService: AppService | null): boolean => false;
 
 export const getBiometricStatus = async (): Promise<{
   available: boolean;
@@ -37,15 +36,12 @@ export const authenticateWithBiometrics = async (reason: string): Promise<boolea
 };
 
 export const shouldAttemptBiometricUnlock = (opts: {
-  isMobileApp: boolean;
   biometricUnlockEnabled: boolean;
   available: boolean;
-}): boolean => opts.isMobileApp && opts.biometricUnlockEnabled && opts.available;
+}): boolean => opts.biometricUnlockEnabled && opts.available;
 
-export const defaultBiometricUnlockOnPinSet = (opts: {
-  isMobileApp: boolean;
-  available: boolean;
-}): boolean => opts.isMobileApp && opts.available;
+export const defaultBiometricUnlockOnPinSet = (opts: { available: boolean }): boolean =>
+  opts.available;
 
 /**
  * i18n key for the biometry name. Returned key is fed back through `_()`

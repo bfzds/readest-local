@@ -187,7 +187,7 @@ export const BackupWindow: React.FC<BackupWindowProps> = ({ onPullLibrary }) => 
       isOpen={isOpen}
       title={_('Backup & Restore')}
       onClose={handleClose}
-      snapHeight={appService?.isMobile ? 0.45 : undefined}
+      snapHeight={undefined}
       dismissible={!isProcessing}
       boxClassName='sm:!w-[520px] sm:!max-w-screen-sm sm:h-auto'
     >

@@ -137,15 +137,13 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
       inputRef.current.onfocus = () => {
         inputFocusedRef.current = true;
       };
-      if (!appService?.isMobile) {
-        inputRef.current.focus();
-      }
+      inputRef.current.focus();
     }
     if (isVisible && searchTerm) {
       handleSearchTermChange(searchTerm);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appService, isVisible]);
+  }, [isVisible]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

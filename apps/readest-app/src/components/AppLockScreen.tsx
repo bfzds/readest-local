@@ -35,7 +35,7 @@ export default function AppLockScreen() {
   );
   const biometricAttemptedRef = useRef(false);
   const biometricInFlightRef = useRef(false);
-  const autoFocusEnabled = !appService?.isMobile;
+  const autoFocusEnabled = true;
 
   const runBiometric = async () => {
     if (biometricInFlightRef.current) return;
@@ -61,7 +61,6 @@ export default function AppLockScreen() {
       if (cancelled) return;
       if (
         !shouldAttemptBiometricUnlock({
-          isMobileApp: !!appService?.isMobileApp,
           biometricUnlockEnabled,
           available,
         })

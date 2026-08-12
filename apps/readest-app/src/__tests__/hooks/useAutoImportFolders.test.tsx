@@ -1,10 +1,20 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { act, cleanup, renderHook } from '@testing-library/react';
 
-// useWindowActiveChanged reads appService.isDesktopApp to choose its
-// subscription; false -> the DOM 'visibilitychange' path (jsdom-friendly).
+// useWindowActiveChanged subscribes to the desktop window-focus path; capture
+// the focus listeners so tests can drive re-scans.
+const focusHandlers: ((p: { payload: boolean }) => void)[] = [];
+vi.mock('@tauri-apps/api/window', () => ({
+  getCurrentWindow: () => ({
+    onFocusChanged: (cb: (p: { payload: boolean }) => void) => {
+      focusHandlers.push(cb);
+      return Promise.resolve(vi.fn());
+    },
+  }),
+}));
+
 vi.mock('@/context/EnvContext', () => ({
-  useEnv: () => ({ appService: { isDesktopApp: false } }),
+  useEnv: () => ({ appService: {} }),
 }));
 
 import { useAutoImportFolders } from '@/app/library/hooks/useAutoImportFolders';
@@ -18,7 +28,10 @@ const settle = async () => {
   });
 };
 
-beforeEach(() => vi.useFakeTimers());
+beforeEach(() => {
+  vi.useFakeTimers();
+  focusHandlers.length = 0;
+});
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
@@ -62,7 +75,7 @@ describe('useAutoImportFolders', () => {
     expect(scan).not.toHaveBeenCalled();
   });
 
-  test('re-scans when the app becomes visible again', async () => {
+  test('re-scans when the window regains focus', async () => {
     const scan = vi.fn(async () => {});
     renderHook(() =>
       useAutoImportFolders({ enabled: true, folders: ['/books'], scanAndImport: scan }),
@@ -73,7 +86,7 @@ describe('useAutoImportFolders', () => {
     });
     expect(scan).toHaveBeenCalledTimes(1);
     await act(async () => {
-      document.dispatchEvent(new Event('visibilitychange'));
+      focusHandlers.forEach((cb) => cb({ payload: true }));
       vi.advanceTimersByTime(DEBOUNCE_MS);
     });
     expect(scan).toHaveBeenCalledTimes(2);
@@ -96,7 +109,7 @@ describe('useAutoImportFolders', () => {
     });
     expect(scan).toHaveBeenCalledTimes(1); // pending
     await act(async () => {
-      document.dispatchEvent(new Event('visibilitychange'));
+      focusHandlers.forEach((cb) => cb({ payload: true }));
       vi.advanceTimersByTime(DEBOUNCE_MS);
     });
     expect(scan).toHaveBeenCalledTimes(1); // still in flight -> no second run
@@ -105,7 +118,7 @@ describe('useAutoImportFolders', () => {
       await Promise.resolve();
     });
     await act(async () => {
-      document.dispatchEvent(new Event('visibilitychange'));
+      focusHandlers.forEach((cb) => cb({ payload: true }));
       vi.advanceTimersByTime(DEBOUNCE_MS);
     });
     expect(scan).toHaveBeenCalledTimes(2);

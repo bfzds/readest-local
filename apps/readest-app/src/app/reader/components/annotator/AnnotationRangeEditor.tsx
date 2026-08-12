@@ -3,7 +3,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { BookNote, HighlightColor } from '@/types/book';
 import { Point, rangeFromAnchorToPoint, TextSelection } from '@/utils/sel';
-import { useEnv } from '@/context/EnvContext';
 import { useThemeStore } from '@/store/themeStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -159,7 +158,6 @@ const AnnotationRangeEditor: React.FC<AnnotationRangeEditorProps> = ({
   cancelAutoTurn,
   onAutoTurn,
 }) => {
-  const { appService } = useEnv();
   const { settings } = useSettingsStore();
   const { isDarkMode } = useThemeStore();
   const { getViewSettings } = useReaderStore();
@@ -320,7 +318,7 @@ const AnnotationRangeEditor: React.FC<AnnotationRangeEditorProps> = ({
   const activeHandle =
     draggingHandle ?? getExternalDragHandle(currentStart, currentEnd, loupeDragPoint);
 
-  const showLoupe = appService?.isMobile && !viewSettings?.isEink && !viewSettings?.vertical;
+  const showLoupe = false;
 
   return (
     <div className='pointer-events-none fixed inset-0 z-50'>

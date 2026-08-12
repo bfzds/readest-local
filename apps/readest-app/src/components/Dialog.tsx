@@ -7,11 +7,9 @@ import { useEnv } from '@/context/EnvContext';
 import { useDrag } from '@/hooks/useDrag';
 import { useThemeStore } from '@/store/themeStore';
 import { useTranslation } from '@/hooks/useTranslation';
-import { useDeviceControlStore } from '@/store/deviceStore';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { impactFeedback } from '@tauri-apps/plugin-haptics';
 import { getDirFromUILanguage } from '@/utils/rtl';
-import { eventDispatcher } from '@/utils/event';
 import { Overlay } from './Overlay';
 
 const VELOCITY_THRESHOLD = 0.5;
@@ -59,7 +57,6 @@ const Dialog: React.FC<DialogProps> = ({
   const _ = useTranslation();
   const { appService } = useEnv();
   const { systemUIVisible, statusBarHeight, safeAreaInsets } = useThemeStore();
-  const { acquireBackKeyInterception, releaseBackKeyInterception } = useDeviceControlStore();
   const [isFullHeightInMobile, setIsFullHeightInMobile] = useState(!snapHeight);
   const [isRtl] = useState(() => getDirFromUILanguage() === 'rtl');
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -98,10 +95,6 @@ const Dialog: React.FC<DialogProps> = ({
     if (dialogRef.current) {
       dialogRef.current.addEventListener('keydown', handleKeyDown);
     }
-    if (appService?.isAndroidApp) {
-      acquireBackKeyInterception();
-      eventDispatcher.onSync('native-key-down', handleKeyDown);
-    }
 
     const timer = setTimeout(() => {
       if (dialogRef.current) {
@@ -111,10 +104,6 @@ const Dialog: React.FC<DialogProps> = ({
     return () => {
       clearTimeout(timer);
       window.removeEventListener('keydown', handleKeyDown);
-      if (appService?.isAndroidApp) {
-        releaseBackKeyInterception();
-        eventDispatcher.offSync('native-key-down', handleKeyDown);
-      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);

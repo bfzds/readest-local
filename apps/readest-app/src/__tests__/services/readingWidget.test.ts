@@ -105,31 +105,15 @@ describe('buildReadingWidgetPayload', () => {
 
 describe('refreshReadingWidget', () => {
   const appService = {
-    isMobileApp: true,
     resolveFilePath: vi.fn().mockResolvedValue('/data/Books'),
   } as unknown as import('@/types/system').AppService;
 
-  it('skips when not a mobile app', async () => {
-    const { updateReadingWidget } = await import('@/utils/bridge');
-    await refreshReadingWidget({ ...appService, isMobileApp: false } as never, {
-      sectionTitle: 'Continue reading',
-      emptyTitle: 'Empty',
-    });
-    expect(updateReadingWidget).not.toHaveBeenCalled();
-  });
-
-  it('selects in-progress books and resolves cover paths', async () => {
+  it('is a no-op on desktop (no home-screen widget to publish)', async () => {
     const { updateReadingWidget } = await import('@/utils/bridge');
     await refreshReadingWidget(appService, {
       sectionTitle: 'Continue reading',
       emptyTitle: 'Empty',
     });
-    expect(updateReadingWidget).toHaveBeenCalledWith({
-      books: [
-        { hash: 'a', title: 'Ta', author: 'Aa', percent: 50, coverPath: '/data/Books/a/cover.png' },
-      ],
-      sectionTitle: 'Continue reading',
-      emptyTitle: 'Empty',
-    });
+    expect(updateReadingWidget).not.toHaveBeenCalled();
   });
 });

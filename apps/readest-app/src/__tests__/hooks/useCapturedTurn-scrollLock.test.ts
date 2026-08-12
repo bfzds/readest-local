@@ -109,8 +109,7 @@ vi.mock('@/utils/viewTransition', () => ({ detectViewTransitionGroup: () => fals
 vi.mock('@/services/environment', () => ({
   isTauriAppPlatform: () => process.env['NEXT_PUBLIC_APP_PLATFORM'] === 'tauri',
   getInitializedAppService: () => ({
-    isMobileApp: process.env['NEXT_PUBLIC_APP_PLATFORM'] === 'tauri',
-    isMacOSApp: false,
+    isMacOSApp: true,
   }),
 }));
 vi.mock('@/app/reader/utils/capturedTurn', () => ({

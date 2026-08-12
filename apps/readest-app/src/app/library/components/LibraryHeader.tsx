@@ -79,7 +79,7 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
 
   if (!insets) return null;
 
-  const isMobile = appService?.isMobile || window.innerWidth <= 640;
+  const isMobile = window.innerWidth <= 640;
 
   return (
     <div

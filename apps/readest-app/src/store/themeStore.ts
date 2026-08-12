@@ -3,7 +3,6 @@ import { addPluginListener, type PluginListener } from '@tauri-apps/api/core';
 import { AppService } from '@/types/system';
 import { getThemeCode, ThemeCode } from '@/utils/style';
 import {
-  getSystemColorScheme,
   startAmbientLightUpdates,
   stopAmbientLightUpdates,
   type AmbientLightPayload,
@@ -272,14 +271,7 @@ export const initSystemThemeListener = (appService: AppService) => {
     useThemeStore.getState().handleSystemThemeChange(systemIsDarkMode);
   };
   const updateColorTheme = async () => {
-    let systemIsDarkMode;
-    if (appService.isIOSApp) {
-      const res = await getSystemColorScheme();
-      systemIsDarkMode = res.colorScheme === 'dark';
-    } else {
-      systemIsDarkMode = mediaQuery.matches;
-    }
-    applySystemTheme(systemIsDarkMode);
+    applySystemTheme(mediaQuery.matches);
   };
 
   const updateWindowTheme = async () => {
@@ -305,16 +297,6 @@ export const initSystemThemeListener = (appService: AppService) => {
     syncAmbientForVisibility();
   });
   window.addEventListener('resize', updateWindowTheme);
-
-  // iOS WKWebView never fires the `prefers-color-scheme` media query
-  // `change` event while the app stays foregrounded (e.g. toggling dark
-  // mode from Control Center), so the native plugin pushes the new
-  // appearance through this callback instead.
-  if (appService.isIOSApp) {
-    window.onNativeColorSchemeChange = (colorScheme) => {
-      applySystemTheme(colorScheme === 'dark');
-    };
-  }
 
   updateColorTheme();
 

@@ -139,7 +139,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
   const isHeaderCompact = headerWidth > 0 && headerWidth < 350;
   const insets = window.innerWidth < 640 ? screenInsets : gridInsets;
   const isHeaderVisible = hoveredBookKey === bookKey || isDropdownOpen;
-  const isMobile = appService?.isMobile || window.innerWidth < 640;
+  const isMobile = window.innerWidth < 640;
   const triggerHeight = viewSettings ? getHeaderTriggerHeight(gridInsets.top, viewSettings) : 0;
 
   useSpatialNavigation(headerRef, isHeaderVisible);
@@ -182,8 +182,8 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
         )}
         style={{ height: `${triggerHeight}px` }}
         onClick={() => setHoveredBookKey(bookKey)}
-        onMouseEnter={() => !appService?.isMobile && setHoveredBookKey(bookKey)}
-        onTouchStart={() => !appService?.isMobile && setHoveredBookKey(bookKey)}
+        onMouseEnter={() => setHoveredBookKey(bookKey)}
+        onTouchStart={() => setHoveredBookKey(bookKey)}
       />
       <div
         className={clsx(
@@ -214,9 +214,9 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
             ? `${Math.max(insets.top, statusBarHeight)}px`
             : `${insets.top}px`,
         }}
-        onFocus={() => !appService?.isMobile && setHoveredBookKey(bookKey)}
+        onFocus={() => setHoveredBookKey(bookKey)}
         onMouseLeave={(e) => {
-          if (!appService?.isMobile && isMouseOutsideHeader(e.clientX, e.clientY)) {
+          if (isMouseOutsideHeader(e.clientX, e.clientY)) {
             setHoveredBookKey('');
           }
         }}

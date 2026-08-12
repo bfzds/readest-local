@@ -37,13 +37,7 @@ import {
 import { getOSPlatform, isContentURI, isFileURI, isValidURL } from '@/utils/misc';
 import { getDirPath, getFilename } from '@/utils/path';
 import { NativeFile, RemoteFile } from '@/utils/file';
-import {
-  copyURIToPath,
-  getStorefrontRegionCode,
-  hasAmbientLightSensor,
-  saveImageToGallery,
-} from '@/utils/bridge';
-import { galleryFileName } from '@/utils/image';
+import { copyURIToPath } from '@/utils/bridge';
 import { copyFiles } from '@/utils/files';
 import { detectViewTransitionGroup, detectViewTransitionsAPI } from '@/utils/viewTransition';
 
@@ -552,14 +546,9 @@ export class NativeAppService extends BaseAppService {
   fs = nativeFileSystem;
   override appPlatform = 'tauri' as AppPlatform;
   override isAppDataSandbox = ['android', 'ios'].includes(OS_TYPE);
-  override isMobile = ['android', 'ios'].includes(OS_TYPE);
-  override isAndroidApp = OS_TYPE === 'android';
-  override isIOSApp = OS_TYPE === 'ios';
   override isMacOSApp = OS_TYPE === 'macos';
   override isLinuxApp = OS_TYPE === 'linux';
   override isWindowsApp = OS_TYPE === 'windows';
-  override isMobileApp = ['android', 'ios'].includes(OS_TYPE);
-  override isDesktopApp = ['macos', 'windows', 'linux'].includes(OS_TYPE);
   override isAppImage = Boolean(window.__READEST_IS_APPIMAGE);
   override isEink = Boolean(window.__READEST_IS_EINK);
   override hasTrafficLight = OS_TYPE === 'macos';
@@ -628,31 +617,6 @@ export class NativeAppService extends BaseAppService {
         execDir,
       });
     }
-    if (this.isIOSApp) {
-      this.isOnlineCatalogsAccessible = this.distChannel !== 'appstore';
-      try {
-        const res = await getStorefrontRegionCode();
-        if (res?.regionCode) {
-          this.storefrontRegionCode = res.regionCode;
-        }
-      } catch (err) {
-        // Storefront.current is nil on simulators without a signed-in
-        // App Store account, and may also fail on real devices with no
-        // StoreKit configuration. Treat as "unknown region" — we leave
-        // storefrontRegionCode as null and let downstream features that
-        // depend on region degrade gracefully.
-        console.warn('[nativeAppService] getStorefrontRegionCode failed:', err);
-      }
-    }
-    if (this.isAndroidApp) {
-      try {
-        const res = await hasAmbientLightSensor();
-        this.hasAmbientLightSensor = !!res.available;
-      } catch (err) {
-        console.warn('[nativeAppService] hasAmbientLightSensor failed:', err);
-        this.hasAmbientLightSensor = false;
-      }
-    }
     await this.prepareBooksDir();
     await this.runMigrations();
   }
@@ -697,26 +661,6 @@ export class NativeAppService extends BaseAppService {
   }
 
   async selectDirectory(): Promise<string> {
-    // On mobile, Tauri's dialog plugin rejects folder picks with
-    // "FolderPickerNotImplemented" — neither iOS nor Android ship a
-    // folder picker via that surface. Route through the native-bridge
-    // plugin instead, where each platform has a native implementation
-    // (Android: ACTION_OPEN_DOCUMENT_TREE, iOS:
-    // UIDocumentPickerViewController with `.folder`). The bridge
-    // returns `{ path, uri, cancelled }`; we surface the path string
-    // so the rest of the app can treat it like any local directory.
-    if (this.isIOSApp || this.isAndroidApp) {
-      const { selectDirectory } = await import('@/utils/bridge');
-      const result = await selectDirectory();
-      const path = result.path ?? '';
-      if (path) {
-        // Match the desktop branch — make sure both fs_scope and the
-        // asset-protocol scope can read from the chosen directory.
-        await this.allowPathsInScopes([path], true);
-      }
-      return path;
-    }
-
     const selected = await openDialog({
       directory: true,
       multiple: false,
@@ -792,41 +736,13 @@ export class NativeAppService extends BaseAppService {
   }
 
   async saveImageToGallery(
-    filename: string,
-    content: ArrayBuffer,
-    mimeType: string,
+    _filename: string,
+    _content: ArrayBuffer,
+    _mimeType: string,
   ): Promise<boolean> {
-    // MediaStore is Android-only; other platforms keep the saveFile/share path.
-    if (!this.isAndroidApp) return false;
-    // Every image reaching here is called `image.<ext>`, which left the insert at
-    // the mercy of the OEM's duplicate handling. Name each save uniquely instead.
-    const galleryName = galleryFileName(filename);
-    // Write the bytes to a Temp subdirectory (not the Temp root, mirroring the
-    // share path), then hand the path to the native MediaStore insert.
-    const shareDir = await this.resolveFilePath('shared', 'Temp');
-    await mkdir(shareDir, { recursive: true });
-    const srcPath = await this.resolveFilePath(`shared/${galleryName}`, 'Temp');
-    try {
-      await writeFile(srcPath, new Uint8Array(content));
-      const res = await saveImageToGallery({
-        srcPath,
-        fileName: galleryName,
-        mimeType,
-        albumName: 'Readest',
-      });
-      if (!res.success) {
-        // The plugin returns the MediaStore exception here. Dropping it left an
-        // OEM-specific insert failure showing up as nothing but a toast.
-        console.error('Failed to save image to gallery:', res.error);
-      }
-      return res.success;
-    } catch (error) {
-      console.error('Failed to save image to gallery:', error);
-      return false;
-    } finally {
-      // Best-effort cleanup of the staged file.
-      await remove(srcPath).catch(() => {});
-    }
+    // MediaStore is Android-only; on desktop there is no system photo
+    // gallery to insert into.
+    return false;
   }
 
   async ask(message: string): Promise<boolean> {

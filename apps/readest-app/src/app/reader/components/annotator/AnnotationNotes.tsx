@@ -2,7 +2,6 @@ import clsx from 'clsx';
 import dayjs from 'dayjs';
 import React, { useMemo } from 'react';
 import { BookNote } from '@/types/book';
-import { useEnv } from '@/context/EnvContext';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
@@ -29,7 +28,8 @@ const AnnotationNotes: React.FC<AnnotationNotesProps> = ({
   popupHeight,
   onDismiss,
 }) => {
-  const { appService } = useEnv();
+  // The app targets desktop only; the mobile popup-dismiss path is disabled.
+  const isMobile = false;
   const { getConfig, setConfig } = useBookDataStore();
   const { setHoveredBookKey } = useReaderStore();
   const { setSideBarVisible } = useSidebarStore();
@@ -43,7 +43,7 @@ const AnnotationNotes: React.FC<AnnotationNotesProps> = ({
   const handleShowAnnotation = (note: BookNote) => {
     if (!note.id) return;
 
-    if (appService?.isMobile) {
+    if (isMobile) {
       onDismiss();
     }
 

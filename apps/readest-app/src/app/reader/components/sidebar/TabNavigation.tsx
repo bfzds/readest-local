@@ -14,8 +14,7 @@ const TabNavigation: React.FC<{
   const _ = useTranslation();
   const { appService } = useEnv();
 
-  const forceMobileLayout =
-    !!appService?.isMobile && window.innerWidth >= 640 && window.innerWidth <= window.innerHeight;
+  const forceMobileLayout = false;
   const isMobile = forceMobileLayout || window.innerWidth < 640 || window.innerHeight < 640;
   const tabs = ['toc', 'annotations', 'bookmarks'];
 

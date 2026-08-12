@@ -1,7 +1,6 @@
 import clsx from 'clsx';
 import React, { useCallback, useEffect } from 'react';
 import { RiArrowLeftSLine, RiArrowRightSLine } from 'react-icons/ri';
-import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { NavigationHandlers } from './types';
@@ -32,7 +31,6 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
   forceMobileLayout,
 }) => {
   const _ = useTranslation();
-  const { appService } = useEnv();
   const { getViewSettings } = useReaderStore();
   const viewSettings = getViewSettings(bookKey);
 
@@ -74,9 +72,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
     <div
       className={classes}
       style={{
-        bottom: appService?.isAndroidApp
-          ? `calc(env(safe-area-inset-bottom) + 64px)`
-          : bottomOffset,
+        bottom: bottomOffset,
       }}
     >
       <div className='flex w-full flex-col items-center gap-y-4'>

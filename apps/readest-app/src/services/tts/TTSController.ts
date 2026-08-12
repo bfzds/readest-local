@@ -14,12 +14,11 @@ import {
 import { createTTSNodeFilter } from './nodeFilter';
 import { expandRangeOverRuby } from '@/utils/ruby';
 import { WebSpeechClient } from './WebSpeechClient';
-import { NativeTTSClient } from './NativeTTSClient';
 import { SectionTimeline, TimelineSentence } from './SectionTimeline';
 import { hydrateProvisionalDurations } from './ttsDuration';
 import { TTSUtils } from './TTSUtils';
 import { TTSClient } from './TTSClient';
-import { startAudioKeepAlive, stopAudioKeepAlive } from './WebAudioPlayer';
+import { stopAudioKeepAlive } from './WebAudioPlayer';
 import { isValidLang } from '@/utils/lang';
 import {
   computeWordOffsets,
@@ -186,11 +185,6 @@ export class TTSController extends EventTarget {
   ) {
     super();
     this.ttsWebClient = new WebSpeechClient(this);
-    // Native TTS is backed by Android TextToSpeech and iOS AVSpeechSynthesizer.
-    // TODO: implement native TTS client for desktop platforms.
-    if (appService?.isAndroidApp || appService?.isIOSApp) {
-      this.ttsNativeClient = new NativeTTSClient(this);
-    }
     this.ttsMediaOverlayClient = new MediaOverlayClient(this);
     this.ttsClient = this.ttsWebClient;
     this.appService = appService;
@@ -239,30 +233,12 @@ export class TTSController extends EventTarget {
     });
   }
 
-  // Keep the hidden WebView schedulable, in the two cases where it would
+  // Keep the hidden WebView schedulable in the cases where it would
   // otherwise fall silent and get frozen by Chromium. Android-only (iOS drives
-  // playout through its own native audio session).
-  //
-  //   - Playing a direct-speak engine (Android system TTS): its audio renders
-  //     in the OS, not the WebView, and the sentence-to-sentence advance runs
-  //     on JS timers here, so the loop stalls once the page is throttled. See
-  //     #4408. Buffered engines earn the exemption for free while speaking.
-  //
-  //   - Paused, whatever the engine: no engine emits audio while paused, and
-  //     the media-session play/pause/next handlers live in this page. Let it
-  //     freeze and Play from a Bluetooth headset only flips the notification —
-  //     the native foreground service answers, the reader never wakes to speak,
-  //     and the in-app player drifts out of sync until the app is foregrounded.
-  //     See #5561.
+  // playout through its own native audio session); desktop WebView is never
+  // frozen this way, so the keep-alive is always off.
   #syncAudioKeepAlive() {
-    const directSpeak = this.ttsClient.getCapabilities().mediaClock === false;
-    const needsKeepAlive =
-      !!this.appService?.isAndroidApp && (directSpeak || this.state.includes('paused'));
-    if (needsKeepAlive) {
-      startAudioKeepAlive();
-    } else {
-      stopAudioKeepAlive();
-    }
+    stopAudioKeepAlive();
   }
 
   get isViewAttached(): boolean {

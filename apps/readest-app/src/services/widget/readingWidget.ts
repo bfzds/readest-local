@@ -1,8 +1,6 @@
 import type { Book } from '@/types/book';
 import type { AppService } from '@/types/system';
-import { useLibraryStore } from '@/store/libraryStore';
 import { getCoverFilename, isCurrentlyReadingBook } from '@/utils/book';
-import { updateReadingWidget } from '@/utils/bridge';
 import type { ReadingWidgetTts } from '@/utils/bridge';
 
 export interface ReadingWidgetBook {
@@ -66,17 +64,10 @@ export const buildReadingWidgetPayload = async (
 };
 
 export const refreshReadingWidget = async (
-  appService: AppService,
-  labels: ReadingWidgetLabels,
-  tts?: ReadingWidgetTts,
+  _appService: AppService,
+  _labels: ReadingWidgetLabels,
+  _tts?: ReadingWidgetTts,
 ): Promise<void> => {
-  if (!appService.isMobileApp) return;
-  const library = useLibraryStore.getState().library;
-  const selected = selectReadingWidgetBooks(library);
-  const payload = await buildReadingWidgetPayload(selected, appService, labels, tts);
-  try {
-    await updateReadingWidget(payload);
-  } catch (err) {
-    console.warn('Failed to update reading widget', err);
-  }
+  // The home-screen reading widget is a mobile-only surface; on desktop there
+  // is nothing to publish to.
 };

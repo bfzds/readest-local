@@ -46,7 +46,7 @@ let captureBroken = false;
 export const getCapturedTurnStyle = (
   viewSettings: ViewSettings,
   isFixedLayout: boolean,
-  prepareNativeSlide = getInitializedAppService()?.isMobileApp === true,
+  prepareNativeSlide = false,
 ): CapturedTurnStyle | null => {
   if (!isTauriAppPlatform() || captureBroken) return null;
   if (!viewSettings.animated || viewSettings.scrolled || viewSettings.isEink || isFixedLayout) {
@@ -75,7 +75,7 @@ export const applyPageTurnAttributes = (
   view: FoliateView,
   viewSettings: ViewSettings,
   isFixedLayout: boolean,
-  prepareNativeSlide = getInitializedAppService()?.isMobileApp === true,
+  prepareNativeSlide = false,
 ) => {
   const captured = getCapturedTurnStyle(viewSettings, isFixedLayout, prepareNativeSlide);
   const style = viewSettings.pageTurnStyle;
@@ -468,7 +468,7 @@ export const useCapturedTurn = (bookKey: string, viewRef: React.RefObject<Foliat
             return;
           }
           const appService = getInitializedAppService();
-          if (!appService?.isMobileApp && !appService?.isMacOSApp) return;
+          if (!appService?.isMacOSApp) return;
           const currentSettings = getViewSettings(bookKey);
           const style = currentSettings
             ? getCapturedTurnStyle(currentSettings, isFixedLayout())

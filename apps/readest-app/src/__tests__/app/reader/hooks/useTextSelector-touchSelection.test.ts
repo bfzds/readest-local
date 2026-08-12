@@ -174,17 +174,4 @@ describe('touch selectionchange defers to the gesture end (toolbar flash)', () =
 
     expect(setSelection).toHaveBeenCalled();
   });
-
-  test('Android keeps the immediate path (selectionchange is its primary signal)', async () => {
-    h.appService = { isAndroidApp: true, isMobile: true };
-    h.osPlatform = 'android';
-    const { result, setSelection } = setup();
-
-    touchDown(result);
-    setDocSelection(true);
-    result.current.handleSelectionchange(doc, 0);
-    await flush();
-
-    expect(setSelection).toHaveBeenCalled();
-  });
 });

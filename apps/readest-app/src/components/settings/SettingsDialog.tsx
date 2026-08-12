@@ -1,6 +1,5 @@
 import clsx from 'clsx';
 import React, { useEffect, useRef, useState } from 'react';
-import { useEnv } from '@/context/EnvContext';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -54,7 +53,6 @@ type TabConfig = {
 
 const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const _ = useTranslation();
-  const { appService } = useEnv();
   const closeIconSize = useResponsiveSize(16);
   const [isRtl] = useState(() => getDirFromUILanguage() === 'rtl');
   const tabsRef = useRef<HTMLDivElement | null>(null);
@@ -335,11 +333,8 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       // OPDS Catalog) renders on top. !important beats the Dialog's hardcoded z-50.
       className='modal-open !z-[110]'
       bgClassName={bookKey ? 'sm:!bg-black/20' : 'sm:!bg-black/50'}
-      boxClassName={clsx(
-        'sm:min-w-[520px] overflow-hidden not-eink:bg-base-200',
-        appService?.isMobile && 'sm:max-w-[90%] sm:w-3/4',
-      )}
-      snapHeight={appService?.isMobile ? 0.7 : undefined}
+      boxClassName={clsx('sm:min-w-[520px] overflow-hidden not-eink:bg-base-200')}
+      snapHeight={undefined}
       // Settings panels can be tall (Layout / Color especially); native
       // scrollbars vanish on Android/iOS webviews, so use OverlayScrollbars
       // to keep a visible, theme-aware track on every platform.

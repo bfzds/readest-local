@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { HighlightColor } from '@/types/book';
 import { Point, rangeFromAnchorToPoint, TextSelection } from '@/utils/sel';
-import { useEnv } from '@/context/EnvContext';
 import { useThemeStore } from '@/store/themeStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -38,7 +37,6 @@ const SelectionRangeEditor: React.FC<SelectionRangeEditorProps> = ({
   cancelAutoTurn,
   onAutoTurn,
 }) => {
-  const { appService } = useEnv();
   const { settings } = useSettingsStore();
   const { isDarkMode } = useThemeStore();
   const { getViewSettings } = useReaderStore();
@@ -168,7 +166,7 @@ const SelectionRangeEditor: React.FC<SelectionRangeEditorProps> = ({
     return null;
   }
 
-  const showLoupe = appService?.isMobile && !viewSettings?.isEink && !viewSettings?.vertical;
+  const showLoupe = false;
 
   return (
     <div className='pointer-events-none fixed inset-0 z-50'>

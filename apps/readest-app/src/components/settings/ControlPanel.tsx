@@ -78,7 +78,7 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
   const [pageTurnStyle, setPageTurnStyle] = useState(viewSettings.pageTurnStyle || 'push');
   const [isEink, setIsEink] = useState(viewSettings.isEink);
   const [isColorEink, setIsColorEink] = useState(viewSettings.isColorEink);
-  const [autoScreenBrightness, setAutoScreenBrightness] = useState(settings.autoScreenBrightness);
+  const [autoScreenBrightness] = useState(settings.autoScreenBrightness);
   const [swipeBrightnessGesture, setSwipeBrightnessGesture] = useState(
     settings.swipeBrightnessGesture,
   );
@@ -506,7 +506,7 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
 
       <BoxedList title={_('Pagination')} data-setting-id='settings.control.clickToPaginate'>
         <SettingsSwitchRow
-          label={appService?.isMobileApp ? _('Tap to Paginate') : _('Click to Paginate')}
+          label={_('Click to Paginate')}
           checked={!isDisableClick}
           onChange={() => setIsDisableClick(!isDisableClick)}
         />
@@ -517,21 +517,21 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
           data-setting-id='settings.control.swipeToPaginate'
         />
         <SettingsSwitchRow
-          label={appService?.isMobileApp ? _('Tap Both Sides') : _('Click Both Sides')}
+          label={_('Click Both Sides')}
           checked={fullscreenClickArea}
           disabled={isDisableClick}
           onChange={() => setFullscreenClickArea(!fullscreenClickArea)}
           data-setting-id='settings.control.clickBothSides'
         />
         <SettingsSwitchRow
-          label={appService?.isMobileApp ? _('Swap Tap Sides') : _('Swap Click Sides')}
+          label={_('Swap Click Sides')}
           checked={swapClickArea}
           disabled={isDisableClick || fullscreenClickArea}
           onChange={() => setSwapClickArea(!swapClickArea)}
           data-setting-id='settings.control.swapClickSides'
         />
         <SettingsSwitchRow
-          label={appService?.isMobileApp ? _('Disable Double Tap') : _('Disable Double Click')}
+          label={_('Disable Double Click')}
           checked={isDisableDoubleClick}
           onChange={() => setIsDisableDoubleClick(!isDisableDoubleClick)}
           data-setting-id='settings.control.disableDoubleClick'
@@ -605,7 +605,7 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
       </BoxedList>
 
       <BoxedList title={_('Device')} data-setting-id='settings.control.device'>
-        {(appService?.isAndroidApp || appService?.appPlatform === 'web') && (
+        {appService?.appPlatform === 'web' && (
           <SettingsSwitchRow
             label={_('E-Ink Mode')}
             checked={isEink}
@@ -613,20 +613,13 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
             data-setting-id='settings.control.einkMode'
           />
         )}
-        {(appService?.isAndroidApp || appService?.appPlatform === 'web') && (
+        {appService?.appPlatform === 'web' && (
           <SettingsSwitchRow
             label={_('Color E-Ink Mode')}
             checked={isColorEink}
             disabled={!isEink}
             onChange={() => setIsColorEink(!isColorEink)}
             data-setting-id='settings.control.colorEinkMode'
-          />
-        )}
-        {appService?.isMobileApp && (
-          <SettingsSwitchRow
-            label={_('System Screen Brightness')}
-            checked={autoScreenBrightness}
-            onChange={() => setAutoScreenBrightness(!autoScreenBrightness)}
           />
         )}
         {appService?.hasScreenBrightness && (
@@ -645,15 +638,13 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
           onChange={() => setScreenWakeLock(!screenWakeLock)}
           data-setting-id='settings.control.screenWakeLock'
         />
-        {!appService?.isMobile && (
-          <SettingsSwitchRow
-            label={_('Auto-hide Cursor')}
-            description={_('After a moment of inactivity')}
-            checked={autohideCursor}
-            onChange={() => setAutohideCursor(!autohideCursor)}
-            data-setting-id='settings.control.autohideCursor'
-          />
-        )}
+        <SettingsSwitchRow
+          label={_('Auto-hide Cursor')}
+          description={_('After a moment of inactivity')}
+          checked={autohideCursor}
+          onChange={() => setAutohideCursor(!autohideCursor)}
+          data-setting-id='settings.control.autohideCursor'
+        />
       </BoxedList>
 
       <BoxedList title={_('Security')} data-setting-id='settings.control.allowJavascript'>

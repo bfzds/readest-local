@@ -260,7 +260,6 @@ describe('TTS auto-advance across a chapter boundary (browser e2e)', () => {
     const viewSettings: ViewSettings = {
       ...getDefaultViewSettings({
         fs: {} as FileSystem,
-        isMobile: false,
         isEink: false,
         isAppDataSandbox: false,
       }),
@@ -341,7 +340,6 @@ describe('TTS auto-advance across a chapter boundary (browser e2e)', () => {
     const viewSettings: ViewSettings = {
       ...getDefaultViewSettings({
         fs: {} as FileSystem,
-        isMobile: false,
         isEink: false,
         isAppDataSandbox: false,
       }),
@@ -447,7 +445,6 @@ describe('TTS auto-advance across a chapter boundary (browser e2e)', () => {
     const viewSettings: ViewSettings = {
       ...getDefaultViewSettings({
         fs: {} as FileSystem,
-        isMobile: false,
         isEink: false,
         isAppDataSandbox: false,
       }),

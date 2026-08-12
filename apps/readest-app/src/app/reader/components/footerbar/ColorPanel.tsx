@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { PiSun, PiMoon } from 'react-icons/pi';
 import { TbSunMoon } from 'react-icons/tb';
 import { MdOutlineSensors } from 'react-icons/md';
@@ -34,24 +34,12 @@ export const ColorPanel: React.FC<ColorPanelProps> = ({
   const _ = useTranslation();
   const { envConfig, appService } = useEnv();
   const { settings } = useSettingsStore();
-  const { getScreenBrightness, setScreenBrightness } = useDeviceControlStore();
+  const { setScreenBrightness } = useDeviceControlStore();
   const { themeMode, themeColor, isDarkMode, setThemeMode, setThemeColor } = useThemeStore();
 
   const [screenBrightnessValue, setScreenBrightnessValue] = useState(
     settings.screenBrightness >= 0 ? settings.screenBrightness : SCREEN_BRIGHTNESS_LIMITS.DEFAULT,
   );
-
-  useEffect(() => {
-    if (!appService?.isMobileApp) return;
-    if (actionTab !== 'color') return;
-
-    getScreenBrightness().then((brightness) => {
-      if (brightness >= 0.0 && brightness <= 1.0) {
-        const screenBrightness = Math.round(brightness * 100);
-        setScreenBrightnessValue(screenBrightness);
-      }
-    });
-  }, [actionTab, appService, getScreenBrightness]);
 
   const debouncedSetScreenBrightness = useMemo(
     () =>
@@ -66,12 +54,10 @@ export const ColorPanel: React.FC<ColorPanelProps> = ({
 
   const handleScreenBrightnessChange = useCallback(
     async (value: number) => {
-      if (!appService?.isMobileApp) return;
-
       setScreenBrightnessValue(value);
       debouncedSetScreenBrightness(value);
     },
-    [appService, debouncedSetScreenBrightness],
+    [debouncedSetScreenBrightness],
   );
 
   const cycleThemeMode = () => {
@@ -95,9 +81,7 @@ export const ColorPanel: React.FC<ColorPanelProps> = ({
     <div
       className={classes}
       style={{
-        bottom: appService?.isAndroidApp
-          ? `calc(env(safe-area-inset-bottom) + 64px)`
-          : bottomOffset,
+        bottom: bottomOffset,
       }}
     >
       {appService?.hasScreenBrightness && (

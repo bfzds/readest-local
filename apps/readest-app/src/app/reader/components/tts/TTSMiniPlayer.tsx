@@ -122,8 +122,7 @@ const TTSMiniPlayer = ({
   const viewSettings = getViewSettings(bookKey);
   const barVisible = hoveredBookKey === bookKey;
   const safeAreaMargin = appService?.hasSafeAreaInset ? gridInsets.bottom * 0.33 : 0;
-  const forceMobileLayout =
-    !!appService?.isMobile && window.innerWidth >= 640 && window.innerWidth <= window.innerHeight;
+  const forceMobileLayout = false;
   const usesMobileBar = forceMobileLayout || window.innerWidth < 640 || window.innerHeight < 640;
 
   // Distance from the bottom edge (safe-area margin excluded) to the top of
@@ -201,8 +200,8 @@ const TTSMiniPlayer = ({
         bottom: `${bottomOffset}px`,
         marginBottom: `${safeAreaMargin}px`,
       }}
-      onMouseEnter={() => !appService?.isMobile && setHoveredBookKey('')}
-      onTouchStart={() => !appService?.isMobile && setHoveredBookKey('')}
+      onMouseEnter={() => setHoveredBookKey('')}
+      onTouchStart={() => setHoveredBookKey('')}
     >
       <div className='not-eink:bg-base-300 eink-bordered relative overflow-hidden rounded-2xl shadow-lg'>
         {hasTimeline && (

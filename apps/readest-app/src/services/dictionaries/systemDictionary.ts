@@ -38,20 +38,14 @@ import type { Rect } from '@/utils/sel';
  * flags rather than the user agent.
  *
  * `getOSPlatform()` (utils/misc) is UA-based, and iPadOS sends a desktop
- * "Macintosh" user agent — so it reports iPad as 'macos'. Dispatching on that
- * would route the handoff to the macOS-only `show_lookup_popover` Rust command
- * that iOS never registers, yielding "Command show_lookup_popover not found"
- * on iPad. The app service's `is*App` flags derive from the Tauri OS plugin
- * (see `nativeAppService`), so `isIOSApp` is correctly true on iPad. Returns
- * 'unknown' before the service is initialized or on web (where the flags are
- * all false), which the callers treat as "unsupported".
+ * "Macintosh" user agent — so it reports iPad as 'macos'. Returns 'unknown'
+ * before the service is initialized or on web, which the callers treat as
+ * "unsupported".
  */
 const getSystemDictionaryOS = (): 'macos' | 'ios' | 'android' | 'unknown' => {
   const appService = getInitializedAppService();
   if (!appService) return 'unknown';
   if (appService.isMacOSApp) return 'macos';
-  if (appService.isIOSApp) return 'ios';
-  if (appService.isAndroidApp) return 'android';
   return 'unknown';
 };
 

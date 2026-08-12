@@ -22,20 +22,11 @@ afterEach(() => {
 
 describe('LibraryEmptyState', () => {
   it('renders title, desktop description, and both CTAs when logged out on desktop', () => {
-    useEnvMock.mockReturnValue({ appService: { isMobile: false } });
     render(<LibraryEmptyState onImport={vi.fn()} />);
 
     expect(screen.getByRole('heading', { name: 'Start your library' })).toBeTruthy();
     expect(screen.getByText(/drop a book anywhere on this window/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Import Books' })).toBeTruthy();
-  });
-
-  it('renders mobile description (no drag-drop language) when appService.isMobile', () => {
-    useEnvMock.mockReturnValue({ appService: { isMobile: true } });
-    render(<LibraryEmptyState onImport={vi.fn()} />);
-
-    expect(screen.getByText(/pick a book from your device/i)).toBeTruthy();
-    expect(screen.queryByText(/drop a book anywhere on this window/i)).toBeNull();
   });
 
   it('calls onImport when the Import Books button is clicked', () => {

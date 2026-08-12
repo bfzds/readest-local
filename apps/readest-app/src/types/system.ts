@@ -92,16 +92,11 @@ export interface AppService {
   /** True when a hardware ambient light sensor can drive Ambient Mode. */
   hasAmbientLightSensor: boolean;
   hasIAP: boolean;
-  isMobile: boolean;
   isAppDataSandbox: boolean;
-  isMobileApp: boolean;
-  isAndroidApp: boolean;
-  isIOSApp: boolean;
   isMacOSApp: boolean;
   isLinuxApp: boolean;
   isWindowsApp: boolean;
   isPortableApp: boolean;
-  isDesktopApp: boolean;
   isAppImage: boolean;
   isEink: boolean;
   canCustomizeRootDir: boolean;

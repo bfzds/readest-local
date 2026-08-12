@@ -24,7 +24,6 @@ import { useProgressAutoSave } from '../hooks/useProgressAutoSave';
 import { useBackgroundTexture } from '@/hooks/useBackgroundTexture';
 import { useAutoFocus } from '@/hooks/useAutoFocus';
 import { useTranslation } from '@/hooks/useTranslation';
-import { useEinkMode } from '@/hooks/useEinkMode';
 import {
   applyFixedlayoutStyles,
   applyImageStyle,
@@ -63,7 +62,6 @@ import { getDirFromUILanguage } from '@/utils/rtl';
 import { isTauriAppPlatform } from '@/services/environment';
 import { TransformContext } from '@/services/transformers/types';
 import { transformContent } from '@/services/transformService';
-import { lockScreenOrientation, setSelectionSuppressed } from '@/utils/bridge';
 import { useBookCoverAutoSave } from '../hooks/useAutoSaveBookCover';
 import { manageSyntaxHighlighting } from '@/utils/highlightjs';
 import { getViewInsets } from '@/utils/insets';
@@ -127,7 +125,6 @@ const FoliateViewer: React.FC<{
   const { setSideBarBookKey } = useSidebarStore();
   const getBookData = useBookDataStore((s) => s.getBookData);
   const { applyBackgroundTexture } = useBackgroundTexture();
-  const { applyEinkMode } = useEinkMode();
   const { registerBrightnessListeners, overlayVisible, overlayLevel } =
     useBrightnessGesture(bookKey);
   const bookData = getBookData(bookKey);
@@ -663,8 +660,8 @@ const FoliateViewer: React.FC<{
           });
         }
       });
-      const viewWidth = appService?.isMobile ? screen.width : window.innerWidth;
-      const viewHeight = appService?.isMobile ? screen.height : window.innerHeight;
+      const viewWidth = window.innerWidth;
+      const viewHeight = window.innerHeight;
       const width = viewWidth - insets.left - insets.right;
       const height = viewHeight - insets.top - insets.bottom;
       book.transformTarget?.addEventListener('data', getDocTransformHandler({ width, height }));
@@ -673,14 +670,9 @@ const FoliateViewer: React.FC<{
 
       doubleClickDisabled.current = viewSettings.disableDoubleClick!;
       const animated = viewSettings.animated!;
-      const eink = viewSettings.isEink!;
       const maxColumnCount = viewSettings.maxColumnCount!;
       const maxInlineSize = getMaxInlineSize(viewSettings);
       const maxBlockSize = viewSettings.maxBlockSize!;
-      const screenOrientation = viewSettings.screenOrientation!;
-      if (appService?.isMobileApp) {
-        await lockScreenOrientation({ orientation: screenOrientation });
-      }
       if (animated) {
         view.renderer.setAttribute('animated', '');
       } else {
@@ -691,25 +683,9 @@ const FoliateViewer: React.FC<{
       // ControlPanel toggle takes effect without recreating the view.
       view.toggleAttribute(
         'autohide-cursor',
-        !appService?.isMobile && !!useSettingsStore.getState().settings.autohideCursor,
+        !!useSettingsStore.getState().settings.autohideCursor,
       );
       applyPageTurnAttributes(view, viewSettings, bookDoc.rendition?.layout === 'pre-paginated');
-      // iOS WebKit composites large/persistent page layers without the Android
-      // high-DPR Blink freeze, so opt this renderer into the GPU-accelerated
-      // page-turn path (persistent compositor layers + no main-thread
-      // rafAnimateScroll fallback) to keep 120Hz ProMotion turns smooth
-      // (readest#4768).
-      if (appService?.isIOSApp) {
-        view.renderer.setAttribute('gpu-composite', '');
-      }
-      if (appService?.isAndroidApp) {
-        if (eink) {
-          view.renderer.setAttribute('eink', '');
-        } else {
-          view.renderer.removeAttribute('eink');
-        }
-        applyEinkMode(eink);
-      }
       if (bookDoc?.rendition?.layout === 'pre-paginated') {
         view.renderer.setAttribute('zoom', viewSettings.zoomMode);
         view.renderer.setAttribute('spread', viewSettings.spreadMode);
@@ -829,40 +805,6 @@ const FoliateViewer: React.FC<{
       }
     }
   };
-
-  // iOS: the system long-press selection would race the instant-highlight
-  // hold — WebKit consults selectability before any touch handler runs, so
-  // JS-level suppression cannot win. Suppress it natively while the highlight
-  // quick action owns the gesture; restore when the mode turns off or the
-  // reader closes.
-  useEffect(() => {
-    if (!appService?.isIOSApp) return;
-    const suppressed =
-      !!viewSettings?.enableAnnotationQuickActions &&
-      viewSettings?.annotationQuickAction === 'highlight';
-    setSelectionSuppressed({ target: 'gesture', suppressed }).catch(() => {});
-    return () => {
-      if (suppressed) {
-        setSelectionSuppressed({ target: 'gesture', suppressed: false }).catch(() => {});
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    appService?.isIOSApp,
-    viewSettings?.enableAnnotationQuickActions,
-    viewSettings?.annotationQuickAction,
-  ]);
-
-  // Android (#5427): useTextSelector keeps the system selection toolbar
-  // natively suppressed while reader text is selected. If the reader closes
-  // with a live selection, no selectionchange fires to lift the flag — reset
-  // it here so selection menus elsewhere in the app are not muted.
-  useEffect(() => {
-    if (!appService?.isAndroidApp) return;
-    return () => {
-      setSelectionSuppressed({ target: 'menu', suppressed: false }).catch(() => {});
-    };
-  }, [appService?.isAndroidApp]);
 
   useEffect(() => {
     if (viewRef.current && viewRef.current.renderer) {
