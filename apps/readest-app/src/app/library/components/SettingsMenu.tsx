@@ -53,9 +53,12 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onPullLibrary, setIsDropdow
   const [refreshMetadataProgress, setRefreshMetadataProgress] = useState('');
   const { openDialog: openAppLockDialogInStore } = useAppLockStore();
   const isPinEnabled = !!settings.pinCodeEnabled;
+  // The app targets desktop only; mobile-only menu entries stay disabled.
+  const isMobileApp = false;
+  const isAndroidApp = false;
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [biometryLabelKey, setBiometryLabelKey] = useState('');
-  const showBiometricToggle = !!appService?.isMobileApp && isPinEnabled && biometricAvailable;
+  const showBiometricToggle = !!isMobileApp && isPinEnabled && biometricAvailable;
 
   useEffect(() => {
     if (!isBiometricSupported(appService) || !isPinEnabled) return;
@@ -242,7 +245,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onPullLibrary, setIsDropdow
       {appService?.hasWindow && (
         <MenuItem label={_('Always on Top')} toggled={isAlwaysOnTop} onClick={toggleAlwaysOnTop} />
       )}
-      {appService?.isMobileApp && (
+      {isMobileApp && (
         <MenuItem
           label={_('Always Show Status Bar')}
           toggled={isAlwaysShowStatusBar}
@@ -276,14 +279,12 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onPullLibrary, setIsDropdow
             onClick={handleRefreshMetadata}
             disabled={isRefreshingMetadata}
           />
-          {appService?.isMobileApp && (
-            <MenuItem label={_('Manage Cache')} onClick={handleManageCache} />
-          )}
+          {isMobileApp && <MenuItem label={_('Manage Cache')} onClick={handleManageCache} />}
           {!isPinEnabled && (
             <MenuItem
               label={_('Set PIN…')}
               tooltip={
-                appService?.isMobileApp
+                isMobileApp
                   ? _('Require a PIN (and biometrics, if available) to open Readest')
                   : _('Require a 4-digit PIN to open Readest')
               }
@@ -303,7 +304,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onPullLibrary, setIsDropdow
               onClick={toggleBiometricUnlock}
             />
           )}
-          {appService?.isAndroidApp && (
+          {isAndroidApp && (
             <MenuItem
               label={_('Save Book Cover')}
               tooltip={_('Auto-save last book cover')}

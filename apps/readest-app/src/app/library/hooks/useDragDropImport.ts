@@ -97,11 +97,9 @@ export const useDragDropImport = () => {
 
   useEffect(() => {
     const libraryPage = document.querySelector('.library-page');
-    if (!appService?.isMobile) {
-      libraryPage?.addEventListener('dragover', handleDragOver as unknown as EventListener);
-      libraryPage?.addEventListener('dragleave', handleDragLeave as unknown as EventListener);
-      libraryPage?.addEventListener('drop', handleDrop as unknown as EventListener);
-    }
+    libraryPage?.addEventListener('dragover', handleDragOver as unknown as EventListener);
+    libraryPage?.addEventListener('dragleave', handleDragLeave as unknown as EventListener);
+    libraryPage?.addEventListener('drop', handleDrop as unknown as EventListener);
 
     if (isTauriAppPlatform()) {
       const unlisten = getCurrentWebview().onDragDropEvent((event) => {
@@ -120,11 +118,9 @@ export const useDragDropImport = () => {
     }
 
     return () => {
-      if (!appService?.isMobile) {
-        libraryPage?.removeEventListener('dragover', handleDragOver as unknown as EventListener);
-        libraryPage?.removeEventListener('dragleave', handleDragLeave as unknown as EventListener);
-        libraryPage?.removeEventListener('drop', handleDrop as unknown as EventListener);
-      }
+      libraryPage?.removeEventListener('dragover', handleDragOver as unknown as EventListener);
+      libraryPage?.removeEventListener('dragleave', handleDragLeave as unknown as EventListener);
+      libraryPage?.removeEventListener('drop', handleDrop as unknown as EventListener);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [group]);

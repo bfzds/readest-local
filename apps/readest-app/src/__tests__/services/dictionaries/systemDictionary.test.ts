@@ -60,17 +60,6 @@ beforeEach(() => {
 });
 
 describe('invokeSystemDictionary — native dispatch', () => {
-  it('routes iPad (isIOSApp true) to the iOS plugin command', async () => {
-    appService.value = flags('ios'); // iPad: isIOSApp despite the desktop UA
-
-    const ok = await invokeSystemDictionary('hello');
-
-    expect(ok).toBe(true);
-    expect(invokeMock).toHaveBeenCalledWith(PLUGIN_CMD, { payload: { word: 'hello' } });
-    // Must NOT hit the macOS-only Rust command that iOS doesn't register.
-    expect(invokeMock).not.toHaveBeenCalledWith(MACOS_CMD, expect.anything());
-  });
-
   it('routes a real macOS desktop to the bare Rust command', async () => {
     appService.value = flags('macos');
 
@@ -84,13 +73,13 @@ describe('invokeSystemDictionary — native dispatch', () => {
     expect(invokeMock).not.toHaveBeenCalledWith(PLUGIN_CMD, expect.anything());
   });
 
-  it('routes Android to the plugin command', async () => {
-    appService.value = flags('android');
+  it('is a no-op on other platforms (only macOS dispatches)', async () => {
+    appService.value = flags('ios');
 
     const ok = await invokeSystemDictionary('hello');
 
-    expect(ok).toBe(true);
-    expect(invokeMock).toHaveBeenCalledWith(PLUGIN_CMD, { payload: { word: 'hello' } });
+    expect(ok).toBe(false);
+    expect(invokeMock).not.toHaveBeenCalled();
   });
 
   it('is a no-op when the app service is not yet initialized', async () => {
@@ -106,43 +95,19 @@ describe('invokeSystemDictionary — native dispatch', () => {
 const GET_LOOKUP_CMD = 'plugin:native-bridge|get_lookup_dictionary';
 const CLEAR_LOOKUP_CMD = 'plugin:native-bridge|clear_lookup_dictionary';
 
-describe('getRememberedLookupApp — Android-only remembered dictionary', () => {
-  it('returns the remembered app on Android', async () => {
-    appService.value = flags('android');
+describe('getRememberedLookupApp', () => {
+  it('is a no-op on desktop (Android-only feature)', async () => {
+    appService.value = flags('macos');
     invokeMock.mockResolvedValueOnce({ packageName: 'com.eusoft.eudic', label: 'Eudic' });
-
-    const app = await getRememberedLookupApp();
-
-    expect(app).toEqual({ packageName: 'com.eusoft.eudic', label: 'Eudic' });
-    expect(invokeMock).toHaveBeenCalledWith(GET_LOOKUP_CMD);
-  });
-
-  it('returns null when nothing is remembered (empty response)', async () => {
-    appService.value = flags('android');
-    invokeMock.mockResolvedValueOnce({});
-
-    expect(await getRememberedLookupApp()).toBeNull();
-  });
-
-  it('is a no-op on non-Android platforms', async () => {
-    appService.value = flags('ios');
 
     expect(await getRememberedLookupApp()).toBeNull();
     expect(invokeMock).not.toHaveBeenCalledWith(GET_LOOKUP_CMD);
   });
 });
 
-describe('clearRememberedLookupApp — Android-only reset', () => {
-  it('invokes the clear command on Android', async () => {
-    appService.value = flags('android');
-
-    await clearRememberedLookupApp();
-
-    expect(invokeMock).toHaveBeenCalledWith(CLEAR_LOOKUP_CMD);
-  });
-
-  it('is a no-op on non-Android platforms', async () => {
-    appService.value = flags('ios');
+describe('clearRememberedLookupApp', () => {
+  it('is a no-op on desktop (Android-only feature)', async () => {
+    appService.value = flags('macos');
 
     await clearRememberedLookupApp();
 
@@ -150,13 +115,15 @@ describe('clearRememberedLookupApp — Android-only reset', () => {
   });
 });
 
-describe('isSystemDictionarySupported — appService capability', () => {
-  it('is supported on iPad (isIOSApp true) despite the desktop UA', () => {
-    appService.value = flags('ios');
+describe('isSystemDictionarySupported', () => {
+  it('is supported on macOS', () => {
+    appService.value = flags('macos');
     expect(isSystemDictionarySupported()).toBe(true);
   });
 
-  it('is not supported on web (all is*App flags false)', () => {
+  it('is not supported on other platforms', () => {
+    appService.value = flags('ios');
+    expect(isSystemDictionarySupported()).toBe(false);
     appService.value = { isMacOSApp: false, isIOSApp: false, isAndroidApp: false };
     expect(isSystemDictionarySupported()).toBe(false);
   });

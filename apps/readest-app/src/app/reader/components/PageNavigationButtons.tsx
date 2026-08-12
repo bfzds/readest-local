@@ -1,7 +1,6 @@
 import clsx from 'clsx';
 import React, { useCallback } from 'react';
 import { IoChevronBack, IoChevronForward } from 'react-icons/io5';
-import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { useBookProgress } from '@/store/readerProgressStore';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -18,7 +17,6 @@ const PageNavigationButtons: React.FC<PageNavigationButtonsProps> = ({
   isDropdownOpen,
 }) => {
   const _ = useTranslation();
-  const { appService } = useEnv();
   const getBookData = useBookDataStore((s) => s.getBookData);
   const getView = useReaderStore((s) => s.getView);
   const getViewSettings = useReaderStore((s) => s.getViewSettings);
@@ -80,18 +78,13 @@ const PageNavigationButtons: React.FC<PageNavigationButtonsProps> = ({
             'absolute left-2 -translate-y-1/2',
             'flex items-center gap-1',
             isPageNavigationButtonsVisible ? 'top-1/2 opacity-100' : 'bottom-2 opacity-0',
-            !isPageNavigationButtonsVisible && !appService?.isAndroidApp
-              ? 'pointer-events-none'
-              : '',
+            !isPageNavigationButtonsVisible ? 'pointer-events-none' : '',
           )}
         >
           {showPageNavigationButtons && (
             <button
               onClick={handleGoLeftPage}
-              className={clsx(
-                'flex h-20 w-20 items-center justify-center focus:outline-none',
-                !isPageNavigationButtonsVisible && appService?.isAndroidApp && 'h-4 w-4',
-              )}
+              className={clsx('flex h-20 w-20 items-center justify-center focus:outline-none')}
               aria-hidden={false}
               aria-label={getLeftPageLabel()}
               tabIndex={0}
@@ -117,18 +110,13 @@ const PageNavigationButtons: React.FC<PageNavigationButtonsProps> = ({
             'absolute right-2 -translate-y-1/2',
             'flex items-center gap-1',
             isPageNavigationButtonsVisible ? 'top-1/2 opacity-100' : 'bottom-2 opacity-0',
-            !isPageNavigationButtonsVisible && !appService?.isAndroidApp
-              ? 'pointer-events-none'
-              : '',
+            !isPageNavigationButtonsVisible ? 'pointer-events-none' : '',
           )}
         >
           {showPageNavigationButtons && (
             <button
               onClick={handleGoRightPage}
-              className={clsx(
-                'flex h-20 w-20 items-center justify-center focus:outline-none',
-                !isPageNavigationButtonsVisible && appService?.isAndroidApp && 'h-4 w-4',
-              )}
+              className={clsx('flex h-20 w-20 items-center justify-center focus:outline-none')}
               aria-hidden={false}
               aria-label={getRightPageLabel()}
               tabIndex={0}

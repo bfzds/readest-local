@@ -39,11 +39,8 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
 }) => {
   const _ = useTranslation();
   const { appService } = useEnv();
-  // On Android the button saves straight to the photo gallery (the share sheet
-  // can't save to a file there); elsewhere it shares where supported, else
-  // exports. The affordance reflects the actual action.
-  const saveToGallery = appService?.isAndroidApp ?? false;
-  const canShare = !saveToGallery && canShareText();
+  // The share sheet can't save to a file on desktop browsers; exports instead.
+  const canShare = canShareText();
   const [scale, setScale] = useState(1);
   // `scale` is relative to the fit-to-screen size, which says nothing about how
   // much of the image's own resolution is on screen: fitting a 1600px
@@ -419,18 +416,6 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
     try {
       const { bytes, mimeType } = dataUrlToBytes(decodeURIComponent(src));
       const filename = `image.${imageExtensionFromMime(mimeType)}`;
-      if (saveToGallery) {
-        const saved = await appService.saveImageToGallery(
-          filename,
-          bytes.buffer as ArrayBuffer,
-          mimeType,
-        );
-        eventDispatcher.dispatch('toast', {
-          type: saved ? 'info' : 'error',
-          message: saved ? _('Image saved to gallery') : _('Failed to save the image'),
-        });
-        return;
-      }
       const saved = await appService.saveFile(filename, bytes.buffer as ArrayBuffer, {
         share: true,
         mimeType,

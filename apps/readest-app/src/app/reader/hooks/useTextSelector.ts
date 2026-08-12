@@ -1,10 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { BookNote } from '@/types/book';
 import { Insets } from '@/types/misc';
-import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { useBookDataStore } from '@/store/bookDataStore';
-import { getOSPlatform } from '@/utils/misc';
 import { eventDispatcher } from '@/utils/event';
 import { setSelectionSuppressed } from '@/utils/bridge';
 import {
@@ -14,8 +12,6 @@ import {
   isHyphenHandleBugProneRange,
   isPointerInsideSelection,
   Point,
-  rangeFromAnchorToPoint,
-  repairJumpedSelectionRange,
   TextSelection,
   trimRangeWhitespaceAroundPoint,
 } from '@/utils/sel';
@@ -45,17 +41,14 @@ export const useTextSelector = (
   getAnnotationText: (range: Range) => Promise<string>,
   handleDismissPopup: () => void,
 ) => {
-  const { appService } = useEnv();
   const { getBookData } = useBookDataStore();
   const { getView, getViewSettings, getProgress } = useReaderStore();
   const view = getView(bookKey);
   const bookData = getBookData(bookKey);
-  const osPlatform = getOSPlatform();
 
   // Corner-dwell auto page-turn (#1354), now driven by every selection gesture
   // through a shared engagement point — see useAutoPageTurn.
   const {
-    isAutoTurning,
     cornerAtPoint,
     noteCorner,
     noteAutoTurnPoint,
@@ -354,13 +347,8 @@ export const useTextSelector = (
       return;
     }
 
-    // Pointer-driven auto page-turn (#1354) for web/desktop/iOS, where the
-    // pointer is the reliable, stable signal at the corner. Android uses the
-    // caret in handleSelectionchange (no pointermove during a selection drag).
-    // Android uses native touchmove (handleNativeTouchMove) — the iframe
-    // pointermove doesn't fire there during a native selection drag.
-    const isAndroid = osPlatform === 'android' && appService?.isAndroidApp;
-    if (isAndroid) return;
+    // Pointer-driven auto page-turn (#1354): the pointer is the reliable,
+    // stable signal at the corner on web/desktop.
     const viewSettings = getViewSettings(bookKey);
     const sel = doc.getSelection();
     const valid = !!sel && isValidSelection(sel);
@@ -402,71 +390,6 @@ export const useTextSelector = (
       stopInstantAnnotating();
       handleInstantAnnotationPointerCancel();
     }
-  };
-
-  // Android (#1553): when a touch selection starts on the first word of a
-  // hyphenated paragraph, Blink paints the start handle on the paragraph's
-  // last hyphen and drag gestures re-anchor the selection base there. At
-  // gesture end: restore the intended range if the anchor jumped, then clear
-  // and re-add the selection through the Selection API — a selection that goes
-  // empty for one painted frame loses its touch-handle visibility, so the
-  // broken native handles disappear (the app's own handles take over) while
-  // the highlight stays.
-  const sanitizedGestureRef = useRef(false);
-  const sanitizeAndroidHyphenSelection = async (doc: Document, index: number) => {
-    if (sanitizedGestureRef.current) return;
-    const sel = doc.getSelection();
-    const win = doc.defaultView;
-    if (!sel || !win || !isValidSelection(sel)) return;
-    // Only act when THIS gesture produced a selection — a tap that merely
-    // dismisses an existing selection must not re-assert it here.
-    const initial = gestureInitialRef.current;
-    if (!initial) return;
-    const viewSettings = getViewSettings(bookKey);
-    // The initial range is prone (long-press on the first word), or the
-    // gesture dragged the selection start back onto a hyphenated paragraph
-    // start (upward selection) — either way the painted start bound is bogus.
-    const prone =
-      initial.prone || isHyphenHandleBugProneRange(sel.getRangeAt(0), viewSettings?.vertical);
-    if (!prone) return;
-    sanitizedGestureRef.current = true;
-    let finalRange = sel.getRangeAt(0);
-    if (initial.prone) {
-      // The corrupted drag can leave EITHER selection end at the bogus bound
-      // (base re-anchor or extent overshoot). The trustworthy facts are the
-      // gesture-initial anchor and the finger position (pointerPos, reset at
-      // touchstart and fed by native touchmove): rebuild between those when
-      // the gesture moved; otherwise fall back to the anchor-jump repair.
-      const p = pointerPos.current;
-      const feRect = win.frameElement?.getBoundingClientRect();
-      const clamped = p
-        ? rangeFromAnchorToPoint(
-            doc,
-            initial.node,
-            initial.offset,
-            p.x - (feRect?.left ?? 0),
-            p.y - (feRect?.top ?? 0),
-          )
-        : null;
-      const repaired = clamped ?? repairJumpedSelectionRange(sel, initial.node, initial.offset);
-      if (repaired) finalRange = repaired;
-    }
-    guardProgrammaticSelection();
-    sel.removeAllRanges();
-    await new Promise<void>((resolve) =>
-      win.requestAnimationFrame(() => win.requestAnimationFrame(() => resolve())),
-    );
-    // A competing gesture may have touched the selection while we waited —
-    // e.g. a tap collapses the old selection to a caret at the tapped point,
-    // which can also mutate `finalRange` in place. Re-asserting then would
-    // resurrect a stale (or collapsed) selection, so bail out instead.
-    if (sel.rangeCount > 0 || finalRange.collapsed) {
-      releaseProgrammaticSelection();
-      return;
-    }
-    sel.addRange(finalRange);
-    releaseProgrammaticSelection();
-    await makeSelection(sel, index, false, true);
   };
 
   // Replace the live DOM selection from the custom selection handles. Guarded
@@ -567,20 +490,14 @@ export const useTextSelector = (
       if (isPointerInside) {
         isUpToPopup.current = true;
         makeSelection(sel, index, true, false, trimPoint);
-      } else if (appService?.isAndroidApp) {
-        isUpToPopup.current = false;
       }
     }
-
-    if (osPlatform === 'android' && appService?.isAndroidApp) {
-      await sanitizeAndroidHyphenSelection(doc, index);
-    }
   };
+
   const handleTouchStart = () => {
     isTouchStarted.current = true;
     pendingTouchSelection.current = false;
     gestureInitialRef.current = null;
-    sanitizedGestureRef.current = false;
     // Pointer positions are per-gesture: a stale point from a previous touch
     // must not steer this gesture's selection repair. Touch moves re-feed it.
     pointerPos.current = null;
@@ -635,7 +552,7 @@ export const useTextSelector = (
     // On web with touch/pen in scroll mode, pointerup never fires (pointercancel
     // fires instead when browser takes over for scrolling), so we also handle
     // selectionchange for touch/pen input to pick up native text selections.
-    const isAndroid = osPlatform === 'android' && appService?.isAndroidApp;
+    const isAndroid = false;
     const isTouchInput = lastPointerType.current === 'touch' || lastPointerType.current === 'pen';
     const sel = doc.getSelection() as Selection;
     const viewSettings = getViewSettings(bookKey);
@@ -698,21 +615,8 @@ export const useTextSelector = (
     }
   };
   const handleScroll = () => {
-    // Prevent the container from scrolling when text is selected in paginated mode
-    // FIXME: this is a workaround for issue #873
-    if (osPlatform !== 'android' || !appService?.isAndroidApp) return;
-
-    const viewSettings = getViewSettings(bookKey);
-    if (viewSettings?.scrolled) return;
-
-    // Don't fight a deliberate auto page-turn (#1354): without this the pin
-    // below snaps the container straight back to the selection-start page and
-    // the turn never sticks (the Android-only failure mode).
-    if (isAutoTurning.current) return;
-
-    if (isTextSelected.current && view?.renderer && selectionPosition.current !== null) {
-      view.renderer.containerPosition = selectionPosition.current;
-    }
+    // Prevent the container from scrolling when text is selected in paginated
+    // mode — Android-only (#873); desktop never fights the scroll.
   };
 
   const handleShowPopup = (showPopup: boolean) => {
@@ -729,11 +633,7 @@ export const useTextSelector = (
   };
 
   const handleContextmenu = (event: Event) => {
-    if (appService?.isMobile) {
-      event.preventDefault();
-      event.stopPropagation();
-      return false;
-    } else if (lastPointerType.current === 'touch' || lastPointerType.current === 'pen') {
+    if (lastPointerType.current === 'touch' || lastPointerType.current === 'pen') {
       event.preventDefault();
       event.stopPropagation();
       return false;

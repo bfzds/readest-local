@@ -48,7 +48,6 @@ vi.mock('@/store/sidebarStore', () => ({
   useSidebarStore: Object.assign(() => ({}), { getState: () => ({ sideBarBookKey: 'book-1' }) }),
 }));
 
-import { interceptKeys } from '@/utils/bridge';
 import { eventDispatcher } from '@/utils/event';
 import { useDeviceControlStore } from '@/store/deviceStore';
 import { usePagination } from '@/app/reader/hooks/usePagination';
@@ -61,17 +60,6 @@ const PENCIL_TURNER: HardwarePageTurnerSettings = {
   bindings: {
     pagePrev: { source: 'native', id: 'PencilSqueeze', label: 'Pencil Squeeze' },
     pageNext: { source: 'native', id: 'PencilDoubleTap', label: 'Pencil Double Tap' },
-    sectionPrev: null,
-    sectionNext: null,
-    refresh: null,
-  },
-};
-
-const MEDIA_TURNER: HardwarePageTurnerSettings = {
-  enabled: true,
-  bindings: {
-    pagePrev: { source: 'native', id: 'MediaPrevious', label: 'Media Previous' },
-    pageNext: { source: 'native', id: 'MediaNext', label: 'Media Next' },
     sectionPrev: null,
     sectionNext: null,
     refresh: null,
@@ -136,43 +124,5 @@ describe('usePagination Apple Pencil bindings (#5501)', () => {
     await pressNativeKey('PencilSqueeze');
 
     expect(view.prev).toHaveBeenCalled();
-  });
-
-  test('pencil-only bindings install forwarding but never media-key interception', () => {
-    h.settingsState.settings.hardwarePageTurner = PENCIL_TURNER;
-    setupWithView();
-
-    expect(window.onNativeKeyDown).toBeDefined();
-    expect(interceptKeys).not.toHaveBeenCalledWith(
-      expect.objectContaining({ pageTurnerKeys: true }),
-    );
-  });
-
-  test('media-key bindings still acquire native interception', () => {
-    h.settingsState.settings.hardwarePageTurner = MEDIA_TURNER;
-    setupWithView();
-
-    expect(interceptKeys).toHaveBeenCalledWith({ pageTurnerKeys: true });
-  });
-
-  test('mixed pencil and media bindings acquire interception and both keys work', async () => {
-    h.settingsState.settings.hardwarePageTurner = {
-      enabled: true,
-      bindings: {
-        pagePrev: { source: 'native', id: 'PencilSqueeze', label: 'Pencil Squeeze' },
-        pageNext: { source: 'native', id: 'MediaNext', label: 'Media Next' },
-        sectionPrev: null,
-        sectionNext: null,
-        refresh: null,
-      },
-    };
-    const view = makeView();
-    setupWithView(view);
-
-    expect(interceptKeys).toHaveBeenCalledWith({ pageTurnerKeys: true });
-    await pressNativeKey('PencilSqueeze');
-    expect(view.prev).toHaveBeenCalled();
-    await pressNativeKey('MediaNext');
-    expect(view.next).toHaveBeenCalled();
   });
 });

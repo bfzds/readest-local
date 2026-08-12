@@ -43,7 +43,7 @@ export const FontLayoutPanel: React.FC<FontLayoutPanelProps> = ({
   forceMobileLayout,
 }) => {
   const _ = useTranslation();
-  const { envConfig, appService } = useEnv();
+  const { envConfig } = useEnv();
   const { getView, getViewSettings } = useReaderStore();
   const viewSettings = getViewSettings(bookKey);
   const view = getView(bookKey);
@@ -109,9 +109,7 @@ export const FontLayoutPanel: React.FC<FontLayoutPanelProps> = ({
     <div
       className={classes}
       style={{
-        bottom: appService?.isAndroidApp
-          ? `calc(env(safe-area-inset-bottom) + 64px)`
-          : bottomOffset,
+        bottom: bottomOffset,
       }}
     >
       <Slider

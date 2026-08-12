@@ -3,24 +3,18 @@
 import clsx from 'clsx';
 import * as React from 'react';
 import { useEffect, Suspense } from 'react';
-import { useRouter } from 'next/navigation';
 
 import { useEnv } from '@/context/EnvContext';
 import { useTheme } from '@/hooks/useTheme';
 import { useLibrary } from '@/hooks/useLibrary';
 import { useThemeStore } from '@/store/themeStore';
-import { useReaderStore } from '@/store/readerStore';
-import { useSidebarStore } from '@/store/sidebarStore';
-import { useNotebookStore } from '@/store/notebookStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { useDeviceControlStore } from '@/store/deviceStore';
 import { useScreenWakeLock } from '@/hooks/useScreenWakeLock';
 import { useScreenBrightness } from '@/app/reader/hooks/useScreenBrightness';
-import { eventDispatcher } from '@/utils/event';
 import { interceptWindowOpen } from '@/utils/open';
 import { mountAdditionalFonts } from '@/styles/fonts';
 import { isTauriAppPlatform } from '@/services/environment';
-import { getSysFontsList, setSystemUIVisibility } from '@/utils/bridge';
+import { getSysFontsList } from '@/utils/bridge';
 import { AboutWindow } from '@/components/AboutWindow';
 import { KeyboardShortcutsHelp } from '@/components/KeyboardShortcutsHelp';
 import { ProofreadRulesManager } from './ProofreadRules';
@@ -51,19 +45,10 @@ Z-Index Layering Guide:
 */
 
 const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
-  const router = useRouter();
   const { appService } = useEnv();
   const { settings } = useSettingsStore();
   const { libraryLoaded } = useLibrary();
-  const { sideBarBookKey } = useSidebarStore();
-  const { hoveredBookKey } = useReaderStore();
-  const { showSystemUI, dismissSystemUI } = useThemeStore();
-  const { acquireBackKeyInterception, releaseBackKeyInterception } = useDeviceControlStore();
-  const { isSideBarVisible, isSideBarPinned } = useSidebarStore();
-  const { getIsSideBarVisible, setSideBarVisible } = useSidebarStore();
-  const { isNotebookVisible, isNotebookPinned } = useNotebookStore();
-  const { getIsNotebookVisible, setNotebookVisible } = useNotebookStore();
-  const { isDarkMode, systemUIAlwaysHidden, isRoundedWindow } = useThemeStore();
+  const { isRoundedWindow } = useThemeStore();
 
   useTheme({ systemUIVisible: settings.alwaysShowStatusBar, appThemeColor: 'base-100' });
   useScreenWakeLock(settings.screenWakeLock, appService?.hasWindow);
@@ -77,66 +62,6 @@ const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
     }
     initDayjs(getLocale());
   }, []);
-
-  const handleKeyDown = (event: CustomEvent) => {
-    if (event.detail.keyName === 'Back') {
-      const { hoveredBookKey, setHoveredBookKey } = useReaderStore.getState();
-      if (hoveredBookKey) {
-        setHoveredBookKey('');
-        (document.activeElement as HTMLElement)?.blur();
-      } else if (getIsSideBarVisible() && !isSideBarPinned) {
-        setSideBarVisible(false);
-      } else if (getIsNotebookVisible() && !isNotebookPinned) {
-        setNotebookVisible(false);
-      } else {
-        eventDispatcher.dispatch('close-reader');
-        router.back();
-      }
-      return true;
-    }
-    return false;
-  };
-
-  useEffect(() => {
-    if (!appService?.isAndroidApp) return;
-    acquireBackKeyInterception();
-    return () => {
-      releaseBackKeyInterception();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appService?.isAndroidApp]);
-
-  useEffect(() => {
-    if (appService?.isAndroidApp) {
-      eventDispatcher.onSync('native-key-down', handleKeyDown);
-    }
-    return () => {
-      if (appService?.isAndroidApp) {
-        eventDispatcher.offSync('native-key-down', handleKeyDown);
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    appService?.isAndroidApp,
-    sideBarBookKey,
-    isSideBarPinned,
-    isSideBarVisible,
-    isNotebookPinned,
-    isNotebookVisible,
-  ]);
-
-  useEffect(() => {
-    if (!appService?.isMobileApp) return;
-    const systemUIVisible = !!hoveredBookKey || settings.alwaysShowStatusBar;
-    const visible = !!(systemUIVisible && !systemUIAlwaysHidden);
-    setSystemUIVisibility({ visible, darkMode: isDarkMode });
-    if (visible) {
-      showSystemUI();
-    } else {
-      dismissSystemUI();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hoveredBookKey]);
 
   return libraryLoaded && settings.globalReadSettings ? (
     <div

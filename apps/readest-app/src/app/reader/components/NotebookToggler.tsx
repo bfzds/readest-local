@@ -1,8 +1,6 @@
 import React from 'react';
 import { RiQuillPenLine } from 'react-icons/ri';
 
-import { useEnv } from '@/context/EnvContext';
-import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useNotebookStore } from '@/store/notebookStore';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -15,16 +13,11 @@ interface NotebookTogglerProps {
 
 const NotebookToggler: React.FC<NotebookTogglerProps> = ({ bookKey }) => {
   const _ = useTranslation();
-  const { appService } = useEnv();
-  const { setHoveredBookKey } = useReaderStore();
   const { sideBarBookKey, setSideBarBookKey } = useSidebarStore();
   const { isNotebookVisible, toggleNotebook } = useNotebookStore();
   const iconSize18 = useResponsiveSize(18);
 
   const handleToggleSidebar = () => {
-    if (appService?.isMobile) {
-      setHoveredBookKey('');
-    }
     if (sideBarBookKey === bookKey) {
       toggleNotebook();
     } else {

@@ -370,25 +370,18 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     // Bound to the section so a selectionchange deferred during the drag can
     // be processed (and the popup shown once) when the gesture ends.
     detail.doc?.addEventListener('touchend', handleTouchEnd.bind(null, doc, index));
-    // Re-arm the instant quick action at the start of each gesture. Android does
-    // this via the native-touch touchstart above; iOS/desktop have no such path,
-    // and a single iOS long-press emits multiple selectionchange events for the
-    // same word — without re-arming, the system-dictionary sheet stacked twice
-    // (the action fired once per event instead of once per gesture).
-    if (!appService?.isAndroidApp) {
-      detail.doc?.addEventListener(
-        'pointerdown',
-        (ev: Event) => {
-          beginGesture(deferredQuickActionRef.current);
-          // Remember when the gesture started so the instant quick action can
-          // require a long-press hold (touch only — mouse selections fire on
-          // pointerup and shouldn't be time-gated).
-          pointerDownTimeRef.current =
-            (ev as PointerEvent).pointerType === 'mouse' ? 0 : Date.now();
-        },
-        opts,
-      );
-    }
+    // Re-arm the instant quick action at the start of each gesture.
+    detail.doc?.addEventListener(
+      'pointerdown',
+      (ev: Event) => {
+        beginGesture(deferredQuickActionRef.current);
+        // Remember when the gesture started so the instant quick action can
+        // require a long-press hold (touch only — mouse selections fire on
+        // pointerup and shouldn't be time-gated).
+        pointerDownTimeRef.current = (ev as PointerEvent).pointerType === 'mouse' ? 0 : Date.now();
+      },
+      opts,
+    );
     detail.doc?.addEventListener('mousedown', handleMouseDown);
     detail.doc?.addEventListener('pointerdown', handlePointerDown.bind(null, doc, index), opts);
     detail.doc?.addEventListener('pointermove', handlePointerMove.bind(null, doc, index), opts);
@@ -506,8 +499,8 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
       const fontSizeValue = parseFloat(fontSize) || viewSettings.defaultFontSize;
       const lineHeightValue = parseFloat(lineHeight) || viewSettings.lineHeight * fontSizeValue;
       const strokeWidth = 2;
-      const verticalCompensation = appService?.isMobile ? 0 : -1;
-      const horizontalCompensation = appService?.isMobile ? -1 : 0;
+      const verticalCompensation = -1;
+      const horizontalCompensation = 0;
       const padding = viewSettings.vertical
         ? (lineHeightValue - fontSizeValue) / 2 - strokeWidth + verticalCompensation
         : (lineHeightValue - fontSizeValue) / 2 - strokeWidth + horizontalCompensation;
@@ -637,7 +630,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
   useRendererInputListeners(view, {
     onRendererScroll: handleScroll,
     onNativeTouch: handleNativeTouch,
-    enableNativeTouch: !!appService?.isAndroidApp,
+    enableNativeTouch: false,
     listenToNativeTouchEvents,
   });
 
@@ -892,10 +885,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     // a tap-to-deselect after dismissing the system dictionary occasionally
     // re-opened it off a racy lingering selectionchange. Android defers to
     // touchend (a deliberate lift) and is left as-is.
-    if (
-      !appService?.isAndroidApp &&
-      !isLongPressHold(pointerDownTimeRef.current, Date.now(), quickActionMinHoldMs)
-    ) {
+    if (!isLongPressHold(pointerDownTimeRef.current, Date.now(), quickActionMinHoldMs)) {
       return;
     }
     const action = viewSettings.annotationQuickAction;
@@ -933,11 +923,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     // On Android, a long-press fires selectionchange (and this handler) while
     // the finger is still down. Defer until touchend so popups aren't dismissed
     // by the in-progress touch (closes #3935).
-    runOrDeferAction(
-      deferredQuickActionRef.current,
-      !!appService?.isAndroidApp && !androidTouchEndRef.current,
-      runAction,
-    );
+    runOrDeferAction(deferredQuickActionRef.current, false, runAction);
   };
 
   useEffect(() => {
@@ -1060,9 +1046,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
   }, [selection?.cfi, showAnnotationNotes, config.booknotes]);
 
   const handleShowAnnotPopup = () => {
-    if (!appService?.isMobile) {
-      containerRef.current?.focus();
-    }
+    containerRef.current?.focus();
     setShowAnnotPopup(true);
     setShowDictionaryPopup(false);
     setShowProofreadPopup(false);
@@ -1115,9 +1099,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     if (updatedConfig) {
       saveConfig(envConfig, bookKey, updatedConfig, settings);
     }
-    if (!appService?.isMobile) {
-      setNotebookVisible(true);
-    }
+    setNotebookVisible(true);
   };
 
   // Copy a permanent link to what is under the selection, so a highlight can be

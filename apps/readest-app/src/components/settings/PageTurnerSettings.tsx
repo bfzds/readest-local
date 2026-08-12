@@ -26,11 +26,14 @@ interface PageTurnerSettingsProps {
 
 const PageTurnerSettings: React.FC<PageTurnerSettingsProps> = ({ bookKey, onRegisterReset }) => {
   const _ = useTranslation();
-  const { envConfig, appService } = useEnv();
+  const { envConfig } = useEnv();
   const { getViewSettings } = useReaderStore();
   const { setKeyLearnMode, acquireVolumeKeyInterception, releaseVolumeKeyInterception } =
     useDeviceControlStore();
   const { settings } = useSettingsStore();
+  // The app targets desktop only; mobile-only page-turner paths stay disabled.
+  const isMobileApp = false;
+  const isAndroidApp = false;
   const viewSettings = getViewSettings(bookKey) || settings.globalViewSettings;
   const resetToDefaults = useResetViewSettings();
 
@@ -49,7 +52,7 @@ const PageTurnerSettings: React.FC<PageTurnerSettingsProps> = ({ bookKey, onRegi
   // Native key interception exists only on mobile; on web and desktop
   // learn mode relies on standard DOM keydown events alone.
   const setNativeLearnMode = (enabled: boolean) => {
-    if (appService?.isMobileApp) setKeyLearnMode(enabled);
+    if (isMobileApp) setKeyLearnMode(enabled);
   };
 
   const stopListening = () => {
@@ -112,7 +115,7 @@ const PageTurnerSettings: React.FC<PageTurnerSettingsProps> = ({ bookKey, onRegi
 
   useEffect(() => {
     saveViewSettings(envConfig, bookKey, 'volumeKeysToFlip', volumeKeysToFlip, false, false);
-    if (appService?.isMobileApp) {
+    if (isMobileApp) {
       if (volumeKeysToFlip) {
         acquireVolumeKeyInterception();
       } else {
@@ -173,15 +176,11 @@ const PageTurnerSettings: React.FC<PageTurnerSettingsProps> = ({ bookKey, onRegi
       <BoxedList
         title={_('Page Turner')}
         data-setting-id='settings.control.pageTurner'
-        description={
-          appService?.isIOSApp
-            ? _(
-                'Press a button on your remote controller or keyboard, or use an Apple Pencil gesture, after tapping "Set key".',
-              )
-            : _('Press a button on your remote controller or keyboard after tapping "Set key".')
-        }
+        description={_(
+          'Press a button on your remote controller or keyboard after tapping "Set key".',
+        )}
       >
-        {appService?.isMobileApp && (
+        {isMobileApp && (
           <SettingsSwitchRow
             label={_('Use Volume Keys')}
             checked={volumeKeysToFlip}
@@ -199,9 +198,7 @@ const PageTurnerSettings: React.FC<PageTurnerSettingsProps> = ({ bookKey, onRegi
         {renderSlot('sectionNext', _('Next Section'))}
         {/* Deep e-ink refresh clears ghosting; only meaningful in e-ink mode
             on Android, where the native bridge can drive the panel. */}
-        {appService?.isAndroidApp &&
-          viewSettings.isEink &&
-          renderSlot('refresh', _('Refresh Page'))}
+        {isAndroidApp && viewSettings.isEink && renderSlot('refresh', _('Refresh Page'))}
       </BoxedList>
     </div>
   );

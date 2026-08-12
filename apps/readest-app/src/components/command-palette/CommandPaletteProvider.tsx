@@ -59,7 +59,7 @@ export const CommandPaletteProvider: React.FC<CommandPaletteProviderProps> = ({ 
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
 
-  const isDesktop = isTauriAppPlatform() && !appService?.isMobile;
+  const isDesktop = isTauriAppPlatform();
 
   // action handlers
   const toggleTheme = useCallback(() => {

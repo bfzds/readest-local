@@ -16,7 +16,9 @@ type CSSType = 'book' | 'reader';
 
 const MiscPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset }) => {
   const _ = useTranslation();
-  const { appService, envConfig } = useEnv();
+  const { envConfig } = useEnv();
+  // The app targets desktop only; Android input-focus handling is disabled.
+  const isAndroidApp = false;
   const { settings } = useSettingsStore();
   const { getView, getViewSettings, setViewSettings } = useReaderStore();
   const viewSettings = getViewSettings(bookKey) || settings.globalViewSettings;
@@ -115,7 +117,7 @@ const MiscPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
   };
 
   const handleInputFocus = (textareaRef: React.RefObject<HTMLTextAreaElement | null>) => {
-    if (appService?.isAndroidApp) {
+    if (isAndroidApp) {
       setInputFocusInAndroid(true);
     }
     setTimeout(() => {
@@ -127,7 +129,7 @@ const MiscPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
   };
 
   const handleInputBlur = () => {
-    if (appService?.isAndroidApp) {
+    if (isAndroidApp) {
       setTimeout(() => {
         setInputFocusInAndroid(false);
       }, 100);

@@ -82,11 +82,6 @@ async function initAndroidService() {
 
 const pngBytes = () => new Uint8Array([0, 1, 2]).buffer as ArrayBuffer;
 
-type GalleryRequest = { srcPath: string; fileName: string; mimeType: string; albumName?: string };
-
-const requestOf = (call: number): GalleryRequest =>
-  saveImageToGalleryMock.mock.calls[call]![0] as GalleryRequest;
-
 describe('NativeAppService.saveImageToGallery', () => {
   beforeEach(() => {
     saveImageToGalleryMock.mockClear();
@@ -97,43 +92,12 @@ describe('NativeAppService.saveImageToGallery', () => {
     vi.restoreAllMocks();
   });
 
-  test('gives every saved image its own MediaStore display name', async () => {
+  test('is a no-op on desktop (MediaStore is Android-only)', async () => {
     const service = await initAndroidService();
-
-    await service.saveImageToGallery('image.png', pngBytes(), 'image/png');
-    await service.saveImageToGallery('image.png', pngBytes(), 'image/png');
-
-    const first = requestOf(0);
-    const second = requestOf(1);
-
-    // A constant display name makes the insert depend on the provider quietly
-    // de-duplicating it (AOSP renames to "image (1).png"; stricter OEM providers
-    // reject the row instead). Name the file ourselves so it never collides.
-    expect(first.fileName).not.toBe('image.png');
-    expect(first.fileName).not.toBe(second.fileName);
-    expect(first.fileName.endsWith('.png')).toBe(true);
-    expect(second.fileName.endsWith('.png')).toBe(true);
-    // The staged file the plugin reads must be the one we named.
-    expect(first.srcPath.endsWith(first.fileName)).toBe(true);
-    expect(second.srcPath.endsWith(second.fileName)).toBe(true);
-  });
-
-  test('logs the native error when the MediaStore insert fails', async () => {
-    const service = await initAndroidService();
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-    saveImageToGalleryMock.mockResolvedValue({
-      success: false,
-      error: 'Failed to build unique file: /storage/emulated/0/Pictures/Readest image.png',
-    });
 
     const saved = await service.saveImageToGallery('image.png', pngBytes(), 'image/png');
 
     expect(saved).toBe(false);
-    // Without this the toast is all anyone gets, and an OEM-specific failure is
-    // undiagnosable from a bug report.
-    expect(consoleError).toHaveBeenCalledWith(
-      expect.stringContaining('Failed to save image to gallery'),
-      'Failed to build unique file: /storage/emulated/0/Pictures/Readest image.png',
-    );
+    expect(saveImageToGalleryMock).not.toHaveBeenCalled();
   });
 });

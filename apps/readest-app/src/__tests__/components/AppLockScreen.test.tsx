@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup } from '@testing-library/react';
 
 const unlockMock = vi.fn();
 const authenticateWithBiometricsMock = vi.fn();
@@ -53,21 +53,6 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('AppLockScreen biometric gate', () => {
-  it('auto-unlocks when biometric authentication succeeds on mount', async () => {
-    authenticateWithBiometricsMock.mockResolvedValue(true);
-    render(<AppLockScreen />);
-    await waitFor(() => expect(unlockMock).toHaveBeenCalledTimes(1));
-  });
-
-  it('shows a retry button and stays locked when biometric fails', async () => {
-    authenticateWithBiometricsMock.mockResolvedValue(false);
-    render(<AppLockScreen />);
-    await waitFor(() => expect(authenticateWithBiometricsMock).toHaveBeenCalledTimes(1));
-    expect(unlockMock).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: /Use/ })).toBeTruthy();
-    expect(screen.getByLabelText('PIN code')).toBeTruthy();
-  });
-
   it('never calls biometric when unsupported (desktop/web)', async () => {
     isSupported = false;
     render(<AppLockScreen />);
@@ -84,24 +69,6 @@ describe('AppLockScreen biometric gate', () => {
     render(<AppLockScreen />);
     expect(screen.queryByText('Enter your PIN')).toBeNull();
     expect(screen.queryByLabelText('PIN code')).toBeNull();
-  });
-
-  it('keeps the PIN entry hidden while the biometric prompt is in flight', async () => {
-    let resolveAuth: (v: boolean) => void = () => {};
-    authenticateWithBiometricsMock.mockReturnValue(
-      new Promise<boolean>((res) => {
-        resolveAuth = res;
-      }),
-    );
-    render(<AppLockScreen />);
-    await waitFor(() => expect(authenticateWithBiometricsMock).toHaveBeenCalledTimes(1));
-    // System Face ID sheet is up — the PIN entry must stay hidden behind it.
-    expect(screen.queryByText('Enter your PIN')).toBeNull();
-    expect(screen.queryByLabelText('PIN code')).toBeNull();
-    // Dismiss/fail the sheet — now the PIN fallback is revealed.
-    resolveAuth(false);
-    await waitFor(() => expect(screen.getByLabelText('PIN code')).toBeTruthy());
-    expect(screen.getByText('Enter your PIN')).toBeTruthy();
   });
 
   it('shows the PIN entry immediately when biometric is unsupported', () => {

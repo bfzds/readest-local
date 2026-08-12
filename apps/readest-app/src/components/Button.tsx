@@ -1,6 +1,5 @@
 import clsx from 'clsx';
 import React from 'react';
-import { useEnv } from '@/context/EnvContext';
 
 interface ButtonProps {
   icon: React.ReactNode;
@@ -11,7 +10,6 @@ interface ButtonProps {
 }
 
 const Button: React.FC<ButtonProps> = ({ icon, onClick, disabled = false, label, className }) => {
-  const { appService } = useEnv();
   return (
     <button
       className={clsx(
@@ -19,7 +17,6 @@ const Button: React.FC<ButtonProps> = ({ icon, onClick, disabled = false, label,
         // in the reader bars a miss falls through to the book and turns the
         // page (#5401), so every one of these carries the halo.
         'touch-target btn btn-ghost h-8 min-h-8 w-8 p-0',
-        appService?.isMobileApp && 'hover:bg-transparent',
         disabled && 'cursor-default !bg-transparent opacity-50',
         className,
       )}

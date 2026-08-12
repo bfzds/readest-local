@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { useEnv } from '@/context/EnvContext';
 import { FoliateView } from '@/types/view';
 import { useReaderStore } from '@/store/readerStore';
 import { eventDispatcher } from '@/utils/event';
@@ -22,12 +21,11 @@ export const useMiddleClickAutoscroll = (
   viewRef: React.RefObject<FoliateView | null>,
   containerRef: React.RefObject<HTMLDivElement | null>,
 ) => {
-  const { appService } = useEnv();
   const { getViewSettings } = useReaderStore();
   const viewSettings = getViewSettings(bookKey);
   const [anchor, setAnchor] = useState<AutoscrollAnchor | null>(null);
 
-  const armed = !!appService?.isDesktopApp && !!viewSettings?.scrolled;
+  const armed = !!viewSettings?.scrolled;
   const armedRef = useRef(armed);
   armedRef.current = armed;
 

@@ -928,10 +928,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           // upstream (issue #4343 — deadlocks the main thread), and web
           // browsers don't expose a real "send file to <app>" sheet, so
           // the button is hidden on those platforms.
-          sendEnabled={
-            !!appService &&
-            (appService.isIOSApp || appService.isAndroidApp || appService.isMacOSApp)
-          }
+          sendEnabled={!!appService?.isMacOSApp}
           onOpen={openSelectedBooks}
           onGroup={groupSelectedBooks}
           onDetails={openBookDetails}

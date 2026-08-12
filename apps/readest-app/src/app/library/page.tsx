@@ -46,9 +46,7 @@ import { getLibraryViewSettings } from '@/helpers/settings';
 import { useReadingWidget } from '@/hooks/useReadingWidget';
 import { useKeyDownActions } from '@/hooks/useKeyDownActions';
 import { SelectedFile, useFileSelector } from '@/hooks/useFileSelector';
-import { lockScreenOrientation, selectDirectory, showFilePicker } from '@/utils/bridge';
 import { useAndroidPickedBooks } from '@/hooks/useAndroidFilePicker';
-import { requestStoragePermission } from '@/utils/permission';
 import { SUPPORTED_BOOK_EXTS } from '@/services/constants';
 import {
   tauriHandleClose,
@@ -402,7 +400,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
 
   useKeyDownActions({
     onCancel: triggerBackUpOneGroupLevel,
-    enabled: !!appService?.isAndroidApp && !!currentGroupPath,
+    enabled: false,
   });
 
   useEffect(() => {
@@ -411,12 +409,6 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings]);
-
-  useEffect(() => {
-    if (appService?.isMobileApp) {
-      lockScreenOrientation({ orientation: 'auto' });
-    }
-  }, [appService]);
 
   // Drop the book name the reader put in the window title, so a window back on
   // the library does not keep announcing a book that is no longer open.
@@ -487,7 +479,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       for (const file of openWithFiles) {
         console.log('Open with book:', file);
         try {
-          const temp = appService.isMobile ? false : !settings.autoImportBooksOnOpen;
+          const temp = !settings.autoImportBooksOnOpen;
           const book = await ingestFile(
             {
               file,
@@ -892,11 +884,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   };
 
   useAutoImportFolders({
-    enabled:
-      (settings.autoImportFolders?.length ?? 0) > 0 &&
-      libraryLoaded &&
-      isTauriAppPlatform() &&
-      !appService?.isIOSApp,
+    enabled: (settings.autoImportFolders?.length ?? 0) > 0 && libraryLoaded && isTauriAppPlatform(),
     folders: settings.autoImportFolders ?? [],
     scanAndImport: autoImportFromWatchedFolders,
   });
@@ -993,14 +981,6 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   const handleImportBooksFromFiles = async () => {
     setIsSelectMode(false);
     console.log('Importing books from files...');
-    if (appService?.isAndroidApp) {
-      // The dialog plugin's promise dies when Android tears down the activity
-      // or process while the picker is in the foreground (#1217). Open the
-      // native-bridge picker fire-and-forget instead; results arrive through
-      // the replayable `file-picker-result` event consumed below.
-      showFilePicker().catch((err) => console.error('Failed to open file picker:', err));
-      return;
-    }
     selectFiles({ type: 'books', multiple: true }).then((result) => {
       if (result.files.length === 0 || result.error) return;
       importBooks(result.files, getImportTargetGroupId());
@@ -1082,23 +1062,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
    */
   const pickImportDirectory = async (): Promise<string | undefined> => {
     if (!appService) return undefined;
-    // Both mobile platforms now go through the native-bridge picker:
-    // Android dispatches ACTION_OPEN_DOCUMENT_TREE, iOS presents
-    // UIDocumentPickerViewController(forOpeningContentTypes: [.folder]).
-    // Tauri's bundled dialog plugin still rejects mobile folder picks
-    // with "FolderPickerNotImplemented", so the native-bridge route is
-    // the only working path on either OS.
-    let picked: string | undefined;
-    if (appService.isAndroidApp || appService.isIOSApp) {
-      // Android needs MANAGE_EXTERNAL_STORAGE for absolute-path reads;
-      // iOS doesn't have an equivalent gate (the OS picker is itself
-      // the permission grant), so the prompt is Android-only.
-      if (appService.isAndroidApp && !(await requestStoragePermission())) return undefined;
-      const response = await selectDirectory();
-      picked = response.path || undefined;
-    } else {
-      picked = (await appService.selectDirectory?.('read')) || undefined;
-    }
+    const picked = (await appService.selectDirectory?.('read')) || undefined;
     if (picked && !validatePickedDirectory(picked)) {
       // Already toasted from inside the validator. Treat as "no
       // selection" so the caller leaves the dialog's old folder
@@ -1110,45 +1074,10 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
 
   /**
    * Sanity-check a path returned by the native folder picker before
-   * we commit to scanning it. iOS in particular hands back POSIX paths
-   * for "virtual" Files-app entries (the "On My iPhone" root, "Recents",
-   * etc.) where {@link readDirectory} will then fail with a Tauri
-   * fs_scope rejection. There's no way to disable those entries in the
-   * picker itself, so we accept the pick, detect the known-bad shapes,
-   * and show a clear toast asking the user to drill into a real
-   * subfolder. Returns true if the path looks usable.
+   * we commit to scanning it. Desktop paths are all readable, so every
+   * pick is accepted as-is.
    */
-  const validatePickedDirectory = (path: string): boolean => {
-    if (!appService?.isIOSApp) return true;
-    // iOS Files exposes "On My iPhone" as a virtual aggregator over
-    // every app's `LSSupportsOpeningDocumentsInPlace` container. When
-    // the user picks that root, the picker hands us a path whose
-    // basename is exactly `File Provider Storage` (the placeholder
-    // directory inside our own App Group container that the system
-    // uses to materialise external file-provider contents on demand).
-    // POSIX reads against it return either nothing or EPERM, and the
-    // Tauri fs_scope refuses it outright because it's outside our
-    // allowed globs. Drilling into a concrete subfolder produces a
-    // normal, readable POSIX path, which is the path we want.
-    //
-    // These string anchors aren't localized — iOS keeps the on-disk
-    // path in English regardless of the device language, so the
-    // basename / segment match is stable.
-    const trimmed = path.replace(/\/+$/, '');
-    const basename = trimmed.split('/').pop() ?? '';
-    const isOnMyIPhoneRoot = basename === 'File Provider Storage';
-    if (isOnMyIPhoneRoot) {
-      eventDispatcher.dispatch('toast', {
-        type: 'warning',
-        timeout: 6000,
-        message: _(
-          'iOS doesn\'t allow importing the "On My iPhone" root. Open it and pick a specific subfolder (e.g. Readest, Downloads), then try again.',
-        ),
-      });
-      return false;
-    }
-    return true;
-  };
+  const validatePickedDirectory = (_path: string): boolean => true;
 
   /**
    * Normalize a path the same way `shouldImportInPlace` does so the
@@ -1368,17 +1297,12 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       // message that nudges the user to re-pick.
       const detail = e instanceof Error ? e.message : String(e);
       console.error('Folder import: readDirectory failed', detail);
-      const isIOS = !!appService.isIOSApp;
       eventDispatcher.dispatch('toast', {
         type: 'error',
         timeout: 6000,
-        message: isIOS
-          ? _(
-              'Couldn\'t read this folder. Some iOS locations (like the "On My iPhone" root or iCloud Drive top-level) can\'t be scanned — please pick a specific subfolder and try again.',
-            )
-          : _(
-              "Couldn't read this folder. Please pick the folder again, or choose a different location.",
-            ),
+        message: _(
+          "Couldn't read this folder. Please pick the folder again, or choose a different location.",
+        ),
       });
       return;
     }

@@ -4,8 +4,6 @@
 
 import { useEffect, useRef } from 'react';
 
-import { useEnv } from '@/context/EnvContext';
-
 export type ActiveCallback = (isActive: boolean) => void;
 
 type Cleanup = () => void;
@@ -19,18 +17,11 @@ async function activeChangedDesktop(onChange: ActiveCallback): Promise<Cleanup> 
     unlisten();
   };
 }
-async function activeChangedOther(onChange: ActiveCallback): Promise<Cleanup> {
-  const handler = () => onChange(document.visibilityState === 'visible');
-
-  document.addEventListener('visibilitychange', handler);
-  return () => document.removeEventListener('visibilitychange', handler);
-}
 
 export function useWindowActiveChanged(callback: ActiveCallback) {
   const onActiveChanged = useRef<ActiveCallback>(callback);
-  const { appService } = useEnv();
 
-  const subscribe = appService?.isDesktopApp ? activeChangedDesktop : activeChangedOther;
+  const subscribe = activeChangedDesktop;
 
   useEffect(() => {
     onActiveChanged.current = callback;

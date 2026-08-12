@@ -28,40 +28,30 @@ beforeEach(() => {
 });
 
 describe('isBiometricSupported', () => {
-  test('true on iOS/Android app, false otherwise and for null', () => {
-    expect(isBiometricSupported(mobile({ isIOSApp: true, isAndroidApp: false }))).toBe(true);
-    expect(isBiometricSupported(mobile({ isAndroidApp: true }))).toBe(true);
+  test('false on desktop (no mobile targets)', () => {
+    expect(isBiometricSupported(mobile({ isIOSApp: true, isAndroidApp: false }))).toBe(false);
+    expect(isBiometricSupported(mobile({ isAndroidApp: true }))).toBe(false);
     expect(isBiometricSupported({ isIOSApp: false, isAndroidApp: false } as never)).toBe(false);
     expect(isBiometricSupported(null)).toBe(false);
   });
 });
 
 describe('shouldAttemptBiometricUnlock', () => {
-  test('requires all three conditions', () => {
+  test('requires both conditions', () => {
     expect(
       shouldAttemptBiometricUnlock({
-        isMobileApp: true,
         biometricUnlockEnabled: true,
         available: true,
       }),
     ).toBe(true);
     expect(
       shouldAttemptBiometricUnlock({
-        isMobileApp: false,
-        biometricUnlockEnabled: true,
-        available: true,
-      }),
-    ).toBe(false);
-    expect(
-      shouldAttemptBiometricUnlock({
-        isMobileApp: true,
         biometricUnlockEnabled: false,
         available: true,
       }),
     ).toBe(false);
     expect(
       shouldAttemptBiometricUnlock({
-        isMobileApp: true,
         biometricUnlockEnabled: true,
         available: false,
       }),
@@ -70,10 +60,9 @@ describe('shouldAttemptBiometricUnlock', () => {
 });
 
 describe('defaultBiometricUnlockOnPinSet', () => {
-  test('on only when mobile and available', () => {
-    expect(defaultBiometricUnlockOnPinSet({ isMobileApp: true, available: true })).toBe(true);
-    expect(defaultBiometricUnlockOnPinSet({ isMobileApp: true, available: false })).toBe(false);
-    expect(defaultBiometricUnlockOnPinSet({ isMobileApp: false, available: true })).toBe(false);
+  test('on only when available', () => {
+    expect(defaultBiometricUnlockOnPinSet({ available: true })).toBe(true);
+    expect(defaultBiometricUnlockOnPinSet({ available: false })).toBe(false);
   });
 });
 

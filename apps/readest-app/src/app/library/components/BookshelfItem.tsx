@@ -387,8 +387,6 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
       onContextMenu: (e) => {
         if (appService?.hasContextMenu) {
           handleContextMenu({ x: e.clientX, y: e.clientY });
-        } else if (appService?.isAndroidApp) {
-          handleSelectItem();
         }
       },
     },
@@ -423,7 +421,6 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
           mode === 'grid' &&
             'sm:hover:bg-base-300/50 flex h-full flex-col px-0 py-2 sm:rounded-md sm:px-4 sm:py-4',
           mode === 'list' && 'border-base-300 flex flex-col border-b py-2',
-          appService?.isMobileApp && 'no-context-menu',
           pressing && mode === 'grid' ? 'not-eink:scale-95' : 'scale-100',
         )}
         role='button'

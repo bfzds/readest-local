@@ -11,14 +11,11 @@ import {
   DEFAULT_READSETTINGS,
   SYSTEM_SETTINGS_VERSION,
   DEFAULT_TTS_CONFIG,
-  DEFAULT_MOBILE_VIEW_SETTINGS,
   DEFAULT_SYSTEM_SETTINGS,
   DEFAULT_CJK_VIEW_SETTINGS,
-  DEFAULT_MOBILE_READSETTINGS,
   DEFAULT_SCREEN_CONFIG,
   DEFAULT_TRANSLATOR_CONFIG,
   SETTINGS_FILENAME,
-  DEFAULT_MOBILE_SYSTEM_SETTINGS,
   DEFAULT_ANNOTATOR_CONFIG,
   DEFAULT_WORD_LENS_CONFIG,
   DEFAULT_EINK_VIEW_SETTINGS,
@@ -30,7 +27,6 @@ import { migratePageNavigationSettings } from '@/utils/serializer';
 
 export interface Context {
   fs: FileSystem;
-  isMobile: boolean;
   isEink: boolean;
   isAppDataSandbox: boolean;
 }
@@ -47,7 +43,6 @@ export function getDefaultViewSettings(ctx: Context): ViewSettings {
     ...DEFAULT_ANNOTATOR_CONFIG,
     ...DEFAULT_WORD_LENS_CONFIG,
     ...DEFAULT_VIEW_SETTINGS_CONFIG,
-    ...(ctx.isMobile ? DEFAULT_MOBILE_VIEW_SETTINGS : {}),
     ...(ctx.isEink ? DEFAULT_EINK_VIEW_SETTINGS : {}),
     ...(isCJKEnv() ? DEFAULT_CJK_VIEW_SETTINGS : {}),
     ...{ ...DEFAULT_TRANSLATOR_CONFIG, translateTargetLang: getTargetLang() },
@@ -127,13 +122,11 @@ export const migrateChineseConversion = (settings: SystemSettings, version: numb
 export async function loadSettings(ctx: Context): Promise<SystemSettings> {
   const defaultSettings: SystemSettings = {
     ...DEFAULT_SYSTEM_SETTINGS,
-    ...(ctx.isMobile ? DEFAULT_MOBILE_SYSTEM_SETTINGS : {}),
     version: SYSTEM_SETTINGS_VERSION,
     localBooksDir: await ctx.fs.getPrefix('Books'),
     koreaderSyncDeviceId: uuidv4(),
     globalReadSettings: {
       ...DEFAULT_READSETTINGS,
-      ...(ctx.isMobile ? DEFAULT_MOBILE_READSETTINGS : {}),
     },
     globalViewSettings: getDefaultViewSettings(ctx),
   } as SystemSettings;
@@ -152,12 +145,10 @@ export async function loadSettings(ctx: Context): Promise<SystemSettings> {
   }
   settings = {
     ...DEFAULT_SYSTEM_SETTINGS,
-    ...(ctx.isMobile ? DEFAULT_MOBILE_SYSTEM_SETTINGS : {}),
     ...settings,
   };
   settings.globalReadSettings = {
     ...DEFAULT_READSETTINGS,
-    ...(ctx.isMobile ? DEFAULT_MOBILE_READSETTINGS : {}),
     ...settings.globalReadSettings,
   };
   migrateHighlightColorPrefs(settings.globalReadSettings);

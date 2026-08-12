@@ -3,15 +3,7 @@ import { AppService } from '@/types/system';
 export const parseWebViewInfo = (appService: AppService | null): string => {
   const ua = navigator.userAgent;
 
-  if (appService?.isAndroidApp) {
-    // Android WebView
-    const chromeMatch = ua.match(/Chrome\/([0-9.]+)/);
-    return chromeMatch ? `WebView ${chromeMatch[1]}` : 'Android WebView';
-  } else if (appService?.isIOSApp) {
-    // iOS WebView
-    const webkitMatch = ua.match(/AppleWebKit\/([0-9.]+)/);
-    return webkitMatch ? `WebView ${webkitMatch[1]}` : 'iOS WebView';
-  } else if (appService?.isMacOSApp) {
+  if (appService?.isMacOSApp) {
     // macOS WebView
     const webkitMatch = ua.match(/AppleWebKit\/([0-9.]+)/);
     return webkitMatch ? `WebView ${webkitMatch[1]}` : 'macOS WebView';

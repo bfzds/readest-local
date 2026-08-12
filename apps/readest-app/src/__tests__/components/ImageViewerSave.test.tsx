@@ -79,7 +79,7 @@ describe('ImageViewer save/share button', () => {
       configurable: true,
       value: navShare,
     });
-    h.appService = { isMobileApp: true, isMacOSApp: false, saveFile };
+    h.appService = { isMobileApp: false, isMacOSApp: false, saveFile };
 
     const { getByLabelText } = render(
       <ImageViewer src={PNG_DATA_URL} onClose={vi.fn()} gridInsets={gridInsets} />,
@@ -92,35 +92,5 @@ describe('ImageViewer save/share button', () => {
     expect(saveFile.mock.calls[0]![2]).toMatchObject({ share: true });
     // The OS share sheet is its own feedback; no toast on the share path.
     expect(h.dispatch).not.toHaveBeenCalled();
-  });
-
-  it('saves to the photo gallery on Android instead of sharing', async () => {
-    const saveImageToGallery = vi.fn().mockResolvedValue(true);
-    const saveFile = vi.fn().mockResolvedValue(true);
-    h.appService = {
-      isMobileApp: true,
-      isMacOSApp: false,
-      isAndroidApp: true,
-      saveFile,
-      saveImageToGallery,
-    };
-
-    const { getByLabelText } = render(
-      <ImageViewer src={PNG_DATA_URL} onClose={vi.fn()} gridInsets={gridInsets} />,
-    );
-
-    // Android saves to the gallery, so the affordance is "Save Image", not Share.
-    fireEvent.click(getByLabelText('Save Image'));
-
-    await waitFor(() => expect(saveImageToGallery).toHaveBeenCalledTimes(1));
-    const [filename, content, mime] = saveImageToGallery.mock.calls[0]!;
-    expect(filename).toBe('image.png');
-    expect(content).toBeInstanceOf(ArrayBuffer);
-    expect(mime).toBe('image/png');
-    // It must NOT fall through to the share sheet on Android.
-    expect(saveFile).not.toHaveBeenCalled();
-    await waitFor(() =>
-      expect(h.dispatch).toHaveBeenCalledWith('toast', expect.objectContaining({ type: 'info' })),
-    );
   });
 });

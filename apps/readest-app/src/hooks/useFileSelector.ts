@@ -2,7 +2,7 @@ import { AppService } from '@/types/system';
 import { isTauriAppPlatform } from '@/services/environment';
 import { invoke } from '@tauri-apps/api/core';
 import { basename } from '@tauri-apps/api/path';
-import { isContentURI, isFileURI, stubTranslation as _ } from '@/utils/misc';
+import { isContentURI, stubTranslation as _ } from '@/utils/misc';
 import { getFilename } from '@/utils/path';
 import { eventDispatcher } from '@/utils/event';
 import { BOOK_ACCEPT_FORMATS, SUPPORTED_BOOK_EXTS } from '@/services/constants';
@@ -63,9 +63,9 @@ const selectFileWeb = (options: FileSelectorOptions): Promise<File[]> => {
  */
 export const resolveTauriFileName = async (
   path: string,
-  appService: AppService,
+  _appService: AppService,
 ): Promise<string> => {
-  if (isContentURI(path) || (isFileURI(path) && appService.isIOSApp)) {
+  if (isContentURI(path)) {
     try {
       return await basename(path);
     } catch {
@@ -106,43 +106,16 @@ const selectFileTauri = async (
       timeout: 5000,
     });
   }
-  // Android's SAF picker filters by MIME type. Niche/custom extensions
-  // (e.g. ".mrexpt" from Moon+ Reader) have no registered MIME and would
-  // appear greyed-out, so for those cases we ask the native side for an
-  // unfiltered picker and re-apply the extension whitelist on the
-  // resulting paths below. We extend the same treatment to 'generic'
-  // selections because callers there typically pass arbitrary extensions
-  // that SAF likewise cannot match (e.g. mrexpt, txt).
-  //
-  // Image selections are the exception on iOS: image extensions all map to
-  // real UTTypes, so passing them lets the dialog plugin open the Photos
-  // (PHPicker) UI instead of the Files browser — matching Android. Asking for
-  // no filter there also made the client-side whitelist below drop anything
-  // outside png/jpg/jpeg/gif, so picking a HEIC (the iPhone camera default)
-  // silently selected nothing at all.
-  const isImageSelection = options.type === 'covers' || options.type === 'images';
-  const noFilter =
-    (appService?.isIOSApp && !isImageSelection) ||
-    (appService?.isAndroidApp &&
-      (options.type === 'books' || options.type === 'dictionaries' || options.type === 'generic'));
-  const exts = noFilter ? [] : options.extensions || [];
+  const exts = options.extensions || [];
   const title = options.dialogTitle || _('Select Files');
   const paths = (await appService?.selectFiles(_(title), exts)) || [];
 
   // Resolve the display name once, up front. Both the extension whitelist
   // below and downstream consumers (dictionary bundle grouping) must classify
   // by this resolved name rather than parsing the raw URI — see #4489.
-  let files: SelectedFile[] = await Promise.all(
+  const files: SelectedFile[] = await Promise.all(
     paths.map(async (path) => ({ path, name: await resolveTauriFileName(path, appService) })),
   );
-
-  if (noFilter && options.extensions) {
-    const extensions = options.extensions;
-    files = files.filter(({ name }) => {
-      const fileExt = name?.split('.').pop()?.toLowerCase() || 'unknown';
-      return extensions.includes(fileExt) || extensions.includes('*');
-    });
-  }
 
   return files;
 };

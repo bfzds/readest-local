@@ -145,20 +145,18 @@ const BookItem: React.FC<BookItemProps> = ({
             <ReadingProgress book={book} showTimeRemaining={showTimeRemaining} />
           )}
           <div className='flex shrink-0 items-center justify-center gap-x-2'>
-            {!appService?.isMobile && (
-              <button
-                aria-label={_('Show Book Details')}
-                className='show-detail-button -m-2 p-2 sm:opacity-0 sm:group-hover:opacity-100'
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={() => {
-                  showBookDetailsModal(book);
-                }}
-              >
-                <div className='pt-[2px] sm:pt-[1px]'>
-                  <LiaInfoCircleSolid size={iconSize15} />
-                </div>
-              </button>
-            )}
+            <button
+              aria-label={_('Show Book Details')}
+              className='show-detail-button -m-2 p-2 sm:opacity-0 sm:group-hover:opacity-100'
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => {
+                showBookDetailsModal(book);
+              }}
+            >
+              <div className='pt-[2px] sm:pt-[1px]'>
+                <LiaInfoCircleSolid size={iconSize15} />
+              </div>
+            </button>
             {book.hasNarration && (
               <div
                 className='pt-[2px] sm:pt-[1px]'

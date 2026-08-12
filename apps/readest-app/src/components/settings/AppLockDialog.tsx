@@ -105,7 +105,7 @@ export default function AppLockDialog() {
           await saveSysSettings(
             envConfig,
             'biometricUnlockEnabled',
-            defaultBiometricUnlockOnPinSet({ isMobileApp: !!appService?.isMobileApp, available }),
+            defaultBiometricUnlockOnPinSet({ available }),
           );
         }
         setStorePin(hash, salt);

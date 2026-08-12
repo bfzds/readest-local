@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import React, { useCallback, useMemo, useEffect, useRef } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import { useEnv } from '@/context/EnvContext';
 import { useSpatialNavigation } from '@/app/reader/hooks/useSpatialNavigation';
 import { useReaderStore } from '@/store/readerStore';
@@ -7,7 +7,6 @@ import { useSidebarStore } from '@/store/sidebarStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { FIXED_LAYOUT_FORMATS } from '@/types/book';
 import { useTranslation } from '@/hooks/useTranslation';
-import { useDeviceControlStore } from '@/store/deviceStore';
 import { eventDispatcher } from '@/utils/event';
 import type { FooterBarProps, NavigationHandlers, FooterBarChildProps } from './types';
 import { debounce } from '@/utils/debounce';
@@ -31,7 +30,6 @@ const FooterBar: React.FC<FooterBarProps> = ({
   const { hoveredBookKey, setHoveredBookKey, bottomBarTab, setBottomBarTab } = useReaderStore();
   const { getView, getViewState, getProgress, getViewSettings } = useReaderStore();
   const { isSideBarVisible, isSideBarPinned, setSideBarVisible } = useSidebarStore();
-  const { acquireBackKeyInterception, releaseBackKeyInterception } = useDeviceControlStore();
 
   const view = getView(bookKey);
   const config = getConfig(bookKey);
@@ -157,51 +155,10 @@ const FooterBar: React.FC<FooterBarProps> = ({
     ],
   );
 
-  const handleKeyDown = useCallback(
-    (event: KeyboardEvent | CustomEvent) => {
-      if (event instanceof CustomEvent) {
-        if (event.detail.keyName === 'Back') {
-          setHoveredBookKey('');
-          (document.activeElement as HTMLElement)?.blur();
-          return true;
-        }
-      } else {
-        if (event.key === 'Escape') {
-          setHoveredBookKey('');
-          (document.activeElement as HTMLElement)?.blur();
-        }
-        event.stopPropagation();
-      }
-      return false;
-    },
-    [setHoveredBookKey],
-  );
-
-  useEffect(() => {
-    if (!appService?.isAndroidApp) return;
-
-    if (hoveredBookKey) {
-      acquireBackKeyInterception();
-      eventDispatcher.onSync('native-key-down', handleKeyDown);
-    }
-    return () => {
-      if (hoveredBookKey) {
-        releaseBackKeyInterception();
-        eventDispatcher.offSync('native-key-down', handleKeyDown);
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hoveredBookKey]);
-
   const footerBarRef = useRef<HTMLDivElement>(null);
   useSpatialNavigation(footerBarRef, isVisible);
 
-  // Force the mobile footer bar on mobile tablets/foldables in portrait mode
-  // where the viewport width exceeds the `sm:` (640px) breakpoint. Phones
-  // (innerWidth < 640) are intentionally excluded so their styling and panel
-  // slide-down animation remain exactly as before — see #3742 / #3746.
-  const forceMobileLayout =
-    !!appService?.isMobile && window.innerWidth >= 640 && window.innerWidth <= window.innerHeight;
+  const forceMobileLayout = false;
 
   const commonProps: FooterBarChildProps = {
     bookKey,
@@ -237,7 +194,7 @@ const FooterBar: React.FC<FooterBarProps> = ({
         : 'pointer-events-none translate-y-full opacity-0 sm:translate-y-0',
   );
 
-  const isMobile = appService?.isMobile || window.innerWidth < 640;
+  const isMobile = window.innerWidth < 640;
 
   return (
     <>
@@ -261,7 +218,7 @@ const FooterBar: React.FC<FooterBarProps> = ({
         aria-label={_('Footer Bar')}
         className={containerClasses}
         dir={viewSettings?.rtl ? 'rtl' : 'ltr'}
-        onFocus={() => !appService?.isMobile && setHoveredBookKey(bookKey)}
+        onFocus={() => setHoveredBookKey(bookKey)}
         onMouseLeave={() => window.innerWidth >= 640 && setHoveredBookKey('')}
       >
         <MobileFooterBar {...commonProps} />

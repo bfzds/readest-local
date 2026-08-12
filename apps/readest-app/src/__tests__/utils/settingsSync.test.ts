@@ -101,7 +101,6 @@ describe('mergeSyncedGlobalSettings: icloud', () => {
 // `broadcastGlobalSettings` end to end instead of mocking the whole module.
 const defaultGlobalViewSettings = getDefaultViewSettings({
   fs: {} as FileSystem,
-  isMobile: false,
   isEink: false,
   isAppDataSandbox: false,
 });

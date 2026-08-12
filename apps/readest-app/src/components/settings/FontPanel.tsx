@@ -209,7 +209,7 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
   }, [viewSettings.serifFont, viewSettings.sansSerifFont, viewSettings.monospaceFont]);
 
   useEffect(() => {
-    if (isTauriAppPlatform() && appService && !appService.isAndroidApp) {
+    if (isTauriAppPlatform() && appService) {
       getSysFontsList().then((res) => {
         if (res.error || Object.keys(res.fonts).length === 0) {
           console.error('Failed to get system fonts list:', res.error);

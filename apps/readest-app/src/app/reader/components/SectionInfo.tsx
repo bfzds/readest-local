@@ -1,8 +1,6 @@
 import clsx from 'clsx';
 import React from 'react';
 import { Insets } from '@/types/misc';
-import { useEnv } from '@/context/EnvContext';
-import { useThemeStore } from '@/store/themeStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { eventDispatcher } from '@/utils/event';
@@ -33,16 +31,11 @@ const SectionInfo: React.FC<SectionInfoProps> = ({
   gridInsets,
 }) => {
   const _ = useTranslation();
-  const { appService } = useEnv();
   const { hoveredBookKey, getView, getViewSettings, setHoveredBookKey } = useReaderStore();
-  const { systemUIVisible, statusBarHeight } = useThemeStore();
   const getBookData = useBookDataStore((s) => s.getBookData);
   const viewSettings = getViewSettings(bookKey)!;
   const bookData = getBookData(bookKey);
-  const topInset = Math.max(
-    gridInsets.top,
-    appService?.isAndroidApp && systemUIVisible ? statusBarHeight / 2 : 0,
-  );
+  const topInset = Math.max(gridInsets.top, 0);
   // Negative top margins lift the band (and the scrolled-mode notch mask)
   // into the notch instead of collapsing it (#5303).
   const band = getHeaderBandGeometry(topInset, viewSettings.marginTopPx);
@@ -125,9 +118,7 @@ const SectionInfo: React.FC<SectionInfoProps> = ({
           className={clsx(
             'text-center',
             isVertical ? '' : 'line-clamp-1',
-            !isVertical &&
-              (hoveredBookKey == bookKey || (hoveredBookKey && appService?.isMobile)) &&
-              'hidden',
+            !isVertical && hoveredBookKey == bookKey && 'hidden',
           )}
         >
           {section || ''}
