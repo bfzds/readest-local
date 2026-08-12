@@ -27,7 +27,6 @@ import { eventDispatcher } from '@/utils/event';
 import { getFilename, getFolderImportGroupName, joinScannedPath } from '@/utils/path';
 import { parseOpenWithFiles } from '@/helpers/openWith';
 import { isTauriAppPlatform } from '@/services/environment';
-import { impactFeedback } from '@tauri-apps/plugin-haptics';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 
 import { useEnv } from '@/context/EnvContext';
@@ -1332,9 +1331,6 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   };
 
   const handleSetSelectMode = (selectMode: boolean) => {
-    if (selectMode && appService?.hasHaptics) {
-      impactFeedback('medium');
-    }
     setIsSelectMode(selectMode);
     setIsSelectAll(false);
     setIsSelectNone(false);
