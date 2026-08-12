@@ -79,7 +79,10 @@ export async function saveEditedEpub(opts: {
     const { library, setLibrary } = useLibraryStore.getState();
     const nextLibrary = library.map((item) => (item.hash === oldHash ? newBook : item));
     setLibrary(nextLibrary);
-    await appService.saveLibraryBooks(nextLibrary);
+    // `replace: true` 是刻意删除旧记录的唯一途径：saveLibraryBooks 默认是
+    // 合并写（磁盘 library.json 作为底），旧 hash 记录会残留，与编辑保存后的
+    // 新记录并存成两本书，而旧目录随后被删除导致旧记录打不开。
+    await appService.saveLibraryBooks(nextLibrary, { replace: true });
 
     if (oldHash !== newHash && (await appService.isDirectory(oldHash, 'Books'))) {
       try {
