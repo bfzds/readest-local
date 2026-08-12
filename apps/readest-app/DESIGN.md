@@ -795,6 +795,10 @@ Verification checklist before shipping a new UI:
 
 ### 9. Cross-platform grace notes
 
+> **Note:** Readest has moved to **desktop-only** (macOS / Windows / Linux via
+> Tauri). The web, iOS, and Android guidance in this section is **historical
+> reference** from when the app also shipped those targets.
+
 Readest ships on **macOS, Windows, Linux, iOS, Android, web**. Adwaita is desktop-GNOME-
 native; we adapt where the host OS has strong conventions, but never at the cost of
 identity.

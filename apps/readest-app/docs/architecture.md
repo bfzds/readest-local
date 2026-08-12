@@ -11,36 +11,23 @@ GitHub.
 
 ## 1. High-level picture
 
-Readest is a single TypeScript/React codebase (`apps/readest-app`) compiled into
-multiple targets:
+Readest is a single TypeScript/React codebase (`apps/readest-app`) compiled
+into a **desktop app** (Windows / macOS / Linux) via Tauri v2.
 
-- a **desktop app** (Windows / macOS / Linux) via Tauri v2
-- a **mobile app** (Android / iOS) via Tauri v2 mobile
-- a **web app** running on Next.js / Cloudflare Workers (OpenNext) at
-  [web.readest.com](https://web.readest.com)
-- two **side surfaces**: a "Send to Readest" browser extension
-  (`apps/readest-app/extension/send-to-readest`) and a Windows thumbnail
-  shell extension (`apps/readest-app/extensions/windows-thumbnail`)
-
-The same React UI runs in all targets. What differs is the **host shell** under
-the UI and the **set of services** that the UI binds to at runtime — see
-section 4.
+The React UI runs in the desktop app's webview. What matters at runtime is the
+**host shell** under the UI and the **set of services** that the UI binds to —
+see section 4.
 
 ```mermaid
 flowchart LR
     subgraph Clients
         Desktop["Desktop app<br/>(Tauri shell + React UI)"]
-        Mobile["Mobile app<br/>(Tauri Android/iOS + React UI)"]
-        Web["Web app<br/>(Next.js + React UI)"]
-        Ext["Browser extension<br/>(Send to Readest)"]
-        WinExt["Windows shell ext<br/>(thumbnail provider)"]
     end
 
-    subgraph Backend["Readest backend (Next.js routes + Cloudflare Worker)"]
+    subgraph Backend["Readest backend (Next.js routes)"]
         AppApi["src/app/api/*<br/>(App Router)"]
         PagesApi["src/pages/api/*<br/>(Pages Router)"]
         RuntimeCfg["/runtime-config.js<br/>(server-injected config)"]
-        Worker["workers/send-email<br/>(Cloudflare Worker)"]
     end
 
     subgraph Cloud["External services"]
@@ -59,10 +46,6 @@ flowchart LR
     end
 
     Desktop --> Backend
-    Mobile --> Backend
-    Web --> Backend
-    Ext --> PagesApi
-    WinExt -.reads files.-> Desktop
 
     PagesApi --> Supabase
     PagesApi --> S3
@@ -76,17 +59,13 @@ flowchart LR
     AppApi --> TTS
     AppApi --> IAP
 
-    Web -.direct.-> Dict
     Desktop -.direct.-> Dict
-    Mobile -.direct.-> Dict
-    Web -.direct.-> Readwise
     Desktop -.direct.-> Readwise
 ```
 
-The `Backend` box is **the same code on all clients**. In the web target it is
-deployed as a Cloudflare Worker (via `@opennextjs/cloudflare` and
-`wrangler.toml`). In the Tauri targets the same routes are served by a Next.js
-runtime, but most clients hit the production deployment over HTTPS.
+The `Backend` box is **the same code the desktop app talks to**. The routes are
+served by a Next.js runtime, and the app hits the production deployment over
+HTTPS.
 
 ## 2. Process boundaries
 
@@ -94,12 +73,11 @@ There are three runtimes in play:
 
 ```mermaid
 flowchart TB
-    subgraph Browser["Web runtime (browser / Tauri webview)"]
+    subgraph App["App runtime (Tauri webview)"]
         UI["React UI<br/>(src/app, src/components, src/hooks, src/store)"]
         Domain["Shared domain layer<br/>(src/services, src/utils, src/libs)"]
         Foliate["foliate-js<br/>(packages/foliate-js)"]
-        SW["Service worker (sw.ts)"]
-        TursoWasm["Turso WASM<br/>(replica DB in browser)"]
+        TursoWasm["Turso WASM<br/>(replica DB in webview)"]
     end
 
     subgraph Native["Tauri native host (Rust)"]
@@ -107,7 +85,7 @@ flowchart TB
         Plugins["Tauri plugins<br/>(fs, dialog, http, oauth, deep-link, opener, updater,<br/>native-bridge, native-tts, turso, webview-upgrade)"]
     end
 
-    subgraph Server["Next.js server (Worker / Node)"]
+    subgraph Server["Next.js server (Node)"]
         Routes["App Router + Pages Router routes"]
         Mw["middleware.ts<br/>(CORS + COOP/COEP)"]
         RuntimeRoute["app/runtime-config.js<br/>(server-rendered config script)"]
@@ -115,24 +93,22 @@ flowchart TB
 
     UI --> Domain
     Domain --> Foliate
-    UI --> SW
     Domain --> TursoWasm
 
     Domain -- "@tauri-apps/api invoke()" --> TauriCore
     TauriCore --> Plugins
 
     Domain -- "fetch(/api/...)" --> Routes
-    Browser -- "<script src=/runtime-config.js>" --> RuntimeRoute
+    App -- "<script src=/runtime-config.js>" --> RuntimeRoute
     Routes --> Mw
 ```
 
 Three things are worth calling out:
 
-The same `src/services/*` code runs on both sides of the `invoke()` boundary on
-desktop/mobile and on both sides of the `fetch()` boundary on web. Which
-implementation is picked is decided at runtime by `src/services/environment.ts`
-plus the platform-specific `*AppService.ts` (`webAppService`, `nativeAppService`,
-`nodeAppService`) — see section 4.
+The same `src/services/*` code runs on both sides of the `invoke()` boundary in
+the desktop app. Which implementation is picked is decided at runtime by
+`src/services/environment.ts` plus the platform-specific `*AppService.ts`
+(`nativeAppService`, `nodeAppService`) — see section 4.
 
 `middleware.ts` does two things and only two things: CORS for `/api/*`, and
 `Cross-Origin-Opener-Policy: same-origin` + `Cross-Origin-Embedder-Policy:
@@ -144,9 +120,8 @@ order to run the in-browser replica database; without those headers
 `/runtime-config.js` is a server route that emits
 `window.__READEST_RUNTIME_CONFIG = {...}` as a JavaScript file. It is loaded as
 a `<script>` tag from `app/layout.tsx` and `pages/_document.tsx`. This is what
-lets a single Docker image be rebranded with a different Supabase project, S3
-endpoint, or quota at deploy time without rebuilding — see commit
-`9ad43aa8` and the `docker/` directory.
+lets a deployment be rebranded with a different Supabase project, S3 endpoint,
+or quota at deploy time without rebuilding.
 
 ## 3. Frontend architecture
 
@@ -242,37 +217,27 @@ PDF rendering goes through `pdfjs-dist`, which is copied into
 uses `simplecc-wasm` (`public/vendor/simplecc`), and Chinese segmentation uses
 `jieba-wasm` (`public/vendor/jieba`).
 
-### 3.4 Service worker and offline
-
-`src/sw.ts` is a Serwist service worker that gives the web build offline
-support: cached static assets, cached API responses for read-only data, and an
-offline route at `/offline`.
-
 ## 4. The platform abstraction (`AppService`)
 
 The single most important abstraction in the codebase is
 `src/services/appService.ts`. Every piece of code that touches "the platform"
 (file system, native dialogs, shell open, native TTS, IAP, dir scanning,
-deep links, etc.) goes through an `AppService` interface. There are three
+deep links, etc.) goes through an `AppService` interface. There are two
 implementations:
 
 ```mermaid
 flowchart LR
     Caller["UI code, hooks, services"]
     AppSvc["AppService interface<br/>(services/appService.ts)"]
-    Native["nativeAppService.ts<br/>(Tauri desktop + mobile)"]
-    Web["webAppService.ts<br/>(browser / web build)"]
+    Native["nativeAppService.ts<br/>(Tauri desktop)"]
     Node["nodeAppService.ts<br/>(Node tooling, tests, CLI)"]
 
     Caller --> AppSvc
     AppSvc --> Native
-    AppSvc --> Web
     AppSvc --> Node
 
     Native -- "@tauri-apps/api invoke()" --> Rust["src-tauri Rust commands"]
     Native --> Plugins["Tauri plugins<br/>(fs, dialog, http, oauth, native-bridge, native-tts, turso)"]
-    Web --> Browser["browser APIs (File, IndexedDB, fetch)"]
-    Web --> RemoteAPI["fetch() to /api/*"]
     Node --> Fs["node:fs, node:path"]
 ```
 
@@ -282,9 +247,9 @@ Tauri injection). Most callers in the codebase do
 `const appService = useEnv().appService` and never know which one they got.
 
 The same pattern repeats for the database layer in `src/services/database`:
-`webDatabaseService` (browser via Turso WASM), `nativeDatabaseService` (Tauri
-via the `tauri-plugin-turso` plugin), and `nodeDatabaseService` (Node, used by
-tests). All three share `migrate.ts` and `migrations/*`.
+`nativeDatabaseService` (Tauri via the `tauri-plugin-turso` plugin) and
+`nodeDatabaseService` (Node, used by tests). Both share `migrate.ts` and
+`migrations/*`.
 
 This is why most domain code in `src/services` looks platform-agnostic — the
 platform difference has been pushed to a small number of seams.
@@ -345,23 +310,15 @@ apple/iap-verify         -> App Store IAP verification
 share/*                  -> share-link landing + read-only render
 ```
 
-### 5.3 Workers
-
-`apps/readest-app/workers/send-email` is a separate Cloudflare Worker
-(deployed independently from the main app) responsible for the "Send to Readest
-by email" path. It receives mail, normalizes attachments, and drops items into
-the user's inbox so that the in-app `Send` page can pick them up via the
-`/api/send/inbox` endpoints.
-
-### 5.4 Runtime config
+### 5.3 Runtime config
 
 `src/app/runtime-config.js/route.ts` is a server route that builds a small JSON
 object — `supabaseUrl`, `supabaseAnonKey`, `apiBaseUrl`, `objectStorageType`,
 `storageFixedQuota`, `translationFixedQuota` — from `process.env` at request
 time and serializes it as a JS payload. The client reads it through
 `getRuntimeConfig()` in `src/services/runtimeConfig.ts` (browser) or
-`getServerRuntimeConfig()` (server). This is the mechanism that makes the same
-prebuilt Docker image rebrandable per deployment.
+`getServerRuntimeConfig()` (server). This is the mechanism that makes a
+deployment rebrandable per environment.
 
 ## 6. Cross-cutting subsystems
 
@@ -470,25 +427,11 @@ import/export adapter for moving annotations to and from MoonReader.
 punctuation normalization, whitespace collapsing, proofread suggestions,
 sanitization, footnote rewriting, style injection, traditional/simplified
 Chinese conversion (via `simplecc-wasm`), and Warichu (Japanese ruby/rubi)
-layout. These are reused by the reader, by RSVP, and by the
-"Send to Readest" article-to-EPUB conversion.
-
-### 6.11 Send to Readest
-
-End-to-end pipeline:
-
-1. The browser extension (`apps/readest-app/extension/send-to-readest`) or the
-   email-to-inbox path (`workers/send-email`) submits a URL or article HTML.
-2. `src/services/send/conversion/*` sanitizes the content and converts it to
-   EPUB (sanitization, TOC building, asset bundling, worker protocol).
-3. The result lands in the user's inbox served by `pages/api/send/inbox*`.
-4. The `app/send` page or the in-app inbox drainer
-   (`src/services/send/inboxDrainer.ts`) imports it into the library through
-   the standard ingest service.
+layout. These are reused by the reader and by RSVP.
 
 ## 7. Native shell (`src-tauri`)
 
-The Tauri host is shared by desktop and mobile. The Rust side (`src-tauri/src`)
+The Tauri host runs the desktop app. The Rust side (`src-tauri/src`)
 is small and focused:
 
 ```
@@ -498,8 +441,7 @@ clip_url.rs         -> clipboard URL extraction
 dir_scanner.rs      -> recursive directory scan (used by library import)
 transfer_file.rs    -> chunked upload/download for big files
 discord_rpc.rs      -> Discord Rich Presence (desktop only)
-android/, macos/,
-windows/            -> per-platform glue
+macos/, windows/    -> per-platform glue
 ```
 
 Everything else is delegated to **Tauri plugins**, mostly bundled in
@@ -532,41 +474,20 @@ flowchart LR
     Source["apps/readest-app (single source)"]
 
     subgraph BuildTargets
-        BWeb["next build<br/>+ @opennextjs/cloudflare<br/>(.env.web)"]
         BTauriDesk["next build → tauri build<br/>(.env.tauri)"]
-        BTauriMob["next build → tauri android/ios build"]
     end
 
     subgraph DeployTargets
-        DCloudflare["Cloudflare Workers<br/>(web.readest.com)"]
-        DDocker["Docker image<br/>(ghcr.io/readest/readest)"]
         DDesktop["dmg / nsis / appimage"]
-        DMobile["aab / ipa"]
-        DExt["browser extension package"]
     end
 
-    Source --> BWeb
     Source --> BTauriDesk
-    Source --> BTauriMob
-
-    BWeb --> DCloudflare
-    BWeb --> DDocker
     BTauriDesk --> DDesktop
-    BTauriMob --> DMobile
-    Source --> DExt
 ```
 
-The web target has two delivery modes: a Cloudflare Worker via OpenNext
-(`pnpm deploy`) and a self-hostable Docker image built and published from
-`.github/workflows/docker-image.yml` to GHCR and Docker Hub. The Docker image
-uses `docker/compose.yaml` (pull) plus `docker/compose.build.yaml` (build) and
-relies on the runtime-config mechanism described in section 5.4 so a single
-prebuilt image can be parameterized with `.env`.
-
 Tauri builds use `dotenv` to switch env files (`.env.tauri`,
-`.env.tauri.local`, `.env.apple-*.local`, `.env.ios-*.local`,
-`.env.google-play.local`) for code-signing and store-specific configuration.
-Mobile and desktop produce installable bundles (dmg, nsis, appimage, aab, ipa).
+`.env.tauri.local`, `.env.apple-*.local`) for code-signing and platform-specific
+configuration. Desktop produces installable bundles (dmg, nsis, appimage).
 
 ## 9. Quick rule of thumb
 
@@ -576,9 +497,9 @@ Does it talk to a remote service or write to durable shared storage? Then it
 ends up in `src/pages/api` or `src/app/api`, possibly fronted by a service
 under `src/services`. Does it touch the user's filesystem, native dialogs, the
 shell, or system TTS? Then it goes through `appService` and lands in
-`nativeAppService` (Tauri commands in `src-tauri/src/lib.rs`) or
-`webAppService` (browser equivalent). Does it manipulate book content, render
-the reader, or maintain UI state? Then it lives under `src/app/reader`,
+`nativeAppService` (Tauri commands in `src-tauri/src/lib.rs`). Does it
+manipulate book content, render the reader, or maintain UI state? Then it lives
+under `src/app/reader`,
 `src/components`, `src/hooks`, `src/store`, or one of the reader-side service
 folders (`annotation`, `nav`, `rsvp`, `transformers`, `dictionaries`,
 `translators`, `tts`). Is it a sync or cloud-library concern? `src/services/sync`
