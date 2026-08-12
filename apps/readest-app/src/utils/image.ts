@@ -185,6 +185,46 @@ export async function processDiscordCover(coverUrl: string, iconUrl: string): Pr
   }
 }
 
+/**
+ * Downscale an image blob so its longest side is at most `maxDimension`,
+ * encoding the result as PNG. Used at import time to avoid storing huge covers.
+ *
+ * Best-effort: when the image is already small, or the environment cannot
+ * decode/encode (jsdom tests, unusual formats, missing canvas), the original
+ * blob is returned unchanged — an import must never fail over a cover.
+ */
+export async function downscaleImageBlob(blob: Blob, maxDimension = 800): Promise<Blob> {
+  if (typeof createImageBitmap !== 'function') return blob;
+  try {
+    const bitmap = await createImageBitmap(blob);
+    const longest = Math.max(bitmap.width, bitmap.height);
+    if (longest <= maxDimension) {
+      bitmap.close();
+      return blob;
+    }
+    const scale = maxDimension / longest;
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      bitmap.close();
+      return blob;
+    }
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+    return await new Promise<Blob>((resolve) => {
+      canvas.toBlob((out) => resolve(out ?? blob), 'image/png');
+    });
+  } catch {
+    return blob;
+  }
+}
+
 export async function fetchImageAsBase64(
   url: string,
   options: {
