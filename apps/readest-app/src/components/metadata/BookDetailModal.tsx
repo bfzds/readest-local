@@ -10,7 +10,6 @@ import { useThemeStore } from '@/store/themeStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useMetadataEdit } from './useMetadataEdit';
 import { DeleteAction } from '@/types/system';
-import { isWebAppPlatform } from '@/services/environment';
 import DeleteConfirmAlert from '@/components/DeleteConfirmAlert';
 import Dialog from '@/components/Dialog';
 import BookDetailView from './BookDetailView';
@@ -189,12 +188,10 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
     setTimeout(async () => {
       const success = await appService?.exportBook(book);
       setIsLoading(false);
-      if (!isWebAppPlatform()) {
-        eventDispatcher.dispatch('toast', {
-          type: success ? 'info' : 'error',
-          message: success ? _('Book exported successfully.') : _('Failed to export the book.'),
-        });
-      }
+      eventDispatcher.dispatch('toast', {
+        type: success ? 'info' : 'error',
+        message: success ? _('Book exported successfully.') : _('Failed to export the book.'),
+      });
     }, 0);
   };
 

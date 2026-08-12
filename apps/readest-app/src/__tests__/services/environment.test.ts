@@ -38,27 +38,6 @@ describe('environment', () => {
     });
   });
 
-  // ── isWebAppPlatform ───────────────────────────────────────────
-  describe('isWebAppPlatform', () => {
-    test('returns true when NEXT_PUBLIC_APP_PLATFORM is web', async () => {
-      env['NEXT_PUBLIC_APP_PLATFORM'] = 'web';
-      const { isWebAppPlatform } = await import('@/services/environment');
-      expect(isWebAppPlatform()).toBe(true);
-    });
-
-    test('returns false when NEXT_PUBLIC_APP_PLATFORM is tauri', async () => {
-      env['NEXT_PUBLIC_APP_PLATFORM'] = 'tauri';
-      const { isWebAppPlatform } = await import('@/services/environment');
-      expect(isWebAppPlatform()).toBe(false);
-    });
-
-    test('returns false when NEXT_PUBLIC_APP_PLATFORM is not set', async () => {
-      delete env['NEXT_PUBLIC_APP_PLATFORM'];
-      const { isWebAppPlatform } = await import('@/services/environment');
-      expect(isWebAppPlatform()).toBe(false);
-    });
-  });
-
   // ── hasCli ─────────────────────────────────────────────────────
   describe('hasCli', () => {
     test('returns true when __READEST_CLI_ACCESS is true', async () => {
@@ -76,26 +55,6 @@ describe('environment', () => {
       window.__READEST_CLI_ACCESS = false;
       const { hasCli } = await import('@/services/environment');
       expect(hasCli()).toBe(false);
-    });
-  });
-
-  // ── isPWA ──────────────────────────────────────────────────────
-  describe('isPWA', () => {
-    test('returns false by default (jsdom matchMedia mock returns false)', async () => {
-      const { isPWA } = await import('@/services/environment');
-      expect(isPWA()).toBe(false);
-    });
-
-    test('returns true when display-mode is standalone', async () => {
-      const originalMatchMedia = window.matchMedia;
-      window.matchMedia = vi
-        .fn()
-        .mockReturnValue({ matches: true }) as unknown as typeof window.matchMedia;
-
-      const { isPWA } = await import('@/services/environment');
-      expect(isPWA()).toBe(true);
-
-      window.matchMedia = originalMatchMedia;
     });
   });
 

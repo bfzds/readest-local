@@ -1,10 +1,8 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 
-let mockIsWebAppPlatform = false;
 let mockHasCli = false;
 
 vi.mock('@/services/environment', () => ({
-  isWebAppPlatform: () => mockIsWebAppPlatform,
   hasCli: () => mockHasCli,
 }));
 
@@ -18,7 +16,6 @@ import { parseOpenWithFiles } from '@/helpers/openWith';
 beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(console, 'warn').mockImplementation(() => {});
-  mockIsWebAppPlatform = false;
   mockHasCli = false;
   delete window.OPEN_WITH_FILES;
   Object.defineProperty(window, 'location', {
@@ -32,16 +29,6 @@ afterEach(() => {
 });
 
 describe('parseOpenWithFiles', () => {
-  describe('web platform', () => {
-    test('returns empty array on web platform', async () => {
-      mockIsWebAppPlatform = true;
-
-      const result = await parseOpenWithFiles();
-
-      expect(result).toEqual([]);
-    });
-  });
-
   describe('window URL params', () => {
     test('parses file params from URL search', async () => {
       Object.defineProperty(window, 'location', {

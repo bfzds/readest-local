@@ -16,7 +16,7 @@ import {
 } from '@/utils/ambientLight';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { CustomTheme, Palette, ThemeMode } from '@/styles/themes';
-import { EnvConfigType, isWebAppPlatform } from '@/services/environment';
+import { EnvConfigType } from '@/services/environment';
 import { SystemSettings } from '@/types/settings';
 import { Insets } from '@/types/misc';
 
@@ -201,12 +201,7 @@ export const useThemeStore = create<ThemeState>((set, get) => {
       set({ themeColor: color });
       set({ themeCode: getThemeCode() });
     },
-    updateAppTheme: (color) => {
-      if (isWebAppPlatform()) {
-        const { palette } = get().themeCode;
-        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', palette[color]);
-      }
-    },
+    updateAppTheme: (_color) => {},
     saveCustomTheme: async (envConfig, settings, theme, isDelete) => {
       const customThemes = settings.globalReadSettings.customThemes || [];
       const index = customThemes.findIndex((t) => t.name === theme.name);

@@ -28,10 +28,6 @@ vi.mock('@tauri-apps/api/window', () => ({
   })),
 }));
 
-vi.mock('@/services/environment', () => ({
-  isWebAppPlatform: vi.fn(() => false),
-}));
-
 import { addPluginListener } from '@tauri-apps/api/core';
 import { startAmbientLightUpdates, stopAmbientLightUpdates } from '@/utils/bridge';
 import { useThemeStore, loadDataTheme, initSystemThemeListener } from '@/store/themeStore';

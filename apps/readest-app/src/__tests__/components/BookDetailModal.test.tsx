@@ -47,8 +47,6 @@ vi.mock('@/hooks/useResponsiveSize', () => ({
 
 vi.mock('@/helpers/settings', () => ({ saveSysSettings: vi.fn() }));
 
-vi.mock('@/services/environment', () => ({ isWebAppPlatform: () => false }));
-
 vi.mock('@/libs/metadata', () => ({ searchMetadata: vi.fn(async () => []) }));
 
 // Render the cover with the same src-resolution as the real <BookCover> so we

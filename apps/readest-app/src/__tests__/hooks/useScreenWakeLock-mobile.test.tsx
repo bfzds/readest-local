@@ -18,7 +18,6 @@ const mocks = vi.hoisted(() => {
 vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: mocks.getCurrentWindow }));
 vi.mock('@/services/environment', () => ({
   isTauriAppPlatform: () => true,
-  isWebAppPlatform: () => false,
 }));
 
 import { useScreenWakeLock } from '@/hooks/useScreenWakeLock';

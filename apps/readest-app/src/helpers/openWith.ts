@@ -1,4 +1,4 @@
-import { isWebAppPlatform, hasCli } from '@/services/environment';
+import { hasCli } from '@/services/environment';
 
 declare global {
   interface Window {
@@ -44,8 +44,6 @@ const parseCLIOpenWithFiles = async () => {
 };
 
 export const parseOpenWithFiles = async () => {
-  if (isWebAppPlatform()) return [];
-
   let files = parseWindowOpenWithFiles();
   if ((!files || files.length === 0) && hasCli()) {
     files = await parseCLIOpenWithFiles();

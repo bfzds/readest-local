@@ -1,7 +1,7 @@
 import { redirect, useRouter } from 'next/navigation';
 import { getCurrentWindow, ScrollBarStyle } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { isPWA, isTauriAppPlatform, isWebAppPlatform } from '@/services/environment';
+import { isTauriAppPlatform } from '@/services/environment';
 import { BOOK_IDS_SEPARATOR } from '@/services/constants';
 import { AppService } from '@/types/system';
 
@@ -105,13 +105,9 @@ export const navigateToReader = (
   navOptions?: { scroll?: boolean },
 ) => {
   const ids = bookIds.join(BOOK_IDS_SEPARATOR);
-  if (isWebAppPlatform() && !isPWA()) {
-    router.push(`/reader/${ids}${queryParams ? `?${queryParams}` : ''}`, navOptions);
-  } else {
-    const params = new URLSearchParams(queryParams || '');
-    params.set('ids', ids);
-    router.push(`/reader?${params.toString()}`, navOptions);
-  }
+  const params = new URLSearchParams(queryParams || '');
+  params.set('ids', ids);
+  router.push(`/reader?${params.toString()}`, navOptions);
 };
 
 export const navigateToLogin = (router: ReturnType<typeof useRouter>) => {
