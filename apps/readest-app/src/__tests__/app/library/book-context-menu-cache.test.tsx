@@ -88,6 +88,7 @@ const renderItem = (overrides: ItemOverrides = {}) => {
     handleBookDownload: vi.fn(async () => true),
     handleBookUpload: vi.fn(async () => true),
     handleBookDelete: vi.fn(async () => true),
+    handleBookPurge: vi.fn(async () => true),
     handleSetSelectMode: vi.fn(),
     handleShowDetailsBook: vi.fn(),
     handleLibraryNavigation: vi.fn(),

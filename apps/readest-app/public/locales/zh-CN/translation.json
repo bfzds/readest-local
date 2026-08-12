@@ -527,7 +527,6 @@
   "Show the Bookmark button in the reader toolbar": "在阅读器工具栏中显示“书签”按钮",
   "Show the Go to Library button in the reader toolbar": "在阅读器工具栏中显示“前往书库”按钮",
   "Show the Enable Quick Action on Selection button in the reader toolbar": "在阅读器工具栏中显示“在选择时启用快速操作”按钮",
-  "Sidebar": "侧边栏",
   "Show the Sidebar by default": "默认显示侧边栏",
   "On {{current}} of {{total}} page": "在第 {{current}} 页，共 {{total}} 页",
   "Section Title": "章节标题",
@@ -2001,5 +2000,7 @@
   "Failed to delete books. Please try again later.": "删除图书失败。请稍后重试。",
   "Edit Book Content": "编辑正文",
   "Only text edits are supported": "仅支持修改文字",
-  "Unsaved changes will be lost": "未保存的修改将丢失"
+  "Unsaved changes will be lost": "未保存的修改将丢失",
+  "Delete Book": "删除书籍",
+  "Confirm Delete": "确认删除"
 }

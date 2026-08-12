@@ -25,6 +25,7 @@ interface RecentShelfProps {
   toggleSelection: (hash: string) => void;
   handleSetSelectMode: (selectMode: boolean) => void;
   showBookDetailsModal: (book: Book) => void;
+  handleBookPurge: (book: Book, syncBooks?: boolean) => Promise<boolean>;
   showTimeRemaining: boolean;
 }
 
@@ -46,6 +47,7 @@ type RecentSlideProps = Pick<
   | 'toggleSelection'
   | 'handleSetSelectMode'
   | 'showBookDetailsModal'
+  | 'handleBookPurge'
   | 'showTimeRemaining'
 > & { book: Book; bookSelected: boolean };
 
@@ -58,6 +60,7 @@ const RecentSlide: React.FC<RecentSlideProps> = ({
   toggleSelection,
   handleSetSelectMode,
   showBookDetailsModal,
+  handleBookPurge,
   showTimeRemaining,
 }) => {
   // Same select vocabulary as the grid (`BookshelfItem`): long-press enters
@@ -116,6 +119,7 @@ const RecentSlide: React.FC<RecentSlideProps> = ({
             isSelectMode={isSelectMode}
             bookSelected={bookSelected}
             showBookDetailsModal={showBookDetailsModal}
+            handleBookPurge={handleBookPurge}
             showTimeRemaining={showTimeRemaining}
           />
         </div>
@@ -142,6 +146,7 @@ const RecentShelf: React.FC<RecentShelfProps> = ({
   toggleSelection,
   handleSetSelectMode,
   showBookDetailsModal,
+  handleBookPurge,
   showTimeRemaining,
 }) => {
   const _ = useTranslation();
@@ -229,6 +234,7 @@ const RecentShelf: React.FC<RecentShelfProps> = ({
                 toggleSelection={toggleSelection}
                 handleSetSelectMode={handleSetSelectMode}
                 showBookDetailsModal={showBookDetailsModal}
+                handleBookPurge={handleBookPurge}
                 showTimeRemaining={showTimeRemaining}
               />
             ))}

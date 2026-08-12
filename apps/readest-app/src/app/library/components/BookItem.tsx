@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
-import { MdCheckCircle, MdCheckCircleOutline } from 'react-icons/md';
+import { MdCheckCircle, MdCheckCircleOutline, MdDelete, MdDeleteOutline } from 'react-icons/md';
 import { LiaHeadphonesSolid, LiaInfoCircleSolid } from 'react-icons/lia';
 
 import { Book } from '@/types/book';
@@ -20,6 +20,7 @@ interface BookItemProps {
   isSelectMode: boolean;
   bookSelected: boolean;
   showBookDetailsModal: (book: Book) => void;
+  handleBookPurge: (book: Book, syncBooks?: boolean) => Promise<boolean>;
   showTimeRemaining: boolean;
 }
 
@@ -30,12 +31,17 @@ const BookItem: React.FC<BookItemProps> = ({
   isSelectMode,
   bookSelected,
   showBookDetailsModal,
+  handleBookPurge,
   showTimeRemaining,
 }) => {
   const _ = useTranslation();
   const { appService } = useEnv();
   const { settings } = useSettingsStore();
   const iconSize15 = useResponsiveSize(15);
+
+  // Two-step delete: the first click arms the confirm state (button turns
+  // red), the second click purges the book. Leaving the book resets it.
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   const [coverAspect, setCoverAspect] = useState<number | null>(null);
   useEffect(() => {
@@ -65,6 +71,7 @@ const BookItem: React.FC<BookItemProps> = ({
         appService?.hasContextMenu ? 'cursor-pointer' : '',
       )}
       onClick={(e) => e.stopPropagation()}
+      onMouseLeave={() => setDeleteConfirm(false)}
     >
       <div
         className={clsx(
@@ -155,6 +162,31 @@ const BookItem: React.FC<BookItemProps> = ({
             >
               <div className='pt-[2px] sm:pt-[1px]'>
                 <LiaInfoCircleSolid size={iconSize15} />
+              </div>
+            </button>
+            <button
+              aria-label={deleteConfirm ? _('Confirm Delete') : _('Delete Book')}
+              title={deleteConfirm ? _('Confirm Delete') : _('Delete Book')}
+              className={clsx(
+                'show-delete-button -m-2 p-2 sm:opacity-0 sm:group-hover:opacity-100',
+                deleteConfirm && 'text-error',
+              )}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => {
+                if (deleteConfirm) {
+                  setDeleteConfirm(false);
+                  void handleBookPurge(book, false);
+                } else {
+                  setDeleteConfirm(true);
+                }
+              }}
+            >
+              <div className='pt-[2px] sm:pt-[1px]'>
+                {deleteConfirm ? (
+                  <MdDelete size={iconSize15} />
+                ) : (
+                  <MdDeleteOutline size={iconSize15} />
+                )}
               </div>
             </button>
             {book.hasNarration && (
