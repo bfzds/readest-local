@@ -60,7 +60,27 @@ declare global {
   }
 }
 
-const OS_TYPE = osType();
+const OS_TYPE = (() => {
+  try {
+    return osType();
+  } catch {
+    // No Tauri runtime (plain browser): osType() reads
+    // window.__TAURI_OS_PLUGIN_INTERNALS__ and throws, which used to blank the
+    // whole page at module import. Fall back to a harmless desktop default so
+    // the module loads; init()'s runtime guard surfaces the real error.
+    return 'windows';
+  }
+})();
+
+// The Tauri IPC bridge is injected only inside the desktop shell. In a plain
+// browser (window exists but no __TAURI_INTERNALS__) NativeAppService must not
+// attempt the Tauri plugin calls — they fail with a cryptic TypeError and blank
+// the page. Without a window (SSR, unit tests) there is nothing to verify, so
+// allow the calls through (tests mock the Tauri plugins).
+const isTauriRuntimeAvailable = () => {
+  if (typeof window === 'undefined') return true;
+  return !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+};
 
 const safeDecodePath = (input: string) => {
   try {
@@ -596,6 +616,11 @@ export class NativeAppService extends BaseAppService {
   }
 
   override async init() {
+    if (!isTauriRuntimeAvailable()) {
+      throw new Error(
+        'Readest is a desktop app and requires the Tauri runtime. It cannot run in a plain browser.',
+      );
+    }
     const execDir = await invoke<string>('get_executable_dir');
     this.execDir = execDir;
     if (
