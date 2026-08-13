@@ -347,6 +347,20 @@ if (!globalWithMatrix.DOMMatrix) {
   globalWithMatrix.DOMMatrix = DOMMatrix2D as unknown as typeof DOMMatrix;
 }
 
+// Simulate the Tauri IPC bridge so runtime guards (e.g. NativeAppService.init)
+// treat the jsdom env as the desktop shell; the actual plugin calls are mocked
+// per-test. Tests that need the "no Tauri" path stub window without it.
+if (typeof window !== 'undefined') {
+  const win = window as unknown as { __TAURI_INTERNALS__?: unknown };
+  if (!win.__TAURI_INTERNALS__) {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      value: {},
+      configurable: true,
+      writable: true,
+    });
+  }
+}
+
 // matchMedia mock
 if (typeof window !== 'undefined' && !window.matchMedia) {
   window.matchMedia = (query: string) =>
