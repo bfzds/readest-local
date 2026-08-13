@@ -103,6 +103,29 @@ export const tauriHandleOnCloseWindow = async (callback: () => void) => {
   });
 };
 
+// 方案A：书库窗口（main）的关闭拦截，仅 Windows/Linux 生效。阅读页打开
+// （存在可见的 reader 窗口）时，点书库的 X 只 hide() 不销毁——原 webview 连同
+// 滚动位置、选中项、搜索输入、筛选条件、已加载列表全部保留，阅读页关闭时再
+// show() 回来，切换对用户无感，且无需序列化/重建任何状态。没有阅读页打开时
+// X 才是真销毁（应用退出），并顺带销毁残留的隐藏 reader 窗口，避免"已无可见
+// 窗口但进程仍存活"。macOS 由 Rust 侧 close-to-hide 接管（lib.rs），跳过防重复。
+export const tauriHandleOnCloseMainWindow = async () => {
+  const currentWindow = getCurrentWindow();
+  return await currentWindow.onCloseRequested(async (event) => {
+    if ((await osType()) === 'macos') return;
+    const readers = (await getAllWindows()).filter((w) => w.label.startsWith('reader'));
+    const readerVisible = (
+      await Promise.all(readers.map((w) => w.isVisible().catch(() => false)))
+    ).some(Boolean);
+    if (readerVisible) {
+      event.preventDefault();
+      await currentWindow.hide();
+      return;
+    }
+    await Promise.all(readers.map((w) => w.destroy().catch(() => {})));
+  });
+};
+
 // Whether the window was maximized when it last entered fullscreen, so the
 // maximized state survives a fullscreen round-trip on Windows.
 let wasMaximizedBeforeFullscreen = false;

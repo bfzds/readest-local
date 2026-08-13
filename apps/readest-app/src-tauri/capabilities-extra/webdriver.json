@@ -27,6 +27,7 @@
     "os:default",
     "dialog:default",
     "core:window:default",
+    "core:window:allow-hide",
     "core:path:allow-resolve-directory",
     "log:default",
     "shell:default",

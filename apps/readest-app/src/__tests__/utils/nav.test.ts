@@ -424,6 +424,17 @@ describe('ensureMainLibraryWindow', () => {
     expect(label).toBe('main');
     expect((options as { url: string }).url).toBe('/library');
   });
+
+  test('returns false without creating when main is missing and createIfMissing is false', async () => {
+    WebviewWindowCtor.getByLabel.mockResolvedValue(null);
+
+    const ok = await ensureMainLibraryWindow(makeAppService() as never, {
+      createIfMissing: false,
+    });
+
+    expect(ok).toBe(false);
+    expect(WebviewWindow).not.toHaveBeenCalled();
+  });
 });
 
 describe('closeReaderWindowOrGoToLibrary', () => {

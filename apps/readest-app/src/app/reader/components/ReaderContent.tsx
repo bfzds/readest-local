@@ -268,8 +268,17 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
         // render a blank window. Stop the book's TTS (it would otherwise keep
         // playing in the hidden window), then bring the library to the front.
         eventDispatcher.dispatch('tts-stop', { bookKey });
-        await ensureMainLibraryWindow(appService);
-        await currentWindow.hide();
+        // 方案A：书库窗口在阅读页打开期间被隐藏（未销毁），这里 show 回来即可。
+        // 若书库已被销毁（用户主动关掉、异常路径），直接关闭阅读窗退出，绝不
+        // 复活出第二个书库窗口（避免"假重启"）。
+        const libraryOk = await ensureMainLibraryWindow(appService, {
+          createIfMissing: false,
+        });
+        if (libraryOk) {
+          await currentWindow.hide();
+        } else {
+          await currentWindow.close();
+        }
         return;
       }
     }
