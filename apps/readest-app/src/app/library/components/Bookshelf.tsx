@@ -388,10 +388,19 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       sortAscending,
       thenSortAscending,
     );
-    if (groupId && groupBy !== LibraryGroupByType.Group && groupBy !== LibraryGroupByType.None) {
+    // Virtual-group members are already flat books sorted by
+    // withinGroupSorter — return them directly so the merge sort below cannot
+    // override the within-group order. Folder groups re-grouped by a non-Group
+    // dimension (manualGroupName set) produce GROUP items instead, so they must
+    // go through the merge sort; returning only `ungroupedBooks` would drop
+    // every group and blank the shelf.
+    if (
+      groupId &&
+      !manualGroupName &&
+      groupBy !== LibraryGroupByType.Group &&
+      groupBy !== LibraryGroupByType.None
+    ) {
       ungroupedBooks.sort(withinGroupSorter);
-      // When inside a group, books are already sorted correctly — return directly
-      // to avoid the merge sort below overriding the within-group sort order
       return ungroupedBooks;
     } else {
       ungroupedBooks.sort(withTimeRemainingLast<Book>(sortBy, bookSorter));
@@ -438,6 +447,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     thenSortBy,
     groupBy,
     groupId,
+    manualGroupName,
     uiLanguage,
     currentBookshelfItems,
   ]);

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
-import { MdArrowBack } from 'react-icons/md';
+import { MdChevronRight } from 'react-icons/md';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { navigateToLibrary } from '@/utils/nav';
@@ -32,41 +32,23 @@ const GroupHeader: React.FC<GroupHeaderProps> = ({ groupBy, groupName }) => {
     // resulting `/library?group=` does commit, and the trailing empty `group=`
     // is stripped cosmetically by the cleanup effect in page.tsx.
     params.set('group', '');
-    // Returning to the top level resolves its dimension from the top-level
-    // memory, not a leftover virtual-group URL override.
-    params.delete('groupBy');
+    // Carry this virtual dimension so "back" lands on the dimension's top-level
+    // list (e.g. the author list), not the library home page in whatever
+    // dimension the top level happens to remember.
+    params.set('groupBy', groupBy);
     navigateToLibrary(router, params.toString());
   };
 
-  // Get localized label for the group type
-  const getGroupTypeLabel = (): string => {
-    switch (groupBy) {
-      case LibraryGroupByType.Series:
-        return _('Series');
-      case LibraryGroupByType.Author:
-        return _('Author');
-      case LibraryGroupByType.Tag:
-        return _('Tag');
-      case LibraryGroupByType.Subject:
-        return _('Subject');
-      default:
-        return _('Group');
-    }
-  };
-
   return (
-    <div className='flex items-center gap-2 px-4 py-2'>
+    <div className='flex items-center gap-0.5 px-4 py-2'>
       <button
         onClick={handleBack}
-        className='btn btn-ghost btn-sm h-8 min-h-8 px-2'
-        aria-label={_('Back to library')}
+        className='hover:bg-base-300 text-base-content/85 truncate rounded px-2 py-1'
       >
-        <MdArrowBack size={iconSize} />
+        {_('All')}
       </button>
-      <div className='flex items-center gap-2 overflow-hidden'>
-        <span className='text-neutral-content text-sm'>{getGroupTypeLabel()}:</span>
-        <span className='truncate text-base font-medium'>{groupName}</span>
-      </div>
+      <MdChevronRight size={iconSize} className='text-neutral-content shrink-0' />
+      <span className='text-base-content truncate rounded px-2 py-1 font-medium'>{groupName}</span>
     </div>
   );
 };

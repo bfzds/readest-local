@@ -383,10 +383,35 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       // Build query params — always `set` so the search string is non-empty
       // even when targetGroup is '' (the Next.js 16.2 workaround).
       params.set('group', targetGroup);
-      // Folder-group navigation never carries a URL groupBy override; the
-      // display dimension is resolved from the per-group memory instead. Drop
-      // any leftover from a prior virtual-group visit so it can't leak.
-      params.delete('groupBy');
+      // The callback is memoized on [router] only, so read fresh state here.
+      const currentSettings = useSettingsStore.getState().settings;
+      const folderPath = currentGroup
+        ? useLibraryStore.getState().getGroupName(currentGroup)
+        : undefined;
+      // Resolve the current dimension from the URL, not just the remembered /
+      // global default: after a virtual-group back-navigation the top level sits
+      // on a URL `groupBy` override (e.g. author), and ignoring it would re-derive
+      // the wrong dimension and drop the override when re-entering another group.
+      // `params` still carries the URL's groupBy — only `group` was rewritten.
+      const currentGroupBy = resolveCurrentGroupBy(params, currentSettings, folderPath);
+      const isVirtualDimension =
+        currentGroupBy === LibraryGroupByType.Series ||
+        currentGroupBy === LibraryGroupByType.Author ||
+        currentGroupBy === LibraryGroupByType.Tag ||
+        currentGroupBy === LibraryGroupByType.Subject;
+      // Clicking into a virtual group (author/series/tag/subject) must carry
+      // that dimension in the URL, or the group would resolve back to the
+      // global default and show an empty shelf. Only apply it when the target
+      // is actually a virtual group (its id is not in the folder-groups map) —
+      // backing up to a parent FOLDER must not inherit the virtual dimension.
+      const targetFolderPath = targetGroup
+        ? useLibraryStore.getState().getGroupName(targetGroup)
+        : undefined;
+      if (targetGroup && isVirtualDimension && !targetFolderPath) {
+        params.set('groupBy', currentGroupBy);
+      } else {
+        params.delete('groupBy');
+      }
 
       navigateToLibrary(router, params.toString());
     },
@@ -395,13 +420,28 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   );
 
   const handleBackUpOneGroupLevel = () => {
-    if (!currentGroupPath) return;
-    const segments = currentGroupPath.split('/');
-    const parentPath = segments.length > 1 ? segments.slice(0, -1).join('/') : undefined;
-    const parentGroupId = parentPath ? getGroupId(parentPath) || '' : '';
+    if (currentGroupPath) {
+      const segments = currentGroupPath.split('/');
+      const parentPath = segments.length > 1 ? segments.slice(0, -1).join('/') : undefined;
+      const parentGroupId = parentPath ? getGroupId(parentPath) || '' : '';
+      setIsSelectAll(false);
+      setIsSelectNone(false);
+      handleLibraryNavigation(parentGroupId);
+      return;
+    }
+    // Inside a virtual group (author/series/tag/subject): back returns to that
+    // dimension's top-level list (e.g. the author list), carrying `groupBy` so
+    // it doesn't land on the library home page in another remembered dimension.
+    const group = searchParams?.get('group') || '';
+    if (!group) return; // top level — nothing to step back to
+    if (getGroupName(group)) return; // a folder group always has currentGroupPath
     setIsSelectAll(false);
     setIsSelectNone(false);
-    handleLibraryNavigation(parentGroupId);
+    const params = new URLSearchParams(window.location.search);
+    params.set('group', '');
+    const urlGroupBy = searchParams?.get('groupBy');
+    if (urlGroupBy) params.set('groupBy', urlGroupBy);
+    navigateToLibrary(router, params.toString());
   };
 
   const handleBackUpOneGroupLevelRef = useRef(handleBackUpOneGroupLevel);
@@ -411,18 +451,35 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   // Mouse side-button navigation (see useMouseNavigation). The library maps
   // back/forward to moving up/down one group level. A small forward stack
   // remembers the group we stepped back from so "forward" can return to it.
-  const forwardGroupStackRef = useRef<string[]>([]);
+  const forwardGroupStackRef = useRef<{ group: string; groupBy?: string }[]>([]);
   const handleMouseNavBack = () => {
     const currentGroup = searchParams?.get('group') || '';
-    if (currentGroup) forwardGroupStackRef.current.push(currentGroup);
+    if (currentGroup) {
+      // Remember the group plus its virtual dimension (if any) so "forward" can
+      // restore it — an author group entered from a folder would otherwise be
+      // ambiguous after stepping back.
+      forwardGroupStackRef.current.push({
+        group: currentGroup,
+        groupBy: searchParams?.get('groupBy') || undefined,
+      });
+    }
     handleBackUpOneGroupLevel();
   };
   const handleMouseNavForward = () => {
     const target = forwardGroupStackRef.current.pop();
-    if (target === undefined) return;
+    if (!target) return;
     setIsSelectAll(false);
     setIsSelectNone(false);
-    handleLibraryNavigation(target);
+    // Restore the remembered group and its virtual dimension directly (the plain
+    // handleLibraryNavigation path would re-derive the dimension from the
+    // current top level and lose it). Keep the scroll/direction bookkeeping.
+    saveScrollPosition(searchParams?.get('group') || '');
+    document.documentElement.setAttribute('data-nav-direction', 'forward');
+    const params = new URLSearchParams(window.location.search);
+    params.set('group', target.group);
+    if (target.groupBy) params.set('groupBy', target.groupBy);
+    else params.delete('groupBy');
+    navigateToLibrary(router, params.toString());
   };
   const handleMouseNavBackRef = useRef(handleMouseNavBack);
   handleMouseNavBackRef.current = handleMouseNavBack;

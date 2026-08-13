@@ -40,7 +40,7 @@ describe('GroupHeader back button', () => {
     window.history.replaceState(null, '', '?group=abc123');
     render(<GroupHeader groupBy={LibraryGroupByType.Series} groupName='My Series' />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Back to library' }));
+    fireEvent.click(screen.getByRole('button', { name: 'All' }));
 
     expect(navigateToLibraryMock).toHaveBeenCalledTimes(1);
     const query = navigateToLibraryMock.mock.calls[0]![1] as string;
@@ -50,17 +50,17 @@ describe('GroupHeader back button', () => {
     expect(params.get('group')).toBe('');
   });
 
-  it('preserves other params while clearing the group', () => {
+  it('preserves other params and the virtual dimension while clearing the group', () => {
     window.history.replaceState(null, '', '?groupBy=author&sort=title&group=abc123');
     render(<GroupHeader groupBy={LibraryGroupByType.Author} groupName='Jane Doe' />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Back to library' }));
+    fireEvent.click(screen.getByRole('button', { name: 'All' }));
 
     const query = navigateToLibraryMock.mock.calls[0]![1] as string;
     const params = new URLSearchParams(query);
-    // The top level resolves its dimension from its own per-group memory, so a
-    // leftover virtual-group URL override is dropped rather than preserved.
-    expect(params.get('groupBy')).toBeNull();
+    // Back must keep this virtual dimension so it lands on the author list, not
+    // the library home page in whatever dimension the top level remembers.
+    expect(params.get('groupBy')).toBe('author');
     expect(params.get('sort')).toBe('title');
     expect(params.get('group')).toBe('');
   });
