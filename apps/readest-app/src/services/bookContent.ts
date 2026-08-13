@@ -1,7 +1,7 @@
 import type { Book } from '@/types/book';
 import type { FileSystem } from '@/types/system';
 import { EXTS } from '@/libs/document';
-import { getDir, getLocalBookFilename } from '@/utils/book';
+import { getDir, getLocalBookFilename, isBookFile } from '@/utils/book';
 import { isContentURI, isValidURL } from '@/utils/misc';
 
 export type BookContentSource =
@@ -28,7 +28,9 @@ async function resolveLegacyManagedSource(
   try {
     const bookDir = getDir(book);
     const files = await fs.readDir(bookDir, 'Books');
-    const bookFile = files.find((f) => f.path.endsWith(`.${EXTS[book.format]}`));
+    const expectedExt = `.${EXTS[book.format]}`;
+    const bookFile =
+      files.find((f) => f.path.endsWith(expectedExt)) || files.find((f) => isBookFile(f.path));
     if (!bookFile) return null;
     return { kind: 'managed', path: `${bookDir}/${bookFile.path}`, base: 'Books', legacy: true };
   } catch {

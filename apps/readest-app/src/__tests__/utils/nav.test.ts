@@ -103,8 +103,8 @@ describe('navigateToReader', () => {
     const router = mockRouter();
     navigateToReader(router, ['book1', 'book2']);
 
-    expect(router.push).toHaveBeenCalledTimes(1);
-    const url = router.push.mock.calls[0]![0] as string;
+    expect(router.replace).toHaveBeenCalledTimes(1);
+    const url = router.replace.mock.calls[0]![0] as string;
     expect(url).toContain('/reader?');
     expect(url).toContain('ids=book1%2Bbook2');
   });
@@ -113,7 +113,7 @@ describe('navigateToReader', () => {
     const router = mockRouter();
     navigateToReader(router, ['a', 'b', 'c']);
 
-    const url = router.push.mock.calls[0]![0] as string;
+    const url = router.replace.mock.calls[0]![0] as string;
     expect(url).toContain('ids=a%2Bb%2Bc');
   });
 
@@ -121,7 +121,7 @@ describe('navigateToReader', () => {
     const router = mockRouter();
     navigateToReader(router, ['book1'], 'view=scroll');
 
-    const url = router.push.mock.calls[0]![0] as string;
+    const url = router.replace.mock.calls[0]![0] as string;
     expect(url).toContain('view=scroll');
     expect(url).toContain('ids=book1');
   });
@@ -130,7 +130,9 @@ describe('navigateToReader', () => {
     const router = mockRouter();
     navigateToReader(router, ['book1'], undefined, { scroll: false });
 
-    expect(router.push).toHaveBeenCalledWith(expect.stringContaining('/reader'), { scroll: false });
+    expect(router.replace).toHaveBeenCalledWith(expect.stringContaining('/reader'), {
+      scroll: false,
+    });
   });
 });
 

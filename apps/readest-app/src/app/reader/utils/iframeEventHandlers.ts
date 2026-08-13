@@ -368,6 +368,10 @@ export const handleMouseup = (bookKey: string, event: MouseEvent) => {
 };
 
 export const handleWheel = (bookKey: string, event: WheelEvent) => {
+  // Ctrl+wheel is handled in the main window as a font-size adjustment; stop
+  // the iframe content from scrolling at the same time (scrolled mode) so the
+  // gesture only resizes the type instead of also moving the page.
+  if (event.ctrlKey) event.preventDefault();
   window.postMessage(
     {
       type: 'iframe-wheel',
@@ -386,6 +390,15 @@ export const handleWheel = (bookKey: string, event: WheelEvent) => {
     },
     '*',
   );
+};
+
+export const handleMouseDown = (bookKey: string, event: MouseEvent) => {
+  // Mouse side-buttons (3=back, 4=forward) drive app-level navigation in the
+  // main window, but the reading content lives in an iframe whose mousedown
+  // never bubbles to it — forward the press so back/forward works there too.
+  if (event.button === 3 || event.button === 4) {
+    window.postMessage({ type: 'iframe-side-button', bookKey, button: event.button }, '*');
+  }
 };
 
 // A tappable media element under the pointer, resolved to the payload the image

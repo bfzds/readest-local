@@ -52,6 +52,7 @@ import {
   handleClick,
   handleClickCapture,
   handleWheel,
+  handleMouseDown,
   handleTouchStart,
   handleTouchMove,
   handleTouchEnd,
@@ -427,6 +428,7 @@ const FoliateViewer: React.FC<{
           'click',
           handleClick.bind(null, bookKey, doubleClickDisabled, !!bookData?.isFixedLayout),
         );
+        detail.doc.addEventListener('mousedown', handleMouseDown.bind(null, bookKey));
         detail.doc.addEventListener('wheel', handleWheel.bind(null, bookKey));
         detail.doc.addEventListener('touchstart', handleTouchStart.bind(null, bookKey));
         detail.doc.addEventListener('touchmove', handleTouchMove.bind(null, bookKey), {

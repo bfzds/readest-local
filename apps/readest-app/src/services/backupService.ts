@@ -71,6 +71,9 @@ export const BACKUP_SETTINGS_BLACKLIST = [
   // brightness is live device state.
   'lastOpenBooks',
   'screenBrightness',
+  // Per-folder-group "group by" memory — keyed by device-local group ids/paths,
+  // meaningless to restore on another device.
+  'libraryGroupByByGroup',
   // Schema versioning — restore keeps the current device's value so its
   // migrations are not skipped.
   'version',

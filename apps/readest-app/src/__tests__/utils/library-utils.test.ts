@@ -16,10 +16,11 @@ import {
   expandBookshelfSelection,
   buildGroupNameUpdatedAt,
   resolveCurrentShelfBooks,
+  resolveCurrentGroupBy,
   withTimeRemainingLast,
 } from '../../app/library/utils/libraryUtils';
 import { Book, BooksGroup } from '../../types/book';
-import { LibraryGroupByType, LibrarySortByType } from '../../types/settings';
+import { LibraryGroupByType, LibrarySortByType, SystemSettings } from '../../types/settings';
 import { BookMetadata } from '@/libs/document';
 
 // Helper to create mock books with minimal required fields
@@ -325,6 +326,69 @@ describe('resolveCurrentShelfBooks', () => {
     ).toEqual(['one', 'two']);
     expect(resolveCurrentShelfBooks(books, LibraryGroupByType.Tag, 'missing')).toEqual([]);
     expect(resolveCurrentShelfBooks(books, LibraryGroupByType.None, 'stray')).toEqual([]);
+  });
+
+  it('scopes the flat Books view to the current group and its descendants', () => {
+    // Switching to "Books" (None) inside a group must stay scoped to that
+    // group (plus sub-groups), never showing other top-level groups.
+    expect(
+      resolveCurrentShelfBooks(books, LibraryGroupByType.None, 'group-id', 'Fiction').map(
+        ({ hash }) => hash,
+      ),
+    ).toEqual(['one', 'two']);
+  });
+
+  it('scopes a non-Group dimension inside a folder group to that folder only', () => {
+    // "by Tag" inside the Fiction folder must re-group only that folder's
+    // books (one + two, which is Fiction/Classics) — NOT resolve the tag
+    // against the whole library (which would pull in 'three' / 'Favorite').
+    expect(
+      resolveCurrentShelfBooks(books, LibraryGroupByType.Tag, 'group-id', 'Fiction').map(
+        ({ hash }) => hash,
+      ),
+    ).toEqual(['one', 'two']);
+  });
+});
+
+describe('resolveCurrentGroupBy', () => {
+  const base = { libraryGroupBy: LibraryGroupByType.Group } as SystemSettings;
+
+  it('prefers an explicit URL groupBy (virtual-group navigation)', () => {
+    const params = new URLSearchParams('groupBy=author&group=md5');
+    expect(resolveCurrentGroupBy(params, base)).toBe(LibraryGroupByType.Author);
+  });
+
+  it('uses the per-group memory for a folder group', () => {
+    const params = new URLSearchParams('group=md5_fiction');
+    const settings = {
+      ...base,
+      libraryGroupByByGroup: { Fiction: LibraryGroupByType.Author },
+    } as SystemSettings;
+    expect(resolveCurrentGroupBy(params, settings, 'Fiction')).toBe(LibraryGroupByType.Author);
+  });
+
+  it('uses the top-level memory when not inside a folder group', () => {
+    const params = new URLSearchParams('');
+    const settings = {
+      ...base,
+      libraryGroupByByGroup: { '': LibraryGroupByType.Series },
+    } as SystemSettings;
+    expect(resolveCurrentGroupBy(params, settings, undefined)).toBe(LibraryGroupByType.Series);
+  });
+
+  it('falls back to the global default when the location has no memory', () => {
+    const params = new URLSearchParams('group=md5_other');
+    expect(resolveCurrentGroupBy(params, base, 'OtherFolder')).toBe(LibraryGroupByType.Group);
+  });
+
+  it('does not let a folder group override leak to another folder', () => {
+    const params = new URLSearchParams('group=md5_fiction');
+    const settings = {
+      ...base,
+      libraryGroupByByGroup: { Fiction: LibraryGroupByType.Author },
+    } as SystemSettings;
+    // A different folder (no memory of its own) keeps the global default.
+    expect(resolveCurrentGroupBy(params, settings, 'Science')).toBe(LibraryGroupByType.Group);
   });
 });
 

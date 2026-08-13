@@ -22,6 +22,7 @@ import {
   LibraryViewModeType,
 } from '@/types/settings';
 import { useEnv } from '@/context/EnvContext';
+import { saveSysSettings } from '@/helpers/settings';
 import { useThemeStore } from '@/store/themeStore';
 import { useAutoFocus } from '@/hooks/useAutoFocus';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -35,7 +36,7 @@ import {
   createBookSorter,
   createGroupSorter,
   createWithinGroupSorter,
-  ensureLibraryGroupByType,
+  resolveCurrentGroupBy,
   ensureLibrarySortByType,
   ensureLibrarySecondarySortByType,
   expandBookshelfSelection,
@@ -197,7 +198,10 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   const viewMode = searchParams?.get('view') || settings.libraryViewMode;
   const storedSortBy = ensureLibrarySortByType(searchParams?.get('sort'), settings.librarySortBy);
   const sortOrder = searchParams?.get('order') || (settings.librarySortAscending ? 'asc' : 'desc');
-  const groupBy = ensureLibraryGroupByType(searchParams?.get('groupBy'), settings.libraryGroupBy);
+  // Resolve the display dimension: URL override (virtual groups), else the
+  // per-folder-group memory, else the global default.
+  const folderGroupPath = groupId ? useLibraryStore.getState().getGroupName(groupId) : undefined;
+  const groupBy = resolveCurrentGroupBy(searchParams, settings, folderGroupPath);
   const sortByAuto = settings.librarySortByAuto ?? true;
   const sortBy = resolveEffectivePrimarySort(storedSortBy, groupBy, sortByAuto);
   const thenSortByRaw = ensureLibrarySecondarySortByType(
@@ -224,6 +228,44 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   const iconSize15 = useResponsiveSize(15);
   const autofocusRef = useAutoFocus<HTMLDivElement>();
   useSpatialNavigation(autofocusRef);
+
+  // Ctrl+wheel zooms the book-card grid (80%-120%, step 5%). Delta from a
+  // single gesture accumulates in a ref and is consumed at 100px per step, so
+  // a fast momentum scroll steps once per unit instead of saving settings on
+  // every wheel event; steps per event are capped so one huge inertial delta
+  // cannot jump the zoom in a single frame. CSS `zoom` reflows the grid, so
+  // Virtuoso keeps card sizing correct as the container scales.
+  const libraryWheelAccumRef = useRef(0);
+  useEffect(() => {
+    const threshold = 100;
+    const step = 0.05;
+    const clampZoom = (v: number) => Math.min(1.2, Math.max(0.8, v));
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      const target = e.target as HTMLElement | null;
+      // Wheel dispatched on the window itself (not an element) has no `closest`
+      // — only guard when the event originated on a real HTMLElement.
+      if (
+        target instanceof HTMLElement &&
+        target.closest('input, textarea, select, [contenteditable]')
+      )
+        return;
+      e.preventDefault();
+      libraryWheelAccumRef.current += e.deltaY;
+      let steps = 0;
+      while (Math.abs(libraryWheelAccumRef.current) >= threshold && steps < 4) {
+        const sign = Math.sign(libraryWheelAccumRef.current);
+        libraryWheelAccumRef.current -= sign * threshold;
+        // Wheel up (deltaY<0, sign -1) grows the cards; down shrinks them.
+        const direction = sign < 0 ? 1 : -1;
+        const current = useSettingsStore.getState().settings.libraryZoom ?? 1;
+        void saveSysSettings(envConfig, 'libraryZoom', clampZoom(current + direction * step));
+        steps++;
+      }
+    };
+    window.addEventListener('wheel', onWheel, { capture: true, passive: false });
+    return () => window.removeEventListener('wheel', onWheel, { capture: true });
+  }, [envConfig]);
 
   const { setCurrentBookshelf, updateBooks } = useLibraryStore();
   const { setSelectedBooks, getSelectedBooks, toggleSelectedBook } = useLibraryStore();
@@ -269,7 +311,9 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     return queryTerm ? libraryBooks.filter((book) => bookFilter(book)) : libraryBooks;
   }, [libraryBooks, queryTerm]);
 
-  const manualGroupName = groupBy === LibraryGroupByType.Group ? getGroupName(groupId) : undefined;
+  // A folder group's path when the current `group` id is a folder group
+  // (undefined for the top level or a virtual author/series/tag group).
+  const manualGroupName = groupId ? getGroupName(groupId) : undefined;
   const currentShelfBooks = useMemo(
     () => resolveCurrentShelfBooks(libraryBooks, groupBy, groupId, manualGroupName),
     [libraryBooks, groupBy, groupId, manualGroupName],
@@ -288,7 +332,13 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       }
       return generateBookshelfItems(filteredShelfBooks, groupName);
     } else {
-      if (groupId) return filteredShelfBooks;
+      if (groupId) {
+        // Inside a folder group with a non-Group dimension, re-group that
+        // folder's books by the chosen dimension (e.g. "by Author" inside a
+        // folder). Virtual groups keep their flat member list.
+        if (manualGroupName) return createBookGroups(filteredShelfBooks, groupBy);
+        return filteredShelfBooks;
+      }
       return createBookGroups(filteredShelfBooks, groupBy);
     }
   }, [filteredShelfBooks, groupBy, groupId, manualGroupName]);
@@ -856,6 +906,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       role='main'
       aria-label={_('Bookshelf')}
       className='bookshelf flex min-h-0 flex-grow flex-col focus:outline-none'
+      style={{ zoom: settings.libraryZoom ?? 1 }}
     >
       {!contentSearch?.query.trim() && queryTerm && (
         <div className='flex shrink-0 justify-center px-4 pb-2'>

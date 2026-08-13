@@ -109,6 +109,28 @@ describe('getFontStyles branches (via getStyles)', () => {
     expect(css).toContain('--min-font-size: 10px');
   });
 
+  it('renders the live Ctrl+wheel size (effectiveFontSize) when zoomed', () => {
+    const vs = makeViewSettings({ defaultFontSize: 18, minimumFontSize: 8, effectiveFontSize: 16 });
+    const css = getStyles(vs, theme);
+    expect(css).toContain('font-size: 16px !important');
+  });
+
+  it('clamps a stale effectiveFontSize above the default down to the cap', () => {
+    const vs = makeViewSettings({ defaultFontSize: 18, minimumFontSize: 8, effectiveFontSize: 22 });
+    const css = getStyles(vs, theme);
+    expect(css).toContain('font-size: 18px !important');
+  });
+
+  it('clamps a stale effectiveFontSize below the minimum up to the floor', () => {
+    const vs = makeViewSettings({
+      defaultFontSize: 18,
+      minimumFontSize: 12,
+      effectiveFontSize: 10,
+    });
+    const css = getStyles(vs, theme);
+    expect(css).toContain('font-size: 12px !important');
+  });
+
   it('sets font-weight', () => {
     const vs = makeViewSettings({ fontWeight: 700 });
     const css = getStyles(vs, theme);
@@ -947,5 +969,20 @@ describe('instant-highlight selection suppression stays out of getStyles', () =>
     });
     const css = getStyles(vs, theme);
     expect(css).not.toContain('user-select: none !important');
+  });
+});
+
+describe('inline image scaling follows the body font', () => {
+  const theme = makeThemeCode();
+
+  it('defaults to 1.0 scale at the default 18px font', () => {
+    const css = getStyles(makeViewSettings(), theme);
+    expect(css).toContain('img, svg, video');
+    expect(css).toContain('zoom: 1;');
+  });
+
+  it('scales images up proportionally with a larger font', () => {
+    const css = getStyles(makeViewSettings({ defaultFontSize: 24 }), theme);
+    expect(css).toContain('zoom: 1.3333333333333333;');
   });
 });

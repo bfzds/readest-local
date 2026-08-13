@@ -419,9 +419,23 @@ export interface SystemSettings {
   /** Sort order of the secondary ("Then by") key, independent of `librarySortAscending` (#5119). */
   libraryThenSortAscending: boolean;
   libraryGroupBy: LibraryGroupByType;
+  /**
+   * Per-folder-group "group by" memory. Keyed by the current folder group's
+   * path (as returned by libraryStore.getGroupName); `''` is the top-level
+   * library. An absent key falls back to {@link libraryGroupBy}. Device-local:
+   * group ids/paths are meaningless on another device, so the map is excluded
+   * from cross-device settings restore.
+   */
+  libraryGroupByByGroup?: Record<string, LibraryGroupByType>;
   libraryCoverFit: LibraryCoverFitType;
   libraryAutoColumns: boolean;
   libraryColumns: number;
+  /**
+   * Ctrl+wheel zoom factor for the library book cards (0.8-1.2, step 0.05).
+   * Optional for backward compatibility with existing saved settings; fall
+   * back to 1 (100%) where undefined.
+   */
+  libraryZoom?: number;
   librarySkeuomorphicCovers: boolean;
   /** Show the recently-read carousel at the top of the library (issue #3797). */
   libraryRecentShelfEnabled: boolean;

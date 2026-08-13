@@ -2,6 +2,7 @@ import React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEnv } from '@/context/EnvContext';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useLibraryStore } from '@/store/libraryStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import {
   LibraryCoverFitType,
@@ -15,7 +16,7 @@ import { navigateToLibrary } from '@/utils/nav';
 import NumberInput from '@/components/settings/NumberInput';
 import MenuItem from '@/components/MenuItem';
 import Menu from '@/components/Menu';
-import { ensureLibraryGroupByType } from '../utils/libraryUtils';
+import { resolveCurrentGroupBy } from '../utils/libraryUtils';
 
 interface ViewMenuProps {
   setIsDropdownOpen?: (isOpen: boolean) => void;
@@ -27,12 +28,18 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
   const searchParams = useSearchParams();
   const { envConfig } = useEnv();
   const { settings } = useSettingsStore();
+  const { getGroupName } = useLibraryStore();
+
+  // Current navigation context: the URL `group` id, resolved to a folder path
+  // when it is a folder group (undefined for the top level or a virtual group).
+  const currentGroup = searchParams?.get('group') || '';
+  const folderGroupPath = currentGroup ? getGroupName(currentGroup) : '';
 
   const viewMode = settings.libraryViewMode;
   const coverFit = settings.libraryCoverFit;
   const autoColumns = settings.libraryAutoColumns;
   const columns = settings.libraryColumns;
-  const groupBy = ensureLibraryGroupByType(searchParams?.get('groupBy'), settings.libraryGroupBy);
+  const groupBy = resolveCurrentGroupBy(searchParams, settings, folderGroupPath);
   const sortBy = settings.librarySortBy;
   const isAscending = settings.librarySortAscending;
   const sortByAuto = settings.librarySortByAuto ?? true;
@@ -129,16 +136,23 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
   };
 
   const handleSetGroupBy = async (value: LibraryGroupByType) => {
-    await saveSysSettings(envConfig, 'libraryGroupBy', value);
+    // Remember per-folder-group ('' = top level): a pick inside one folder must
+    // not leak into other folders or the top level, and survives restarts.
+    const groupKey = folderGroupPath ?? '';
+    const currentByGroup = useSettingsStore.getState().settings.libraryGroupByByGroup;
+    await saveSysSettings(envConfig, 'libraryGroupByByGroup', {
+      ...currentByGroup,
+      [groupKey]: value,
+    });
 
     const params = new URLSearchParams(window.location.search);
-    if (value === LibraryGroupByType.Group) {
-      params.delete('groupBy');
-    } else {
-      params.set('groupBy', value);
+    // The dimension is now resolved from the per-group memory, not the URL.
+    params.delete('groupBy');
+    // Inside a virtual group the pick means "leave this virtual group and view
+    // the top level under the new dimension".
+    if (currentGroup && !folderGroupPath) {
+      params.delete('group');
     }
-    // Clear group navigation when changing groupBy mode
-    params.delete('group');
     navigateToLibrary(router, `${params.toString()}`);
   };
 

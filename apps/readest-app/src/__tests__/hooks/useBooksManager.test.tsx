@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
   setSideBarBookKeyMock: vi.fn(),
   bookKeys: [] as string[],
   viewStates: {} as Record<string, { inited: boolean; view: object }>,
+  library: [] as { hash: string }[],
 }));
 
 vi.mock('next/navigation', () => ({
@@ -36,6 +37,7 @@ vi.mock('@/store/readerStore', () => ({
         getView: () => null,
         setPreviewMode: vi.fn(),
         viewStates: h.viewStates,
+        bookKeys: h.bookKeys,
       }),
       subscribe: () => () => {},
     },
@@ -43,6 +45,11 @@ vi.mock('@/store/readerStore', () => ({
 }));
 vi.mock('@/store/sidebarStore', () => ({
   useSidebarStore: () => ({ sideBarBookKey: null, setSideBarBookKey: h.setSideBarBookKeyMock }),
+}));
+vi.mock('@/store/libraryStore', () => ({
+  useLibraryStore: Object.assign(() => ({ library: h.library }), {
+    getState: () => ({ library: h.library }),
+  }),
 }));
 vi.mock('@/utils/nav', () => ({ navigateToReader: vi.fn() }));
 
@@ -97,5 +104,45 @@ describe('useBooksManager open-failure handling', () => {
 
     expect(dispatchSpy).toHaveBeenCalledWith('tts-speak', { bookKey: 'hash1-abc' });
     dispatchSpy.mockRestore();
+  });
+
+  it('mouse nav back steps through the session read history', async () => {
+    h.bookKeys = ['book2-abc'];
+    renderHook(() => useBooksManager());
+    // Open book3 — read history becomes [book2, book3], current = book3.
+    await act(async () => {
+      eventDispatcher.dispatch('open-book-in-reader', { bookHash: 'book3' });
+      await Promise.resolve();
+    });
+    // Back → previous history entry (book2), already open → focus it.
+    h.setSideBarBookKeyMock.mockClear();
+    await act(async () => {
+      eventDispatcher.dispatch('library-nav-back');
+      await Promise.resolve();
+    });
+    expect(h.setSideBarBookKeyMock).toHaveBeenCalled();
+  });
+
+  it('mouse nav forward advances through the session read history', async () => {
+    h.bookKeys = ['book2-abc'];
+    renderHook(() => useBooksManager());
+    // History [book2, book3]; step back to book2, then forward returns to book3.
+    await act(async () => {
+      eventDispatcher.dispatch('open-book-in-reader', { bookHash: 'book3' });
+      await Promise.resolve();
+      eventDispatcher.dispatch('library-nav-back');
+      await Promise.resolve();
+    });
+    h.initViewStateMock.mockClear();
+    await act(async () => {
+      eventDispatcher.dispatch('library-nav-forward');
+      await Promise.resolve();
+    });
+    expect(h.initViewStateMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'book3',
+      expect.any(String),
+      true,
+    );
   });
 });

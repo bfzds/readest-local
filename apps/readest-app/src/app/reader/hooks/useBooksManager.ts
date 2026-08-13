@@ -3,6 +3,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
+import { useBookDataStore } from '@/store/bookDataStore';
 import { uniqueId } from '@/utils/misc';
 import { navigateToReader } from '@/utils/nav';
 import { eventDispatcher } from '@/utils/event';
@@ -97,7 +98,33 @@ const useBooksManager = () => {
   // the OS re-delivering the launch deep link, looped. The store update renders
   // the new book immediately; closing the previous key follows the same path as
   // dismissBook. An optional cfi (annotation deep link) is applied once ready.
-  const openBookInReader = (bookHash: string, cfi?: string) => {
+  // Session read-history: the books opened in THIS reader session, in open
+  // order. Side-button navigation walks this list (not the whole library), so
+  // every step lands on a book already parsed & cached — instant and never
+  // "Book file not found". Reset naturally on restart (in-memory).
+  const navHistoryRef = useRef<string[]>([]);
+  const navIndexRef = useRef(-1);
+  // Bound the read history and evict the dropped books' parsed data so
+  // bookDataStore doesn't accumulate an unbounded set of parsed books.
+  const MAX_HISTORY = 3;
+  const recordOpen = (bookHash: string) => {
+    const history = navHistoryRef.current;
+    if (history[navIndexRef.current] === bookHash) return;
+    history.length = navIndexRef.current + 1;
+    history.push(bookHash);
+    navIndexRef.current = history.length - 1;
+    while (history.length > MAX_HISTORY) {
+      const evicted = history.shift()!;
+      navIndexRef.current--;
+      const currentHash = useReaderStore.getState().bookKeys[0]?.split('-')[0];
+      if (evicted !== currentHash) {
+        useBookDataStore.getState().clearBookData(evicted);
+      }
+    }
+  };
+
+  const openBookInReader = (bookHash: string, cfi?: string, updateUrl = true, record = true) => {
+    if (record) recordOpen(bookHash);
     const existing = bookKeys.find((key) => key.startsWith(bookHash));
     if (existing) {
       setSideBarBookKey(existing);
@@ -113,7 +140,7 @@ const useBooksManager = () => {
     initViewState(envConfig, bookHash, newKey, true).catch(handleOpenError);
     setBookKeys([newKey]);
     setSideBarBookKey(newKey);
-    setShouldUpdateSearchParams(true);
+    if (updateUrl) setShouldUpdateSearchParams(true);
     if (cfi) goToCfiWhenReady(newKey, cfi);
   };
 
@@ -128,6 +155,64 @@ const useBooksManager = () => {
     eventDispatcher.on('open-book-in-reader', handle);
     return () => eventDispatcher.off('open-book-in-reader', handle);
   }, []);
+
+  // Mouse side-button navigation (see useMouseNavigation): back = previous book
+  // in this session's read history, forward = next. Only the reading content
+  // swaps in place — the reused reader window keeps its position and size.
+  // Rapid presses serialize (one switch at a time); stepping past the start/end
+  // of the history clears the queue instead of erroring.
+  const pendingDirRef = useRef(0);
+  const switchInFlightRef = useRef(false);
+  const advanceSwitch = () => {
+    if (switchInFlightRef.current || pendingDirRef.current === 0) return;
+    const dir = pendingDirRef.current > 0 ? 1 : -1;
+    const idx = navIndexRef.current + dir;
+    if (idx < 0 || idx >= navHistoryRef.current.length) {
+      pendingDirRef.current = 0;
+      return;
+    }
+    pendingDirRef.current -= dir;
+    switchInFlightRef.current = true;
+    navIndexRef.current = idx;
+    // updateUrl:false keeps the reader URL unchanged — switching books is an
+    // in-place content swap (no history entry, no ViewTransitions churn).
+    openBookRef.current(navHistoryRef.current[idx]!, undefined, false, false);
+    // History books are already parsed & cached, so a switch is just a
+    // focus/swap — release the lock on the next microtask and drain the queue
+    // (avoids deadlocking when a step lands on an already-open book, which
+    // never changes bookKeys).
+    queueMicrotask(() => {
+      switchInFlightRef.current = false;
+      void advanceSwitch();
+    });
+  };
+  const switchBook = (direction: -1 | 1) => {
+    pendingDirRef.current += direction;
+    void advanceSwitch();
+  };
+  useEffect(() => {
+    const onBack = () => switchBook(-1);
+    const onForward = () => switchBook(1);
+    eventDispatcher.on('library-nav-back', onBack);
+    eventDispatcher.on('library-nav-forward', onForward);
+    return () => {
+      eventDispatcher.off('library-nav-back', onBack);
+      eventDispatcher.off('library-nav-forward', onForward);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Seed the read-history with the initially opened book.
+  useEffect(() => {
+    if (navHistoryRef.current.length === 0) {
+      const initialHash = bookKeys[0]?.split('-')[0];
+      if (initialHash) {
+        navHistoryRef.current = [initialHash];
+        navIndexRef.current = 0;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookKeys]);
 
   // Consume an Android Auto cold-resume autoplay request once its book is in the
   // open set (covers both the in-place open and cold-navigate paths).

@@ -9,6 +9,7 @@ import { initSystemThemeListener, loadDataTheme } from '@/store/themeStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useCustomTextureStore } from '@/store/customTextureStore';
 import { useSafeAreaInsets } from '@/hooks/useSafeAreaInsets';
+import { useMouseNavigation } from '@/hooks/useMouseNavigation';
 import { useSettingsSync } from '@/hooks/useSettingsSync';
 import { useDefaultIconSize } from '@/hooks/useResponsiveSize';
 import { useBackgroundTexture } from '@/hooks/useBackgroundTexture';
@@ -36,6 +37,7 @@ const Providers = ({ children }: { children: React.ReactNode }) => {
   } = useAppLockStore();
   const iconSize = useDefaultIconSize();
   useSafeAreaInsets(); // Initialize safe area insets
+  useMouseNavigation(); // Mouse side-button (back/forward) navigation
   useSettingsSync(); // Adopt global settings broadcast by other windows (#4580)
 
   useEffect(() => {

@@ -200,6 +200,7 @@ export const DEFAULT_SYSTEM_SETTINGS: Partial<SystemSettings> = {
   libraryCoverFit: 'crop',
   libraryAutoColumns: true,
   libraryColumns: 6,
+  libraryZoom: 1,
   librarySkeuomorphicCovers: false,
   libraryRecentShelfEnabled: false,
 
@@ -243,6 +244,7 @@ export const DEFAULT_SYSTEM_SETTINGS: Partial<SystemSettings> = {
 
 export const DEFAULT_MOBILE_SYSTEM_SETTINGS: Partial<SystemSettings> = {
   libraryColumns: 3,
+  libraryZoom: 1,
   // Import files opened via the system "Open with" chooser into the library by
   // default so they persist and sync, instead of opening them transiently.
   autoImportBooksOnOpen: true,

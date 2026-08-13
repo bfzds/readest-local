@@ -82,6 +82,9 @@
       ]
     },
     "dialog:default",
+    "dialog:allow-ask",
+    "dialog:allow-confirm",
+    "dialog:allow-message",
     "os:default",
     "core:window:default",
     "core:window:allow-close",

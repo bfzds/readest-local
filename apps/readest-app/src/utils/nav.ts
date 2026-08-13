@@ -132,7 +132,10 @@ export const navigateToReader = (
   const ids = bookIds.join(BOOK_IDS_SEPARATOR);
   const params = new URLSearchParams(queryParams || '');
   params.set('ids', ids);
-  router.push(`/reader?${params.toString()}`, navOptions);
+  // Replace (not push): reader-internal book swaps shouldn't pile up history
+  // entries, and push fights the ViewTransitions wrapper ("Transition was
+  // skipped") when a book swaps in place.
+  router.replace(`/reader?${params.toString()}`, navOptions);
 };
 
 export const navigateToLogin = (router: ReturnType<typeof useRouter>) => {

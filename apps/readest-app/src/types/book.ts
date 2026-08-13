@@ -267,8 +267,23 @@ export interface BookFont {
   monospaceFont: string;
   defaultFont: string;
   defaultCJKFont: string;
+  /**
+   * The configured reading font size — the zoom anchor. Never changed by the
+   * Ctrl+wheel zoom; it stays as the user's "default" so zoom is bounded to
+   * [minimumFontSize, defaultFontSize]. When the user edits it (settings
+   * panel / footer slider), effectiveFontSize resets and the live size snaps
+   * back to it.
+   */
   defaultFontSize: number;
+  /** Smallest the rendered text may ever be (a floor, see --min-font-size). */
   minimumFontSize: number;
+  /**
+   * The live font size adjusted by Ctrl+wheel zoom, clamped into
+   * [minimumFontSize, defaultFontSize]. Absent (never zoomed) => rendered size
+   * is defaultFontSize. Persisted separately so zooming never drifts the
+   * configured default.
+   */
+  effectiveFontSize?: number;
   fontWeight: number;
 }
 

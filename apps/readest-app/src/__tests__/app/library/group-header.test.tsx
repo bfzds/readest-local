@@ -58,7 +58,9 @@ describe('GroupHeader back button', () => {
 
     const query = navigateToLibraryMock.mock.calls[0]![1] as string;
     const params = new URLSearchParams(query);
-    expect(params.get('groupBy')).toBe('author');
+    // The top level resolves its dimension from its own per-group memory, so a
+    // leftover virtual-group URL override is dropped rather than preserved.
+    expect(params.get('groupBy')).toBeNull();
     expect(params.get('sort')).toBe('title');
     expect(params.get('group')).toBe('');
   });

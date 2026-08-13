@@ -70,9 +70,9 @@ import { useAppRouter } from '@/hooks/useAppRouter';
 import { Toast } from '@/components/Toast';
 import {
   createBookGroups,
-  ensureLibraryGroupByType,
   findGroupById,
   getBreadcrumbs,
+  resolveCurrentGroupBy,
 } from './utils/libraryUtils';
 import Spinner from '@/components/Spinner';
 import LibraryHeader from './components/LibraryHeader';
@@ -181,6 +181,11 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   useCustomFonts();
   const [importMenuAnchor, setImportMenuAnchor] = useState<HTMLElement | null>(null);
   const [loading, setLoading] = useState(false);
+  // Import progress (done/total books) shown over the full-screen loading
+  // spinner while a (potentially large) batch is being imported.
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(
+    null,
+  );
   // Seed from the library store: if we already have books in memory (the
   // common reader → library return path), treat the page as loaded
   // immediately. This prevents `showBookshelf` from briefly being false on
@@ -378,8 +383,12 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       // Build query params — always `set` so the search string is non-empty
       // even when targetGroup is '' (the Next.js 16.2 workaround).
       params.set('group', targetGroup);
+      // Folder-group navigation never carries a URL groupBy override; the
+      // display dimension is resolved from the per-group memory instead. Drop
+      // any leftover from a prior virtual-group visit so it can't leak.
+      params.delete('groupBy');
 
-      navigateToLibrary(router, `${params.toString()}`);
+      navigateToLibrary(router, params.toString());
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [router],
@@ -398,6 +407,37 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   const handleBackUpOneGroupLevelRef = useRef(handleBackUpOneGroupLevel);
   handleBackUpOneGroupLevelRef.current = handleBackUpOneGroupLevel;
   const triggerBackUpOneGroupLevel = useCallback(() => handleBackUpOneGroupLevelRef.current(), []);
+
+  // Mouse side-button navigation (see useMouseNavigation). The library maps
+  // back/forward to moving up/down one group level. A small forward stack
+  // remembers the group we stepped back from so "forward" can return to it.
+  const forwardGroupStackRef = useRef<string[]>([]);
+  const handleMouseNavBack = () => {
+    const currentGroup = searchParams?.get('group') || '';
+    if (currentGroup) forwardGroupStackRef.current.push(currentGroup);
+    handleBackUpOneGroupLevel();
+  };
+  const handleMouseNavForward = () => {
+    const target = forwardGroupStackRef.current.pop();
+    if (target === undefined) return;
+    setIsSelectAll(false);
+    setIsSelectNone(false);
+    handleLibraryNavigation(target);
+  };
+  const handleMouseNavBackRef = useRef(handleMouseNavBack);
+  handleMouseNavBackRef.current = handleMouseNavBack;
+  const handleMouseNavForwardRef = useRef(handleMouseNavForward);
+  handleMouseNavForwardRef.current = handleMouseNavForward;
+  useEffect(() => {
+    const onBack = () => handleMouseNavBackRef.current();
+    const onForward = () => handleMouseNavForwardRef.current();
+    eventDispatcher.on('library-nav-back', onBack);
+    eventDispatcher.on('library-nav-forward', onForward);
+    return () => {
+      eventDispatcher.off('library-nav-back', onBack);
+      eventDispatcher.off('library-nav-forward', onForward);
+    };
+  }, []);
 
   useKeyDownActions({
     onCancel: triggerBackUpOneGroupLevel,
@@ -691,8 +731,8 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   // Track the current virtual group for the navigation header.
   useEffect(() => {
     const groupId = searchParams?.get('group') || '';
-    const groupByParam = searchParams?.get('groupBy');
-    const groupBy = ensureLibraryGroupByType(groupByParam, settings.libraryGroupBy);
+    const folderGroupPath = groupId ? getGroupName(groupId) : undefined;
+    const groupBy = resolveCurrentGroupBy(searchParams, settings, folderGroupPath);
 
     if (
       groupId &&
@@ -719,7 +759,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     } else {
       setCurrentVirtualGroup(null);
     }
-  }, [libraryBooks, searchParams, settings.libraryGroupBy]);
+  }, [libraryBooks, searchParams, settings, getGroupName]);
 
   const importBooks = async (
     files: SelectedFile[],
@@ -727,6 +767,9 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     options: { silent?: boolean } = {},
   ): Promise<{ failedPaths: string[] }> => {
     setLoading(true);
+    const totalFiles = files.length;
+    let processedFiles = 0;
+    setImportProgress({ done: 0, total: totalFiles });
     const { library } = useLibraryStore.getState();
     // Build the lookup index ONCE per import batch so each book lookup is
     // O(1) instead of O(n) over the existing library. importBook also keeps
@@ -854,6 +897,8 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       if (importedBooks.length > 0) {
         await updateBooks(envConfig, importedBooks, { skipSave: true });
       }
+      processedFiles += batch.length;
+      setImportProgress({ done: processedFiles, total: totalFiles });
     }
 
     // Persist the full library once after every file in the batch is done.
@@ -890,6 +935,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     }
 
     setLoading(false);
+    setImportProgress(null);
     return { failedPaths };
   };
 
@@ -1046,8 +1092,10 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   };
 
   const getImportTargetGroupId = () => {
-    const groupBy = ensureLibraryGroupByType(searchParams?.get('groupBy'), settings.libraryGroupBy);
-    return groupBy === LibraryGroupByType.Group ? searchParams?.get('group') || '' : '';
+    const group = searchParams?.get('group') || '';
+    // Import into the current folder group whenever the view is inside one,
+    // regardless of the display dimension chosen for it.
+    return group && getGroupName(group) ? group : '';
   };
 
   const handleImportBooksFromFiles = async () => {
@@ -1501,6 +1549,9 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     const group = path ? getGroupId(path) || '' : '';
     setIsSelectAll(false);
     setIsSelectNone(false);
+    // A fresh explicit navigation starts a new branch — clear the mouse
+    // side-button forward stack so "forward" doesn't jump to a stale group.
+    forwardGroupStackRef.current = [];
     handleLibraryNavigation(group);
   };
 
@@ -1557,7 +1608,22 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       </div>
       {loading && (
         <div className='fixed inset-0 z-50 flex items-center justify-center'>
-          <Spinner loading />
+          <div className='flex flex-col items-center gap-3'>
+            <Spinner loading />
+            {importProgress && (
+              <>
+                <progress
+                  aria-label={_('Import Progress')}
+                  className='progress progress-success h-1 w-48'
+                  value={importProgress.done}
+                  max={importProgress.total}
+                />
+                <div className='text-sm text-base-content/70'>
+                  {importProgress.done} / {importProgress.total}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
       {librarySearchTarget === 'text' &&

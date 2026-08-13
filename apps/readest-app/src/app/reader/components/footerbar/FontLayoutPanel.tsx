@@ -51,6 +51,9 @@ export const FontLayoutPanel: React.FC<FontLayoutPanelProps> = ({
   const handleFontSizeChange = useCallback(
     (value: number) => {
       saveViewSettings(envConfig, bookKey, 'defaultFontSize', value);
+      // Reset any Ctrl+wheel zoom so the live size snaps to the newly set
+      // default (the zoom anchor / cap).
+      void saveViewSettings(envConfig, bookKey, 'effectiveFontSize', undefined);
     },
     [envConfig, bookKey],
   );

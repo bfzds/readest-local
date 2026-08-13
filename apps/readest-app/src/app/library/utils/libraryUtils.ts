@@ -3,6 +3,7 @@ import {
   LibraryGroupByType,
   LibrarySecondarySortByType,
   LibrarySortByType,
+  SystemSettings,
 } from '@/types/settings';
 import {
   formatAuthors,
@@ -104,6 +105,30 @@ export const ensureLibraryGroupByType = (
     return value as LibraryGroupByType;
   }
   return fallback;
+};
+
+/**
+ * Resolve the *effective* group-by for the current library view:
+ *  - an explicit URL `groupBy` wins (used when navigating into a virtual
+ *    author/series/tag/subject group);
+ *  - otherwise a per-folder-group memory (keyed by the folder path; `''` is
+ *    the top-level library) remembered from the user's last pick in that
+ *    location, so changing it inside one folder never leaks into others;
+ *  - otherwise the global {@link SystemSettings.libraryGroupBy} default.
+ *
+ * `folderGroupPath` comes from libraryStore.getGroupName — undefined when the
+ * view is the top level or inside a virtual group (their ids are not in the
+ * folder-groups map).
+ */
+export const resolveCurrentGroupBy = (
+  searchParams: URLSearchParams | null,
+  settings: SystemSettings,
+  folderGroupPath?: string,
+): LibraryGroupByType => {
+  const urlGroupBy = searchParams?.get('groupBy');
+  if (urlGroupBy) return ensureLibraryGroupByType(urlGroupBy, settings.libraryGroupBy);
+  const key = folderGroupPath ?? '';
+  return settings.libraryGroupByByGroup?.[key] ?? settings.libraryGroupBy;
 };
 
 /**
@@ -603,14 +628,18 @@ export const resolveCurrentShelfBooks = (
 ): Book[] => {
   const activeBooks = books.filter((book) => !book.deletedAt);
   if (!groupId) return activeBooks;
-  if (groupBy === LibraryGroupByType.None) return [];
-  if (groupBy === LibraryGroupByType.Group) {
-    if (!manualGroupName) return [];
+  // Inside a folder group (manualGroupName is its path): scope to that group
+  // and its descendants regardless of the display dimension, so e.g. switching
+  // to "by Author" inside a folder re-groups only that folder's books instead
+  // of resolving against the whole library. This also covers the "Books"
+  // (flat) view, which must stay scoped to the group and its descendants.
+  if (manualGroupName) {
     const descendantPrefix = `${manualGroupName}/`;
     return activeBooks.filter(
       ({ groupName }) => groupName === manualGroupName || groupName?.startsWith(descendantPrefix),
     );
   }
+  // Inside a virtual group: resolve its members by that grouping dimension.
   return findGroupById(createBookGroups(activeBooks, groupBy), groupId)?.books ?? [];
 };
 

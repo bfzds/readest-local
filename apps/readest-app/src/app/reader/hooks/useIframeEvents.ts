@@ -3,6 +3,10 @@ import { useReaderStore } from '@/store/readerStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { eventDispatcher } from '@/utils/event';
 import { MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL } from '@/services/constants';
+import { useEnv } from '@/context/EnvContext';
+import { saveViewSettings } from '@/helpers/settings';
+import { getEffectiveFontSize } from '@/utils/style';
+import { throttle } from '@/utils/throttle';
 import { createWheelGestureDetector } from '@/app/reader/utils/wheelGesture';
 import {
   beginLayeredTurnTouch,
@@ -19,11 +23,54 @@ import {
 } from './useTouchInterceptor';
 import { hasVerticalPanning } from './usePagination';
 
+// Rapid Ctrl+wheel / shortcut font changes each call saveViewSettings, which
+// re-applies the whole reader stylesheet and persists to disk — throttle to at
+// most one reflow per 120ms so resizing the font stays smooth. Writes the live
+// zoom value (effectiveFontSize), clamped to [minimumFontSize, defaultFontSize],
+// so the configured default stays the zoom anchor (the hard cap) instead of
+// drifting with every wheel notch.
+const saveFontSizeThrottled = throttle(
+  (envConfig: Parameters<typeof saveViewSettings>[0], bookKey: string, value: number) => {
+    void saveViewSettings(envConfig, bookKey, 'effectiveFontSize', value);
+  },
+  120,
+);
+
 export const useMouseEvent = (
   bookKey: string,
   handlePageFlip: (msg: MessageEvent | React.MouseEvent<HTMLDivElement, MouseEvent>) => void,
 ) => {
   const { hoveredBookKey } = useReaderStore();
+  const { envConfig } = useEnv();
+  // Delta accumulated across ctrl-wheel events, consumed at FONT_WHEEL_THRESHOLD
+  // px per 1px step so a momentum scroll steps once per unit instead of calling
+  // saveViewSettings on every wheel event.
+  const fontWheelAccumRef = useRef(0);
+  const adjustFontSize = (deltaY: number) => {
+    fontWheelAccumRef.current += deltaY;
+    const threshold = 50;
+    let steps = 0;
+    while (Math.abs(fontWheelAccumRef.current) >= threshold && steps < 4) {
+      const sign = Math.sign(fontWheelAccumRef.current);
+      fontWheelAccumRef.current -= sign * threshold;
+      // Wheel up (deltaY<0, sign -1) grows the font; down shrinks it. The live
+      // size moves within [minimumFontSize, defaultFontSize]: the user's
+      // configured default is the top of the band, their minimum the floor —
+      // both re-read each step so a settings change retargets the range live.
+      const direction = sign < 0 ? 1 : -1;
+      const viewSettings = useReaderStore.getState().getViewSettings(bookKey);
+      const current = getEffectiveFontSize(viewSettings);
+      const lo = viewSettings?.minimumFontSize ?? 8;
+      const hi = Math.max(viewSettings?.defaultFontSize ?? 18, lo);
+      const next = Math.min(hi, Math.max(lo, current + direction));
+      // Surface the live size on every step so the centered FontSizeOverlay
+      // tracks it even when pinned at a bound; only skip the redundant
+      // reflow+persist write when the size did not actually change.
+      eventDispatcher.dispatch('font-size-changed', { size: next });
+      if (next !== current) saveFontSizeThrottled(envConfig, bookKey, next);
+      steps++;
+    }
+  };
   // Keep the latest handlePageFlip in a ref so the wheel-driven flip path
   // always invokes the most recent closure, independent of when listeners
   // were registered.
@@ -42,16 +89,18 @@ export const useMouseEvent = (
   const handleMouseEvent = (msg: MessageEvent | React.MouseEvent<HTMLDivElement, MouseEvent>) => {
     if (msg instanceof MessageEvent) {
       if (msg.data && msg.data.bookKey === bookKey) {
-        if (msg.data.type === 'iframe-wheel') {
+        if (msg.data.type === 'iframe-side-button') {
+          // Reading iframe forwarded a mouse side-button press (see
+          // handleMouseDown) — map it to app-level back/forward navigation.
+          if (msg.data.button === 3) eventDispatcher.dispatch('library-nav-back');
+          else eventDispatcher.dispatch('library-nav-forward');
+        } else if (msg.data.type === 'iframe-wheel') {
           if (msg.data.ctrlKey) {
-            // Pinch/ctrl-wheel zoom is not a page-turn gesture — drop any
-            // travel accumulated so far so it can't bleed into a later flip.
+            // Ctrl+wheel adjusts the body font size, not a page-turn gesture —
+            // drop any travel accumulated so far so it can't bleed into a
+            // later flip.
             wheelDetectorRef.current!.reset();
-            if (msg.data.deltaY > 0) {
-              eventDispatcher.dispatch('zoom-out', { factor: Math.abs(msg.data.deltaY) / 100 });
-            } else if (msg.data.deltaY < 0) {
-              eventDispatcher.dispatch('zoom-in', { factor: Math.abs(msg.data.deltaY) / 100 });
-            }
+            adjustFontSize(msg.data.deltaY);
           } else {
             const flip = wheelDetectorRef.current!.feed({
               deltaX: msg.data.deltaX ?? 0,

@@ -874,6 +874,25 @@ export const getThemeCode = () => {
   } as ThemeCode;
 };
 
+type FontSizeSettings = Pick<
+  ViewSettings,
+  'defaultFontSize' | 'minimumFontSize' | 'effectiveFontSize'
+>;
+
+/**
+ * The font size the reader should actually render: the Ctrl+wheel-zoomable
+ * live size (effectiveFontSize), falling back to the configured default, then
+ * clamped into [minimumFontSize, defaultFontSize] so a stale/edge value can
+ * never render larger than the user's default or smaller than their floor.
+ */
+export const getEffectiveFontSize = (viewSettings: FontSizeSettings | null | undefined): number => {
+  const base = viewSettings?.defaultFontSize ?? 18;
+  const lo = viewSettings?.minimumFontSize ?? 8;
+  const hi = Math.max(base, lo);
+  const live = viewSettings?.effectiveFontSize ?? base;
+  return Math.min(hi, Math.max(lo, live));
+};
+
 export const getStyles = (
   viewSettings: ViewSettings,
   themeCode?: ThemeCode,
@@ -915,7 +934,7 @@ export const getStyles = (
     viewSettings.monospaceFont!,
     viewSettings.defaultFont!,
     viewSettings.defaultCJKFont!,
-    viewSettings.defaultFontSize! * fontScale * zoomScale,
+    getEffectiveFontSize(viewSettings) * fontScale * zoomScale,
     viewSettings.minimumFontSize!,
     viewSettings.fontWeight!,
     viewSettings.overrideFont!,
@@ -928,6 +947,12 @@ export const getStyles = (
   // visibly swapping a moment later. Blob URLs are already in memory, so
   // no network round-trip happens here.
   const customFontFaces = getCustomFontFaces(customFonts);
+  // Scale inline images (illustrations, figures, covers) in step with the body
+  // font so a Ctrl+wheel font change also scales images proportionally — the
+  // 18px default font maps to 1.0. max-width:100% keeps wide figures inside the
+  // text column; zoom scales the rendered box together with the surrounding text.
+  const imageScale = (getEffectiveFontSize(viewSettings) * fontScale * zoomScale) / 18;
+  const imageScaleStyles = `img, svg, video { max-width: 100%; height: auto; zoom: ${imageScale}; }`;
   const colorStyles = getColorStyles(
     viewSettings.overrideColor!,
     viewSettings.invertImgColorInDark!,
@@ -945,7 +970,7 @@ export const getStyles = (
   // the footnote aside's border show as a stray horizontal line (#4438). Keep it
   // ahead of the inlined custom `@font-face` rules.
   const epubNamespace = `@namespace epub "http://www.idpf.org/2007/ops";`;
-  return `${epubNamespace}\n${customFontFaces}\n${pageLayoutStyles}\n${paragraphLayoutStyles}\n${fontStyles}\n${colorStyles}\n${translationStyles}\n${warichuStyles}\n${rubyStyles}\n${userStylesheet}`;
+  return `${epubNamespace}\n${customFontFaces}\n${pageLayoutStyles}\n${paragraphLayoutStyles}\n${fontStyles}\n${colorStyles}\n${translationStyles}\n${warichuStyles}\n${rubyStyles}\n${imageScaleStyles}\n${userStylesheet}`;
 };
 
 // Build a CSS chunk of `@font-face` rules for the given user custom

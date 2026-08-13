@@ -32,6 +32,9 @@ const GroupHeader: React.FC<GroupHeaderProps> = ({ groupBy, groupName }) => {
     // resulting `/library?group=` does commit, and the trailing empty `group=`
     // is stripped cosmetically by the cleanup effect in page.tsx.
     params.set('group', '');
+    // Returning to the top level resolves its dimension from the top-level
+    // memory, not a leftover virtual-group URL override.
+    params.delete('groupBy');
     navigateToLibrary(router, params.toString());
   };
 

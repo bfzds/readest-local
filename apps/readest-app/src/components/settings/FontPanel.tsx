@@ -246,6 +246,9 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
 
   useEffect(() => {
     saveViewSettings(envConfig, bookKey, 'defaultFontSize', defaultFontSize);
+    // Editing the configured default resets any Ctrl+wheel zoom so the live
+    // size snaps back to the new default (the zoom anchor).
+    void saveViewSettings(envConfig, bookKey, 'effectiveFontSize', undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultFontSize]);
 
