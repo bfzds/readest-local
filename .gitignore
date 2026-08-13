@@ -65,6 +65,8 @@ result*
 
 .claude/worktrees
 .claude/settings.local.json
+# developer's personal Claude memory (not part of the project)
+apps/readest-app/.claude/memory/
 
 fastlane/staging/
 fastlane/metadata-play/android/en-US/changelogs
