@@ -22,10 +22,11 @@ vi.mock('@/utils/event', () => ({
   eventDispatcher: { dispatch: vi.fn() },
 }));
 
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getCurrentWindow, getAllWindows } from '@tauri-apps/api/window';
 import { type as osType } from '@tauri-apps/plugin-os';
 import {
   formatAppWindowTitle,
+  tauriHandleOnCloseMainWindow,
   tauriHandleOnCloseWindow,
   tauriHandleToggleFullScreen,
   tauriSetWindowTitle,
@@ -116,6 +117,94 @@ describe('tauriHandleOnCloseWindow', () => {
     expect(win.destroy).not.toHaveBeenCalled();
     vi.advanceTimersByTime(500);
     expect(win.destroy).toHaveBeenCalled();
+  });
+});
+
+describe('tauriHandleOnCloseMainWindow', () => {
+  type ReaderWindow = ReturnType<typeof makeReaderWindow>;
+
+  function makeReaderWindow(label: string, visible: boolean) {
+    return {
+      label,
+      isVisible: vi.fn().mockResolvedValue(visible),
+      destroy: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  function makeMainWindow() {
+    let registered: CloseHandler | undefined;
+    const win = {
+      label: 'main',
+      hide: vi.fn().mockResolvedValue(undefined),
+      onCloseRequested: vi.fn().mockImplementation((handler: CloseHandler) => {
+        registered = handler;
+        return Promise.resolve(() => {});
+      }),
+    };
+    const preventDefault = vi.fn();
+    const trigger = async () => {
+      if (!registered) throw new Error('no handler registered');
+      await registered({ preventDefault });
+    };
+    return { win, trigger, preventDefault };
+  }
+
+  const mockReaders = (readers: ReaderWindow[]) =>
+    vi
+      .mocked(getAllWindows)
+      .mockResolvedValue(readers as unknown as Awaited<ReturnType<typeof getAllWindows>>);
+
+  beforeEach(() => {
+    vi.mocked(getAllWindows).mockResolvedValue([]);
+  });
+
+  test('on Windows with a visible reader, hides the library instead of closing it', async () => {
+    vi.mocked(osType).mockReturnValue('windows');
+    const { win, trigger, preventDefault } = makeMainWindow();
+    vi.mocked(getCurrentWindow).mockReturnValue(
+      win as unknown as ReturnType<typeof getCurrentWindow>,
+    );
+    mockReaders([makeReaderWindow('reader', true)]);
+
+    await tauriHandleOnCloseMainWindow();
+    await trigger();
+
+    expect(preventDefault).toHaveBeenCalled();
+    expect(win.hide).toHaveBeenCalled();
+  });
+
+  test('on Windows with no reader open, lets the library close and destroys a leftover hidden reader', async () => {
+    vi.mocked(osType).mockReturnValue('windows');
+    const { win, trigger, preventDefault } = makeMainWindow();
+    vi.mocked(getCurrentWindow).mockReturnValue(
+      win as unknown as ReturnType<typeof getCurrentWindow>,
+    );
+    const hiddenReader = makeReaderWindow('reader', false);
+    mockReaders([hiddenReader]);
+
+    await tauriHandleOnCloseMainWindow();
+    await trigger();
+
+    expect(preventDefault).not.toHaveBeenCalled();
+    expect(win.hide).not.toHaveBeenCalled();
+    expect(hiddenReader.destroy).toHaveBeenCalled();
+  });
+
+  test('on macOS, does not intercept (Rust close-to-hide owns the main window)', async () => {
+    vi.mocked(osType).mockReturnValue('macos');
+    const { win, trigger, preventDefault } = makeMainWindow();
+    vi.mocked(getCurrentWindow).mockReturnValue(
+      win as unknown as ReturnType<typeof getCurrentWindow>,
+    );
+    const hiddenReader = makeReaderWindow('reader', true);
+    mockReaders([hiddenReader]);
+
+    await tauriHandleOnCloseMainWindow();
+    await trigger();
+
+    expect(preventDefault).not.toHaveBeenCalled();
+    expect(win.hide).not.toHaveBeenCalled();
+    expect(hiddenReader.destroy).not.toHaveBeenCalled();
   });
 });
 

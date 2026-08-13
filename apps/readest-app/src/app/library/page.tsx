@@ -29,6 +29,7 @@ import { getFilename, getFolderImportGroupName, joinScannedPath } from '@/utils/
 import { parseOpenWithFiles } from '@/helpers/openWith';
 import { isTauriAppPlatform } from '@/services/environment';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 import { useEnv } from '@/context/EnvContext';
 import { useThemeStore } from '@/store/themeStore';
@@ -49,6 +50,7 @@ import { SelectedFile, useFileSelector } from '@/hooks/useFileSelector';
 import { SUPPORTED_BOOK_EXTS } from '@/services/constants';
 import {
   tauriHandleClose,
+  tauriHandleOnCloseMainWindow,
   tauriHandleSetAlwaysOnTop,
   tauriHandleToggleFullScreen,
   tauriQuitApp,
@@ -426,6 +428,14 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         // updates from the reader window do NOT propagate to this main
         // window's store. Reload from disk so the library reflects the
         // changes the reader just persisted.
+        const currentWindow = getCurrentWindow();
+        // 方案A 兜底：reader 经系统级关闭（Alt+F4）时会走到这里，此时书库可能
+        // 处于方案A 的隐藏状态。把它带回前台，避免"无可见窗口但进程残留"。
+        // show/unminimize 对已可见窗口是 no-op，正常路径（reader 顶部关闭书籍）
+        // 不 emit 此事件，故不影响既有流程。
+        await currentWindow.show();
+        await currentWindow.unminimize();
+        await currentWindow.setFocus();
         const appService = await envConfig.getAppService();
         const settings = await appService.loadSettings();
         const library = await appService.loadLibraryBooks();
@@ -447,6 +457,20 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     if (!appService?.hasWindow) return;
     const stopWatchdog = startReaderWindowWatchdog();
     return stopWatchdog;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appService?.hasWindow]);
+
+  // 方案A：书库窗口关闭拦截。阅读页打开时点 X 只隐藏书库（保留滚动/选中/搜索/
+  // 筛选/列表等全部状态），阅读页关闭后再 show 回来；无阅读页时才是真关闭（退出）。
+  useEffect(() => {
+    if (!appService?.hasWindow) return;
+    const unlisten = tauriHandleOnCloseMainWindow().catch((error) => {
+      console.info('Failed to register main close handler:', error);
+      return () => {};
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appService?.hasWindow]);
 
