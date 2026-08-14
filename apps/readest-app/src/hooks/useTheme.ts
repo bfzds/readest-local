@@ -51,6 +51,13 @@ export const useTheme = ({ appThemeColor = 'base-100' }: UseThemeProps = {}) => 
       '--overlayer-highlight-blend-mode',
       isBwEink ? 'difference' : isDarkMode ? 'screen' : 'multiply',
     );
+    // 搜索匹配遮罩颜色：主题自适应。浅色琥珀黄（multiply 混合在浅底变暗）、
+    // 深色浅琥珀（screen 混合在深底提亮），由 foliate Overlayer.highlight 的
+    // var(--search-highlight-color) 引用；透明度随 --overlayer-highlight-opacity。
+    document.documentElement.style.setProperty(
+      '--search-highlight-color',
+      isDarkMode ? '#f59e0b' : '#fbbf24',
+    );
     document.documentElement.style.setProperty(
       '--bg-texture-blend-mode',
       isDarkMode ? 'lighten' : 'multiply',
