@@ -138,6 +138,7 @@ describe('tauriHandleOnCloseWindow', () => {
 
     // 保存挂起 → 短时内不销毁（不再有固定 500ms 宽限提前销毁）
     await vi.advanceTimersByTimeAsync(1000);
+    expect(resolveSave).toBeDefined();
     expect(win.destroy).not.toHaveBeenCalled();
     // 超时兜底（SAVE_DESTROY_TIMEOUT_MS=5000）→ 销毁，防止窗口残留
     await vi.advanceTimersByTimeAsync(5000);
