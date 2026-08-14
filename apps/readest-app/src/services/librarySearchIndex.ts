@@ -231,13 +231,18 @@ export const buildSearchIndexNodes = (
     }
   };
   walk(toc, null, 0);
-  for (const [index, node] of nodes.entries()) {
-    for (let next = index + 1; next < nodes.length; next++) {
-      if (nodes[next]!.depth <= node.depth) {
-        node.sectionEnd = Math.max(node.sectionStart, nodes[next]!.sectionStart - 1);
-        break;
-      }
+  // SF1: 单调栈 O(n) 求每个节点右侧第一个 depth <= 自身的节点，用它决定
+  // sectionEnd。原朴素双循环 O(n²)，2,000 章 TOC 约 200 万次比较。栈顶的
+  // depth 一旦被当前节点（更浅或同级）"盖住"，其 sectionEnd 即由当前节点
+  // 的 sectionStart-1 决定，与朴素扫描语义一致。
+  const stack: number[] = [];
+  for (let i = 0; i < nodes.length; i++) {
+    const currentDepth = nodes[i]!.depth;
+    while (stack.length > 0 && nodes[stack[stack.length - 1]!]!.depth >= currentDepth) {
+      const prev = stack.pop()!;
+      nodes[prev]!.sectionEnd = Math.max(nodes[prev]!.sectionStart, nodes[i]!.sectionStart - 1);
     }
+    stack.push(i);
   }
   return nodes;
 };

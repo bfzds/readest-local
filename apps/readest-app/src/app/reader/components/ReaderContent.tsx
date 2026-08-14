@@ -160,7 +160,9 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
       emitTo('main', 'reader-window-alive', { label: currentWindow.label }).catch(() => {});
     };
     heartbeat();
-    const timer = setInterval(heartbeat, 3000);
+    // 心跳放宽到 10s（P2-3）：隐藏 reader 窗口也持续发，减少后台 IPC 频率；
+    // 看门狗 ZOMBIE_TIMEOUT_MS=20s 仍覆盖 10s 间隔，误杀风险不变。
+    const timer = setInterval(heartbeat, 10000);
     return () => clearInterval(timer);
   }, [appService?.hasWindow]);
 

@@ -436,23 +436,30 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
     // config. Skip the bookDataStore write entirely when not primary to spare
     // its subscribers a re-render.
     if (viewState.isPrimary) {
-      useBookDataStore.setState((state) => {
-        const existing = state.booksData[id];
-        if (!existing) return state;
-        return {
-          booksData: {
-            ...state.booksData,
-            [id]: {
-              ...existing,
-              config: {
-                ...existing.config,
-                progress,
-                location,
-              } as BookConfig,
+      const existing = useBookDataStore.getState().booksData[id];
+      // NF3: 仅在 location（CFI）变化时写 bookDataStore——翻页动画期间同页
+      // 各帧 location 相同，原先每帧 setState 触发 ~26 处无 selector 订阅的
+      // 组件整树重渲。location 同时是 useProgressAutoSave 的持久化键，同一
+      // 位置进度稳定，故"变化才写"不丢持久化（翻页/跳转时 location 必变）。
+      if (existing && existing.config?.location !== location) {
+        useBookDataStore.setState((state) => {
+          const current = state.booksData[id];
+          if (!current) return state;
+          return {
+            booksData: {
+              ...state.booksData,
+              [id]: {
+                ...current,
+                config: {
+                  ...current.config,
+                  progress,
+                  location,
+                } as BookConfig,
+              },
             },
-          },
-        };
-      });
+          };
+        });
+      }
     }
 
     // Write progress to the standalone store. This is the only setState on

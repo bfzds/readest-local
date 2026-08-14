@@ -5,6 +5,7 @@ import { migrate } from '@/services/database/migrate';
 import { getMigrations } from '@/services/database/migrations';
 import {
   beginSearchIndex,
+  buildSearchIndexNodes,
   completeSearchIndex,
   isSearchIndexFresh,
   readSearchIndexMeta,
@@ -140,5 +141,37 @@ describe('completeSearchIndex 完整性校验（B7）', () => {
     await completeSearchIndex(db, 2);
     const meta = await readSearchIndexMeta(db);
     expect(meta!.complete).toBe(true);
+  });
+});
+
+describe('buildSearchIndexNodes 的 sectionEnd 计算（SF1 等价性）', () => {
+  const resolveSection = (href: string) => ({ a: 0, a1: 1, a2: 2, b: 3, b1: 4 })[href] ?? undefined;
+  const toc = [
+    {
+      label: 'A',
+      href: 'a',
+      subitems: [
+        { label: 'A1', href: 'a1' },
+        { label: 'A2', href: 'a2' },
+      ],
+    },
+    { label: 'B', href: 'b', subitems: [{ label: 'B1', href: 'b1' }] },
+  ];
+  const nodes = buildSearchIndexNodes(toc, resolveSection, 5);
+  const byLabel = Object.fromEntries(nodes.map((n) => [n.label, n]));
+
+  it('每个节点 sectionEnd 由右侧第一个同/更浅深度节点决定（单遍栈与朴素双循环等价）', () => {
+    expect(byLabel['A']!.sectionEnd).toBe(2); // 右侧第一个 depth<=0 = B(start 3)
+    expect(byLabel['A1']!.sectionEnd).toBe(1); // 右侧第一个 depth<=1 = A2(start 2)
+    expect(byLabel['A2']!.sectionEnd).toBe(2); // 右侧第一个 depth<=1 = B(start 3)
+    expect(byLabel['B']!.sectionEnd).toBe(4); // 无更浅 → total-1
+    expect(byLabel['B1']!.sectionEnd).toBe(4); // 最后一个 → total-1
+  });
+
+  it('节点按前序排列，parentId 指向上级', () => {
+    expect(nodes.map((n) => n.label)).toEqual(['A', 'A1', 'A2', 'B', 'B1']);
+    expect(byLabel['A1']!.parentId).toBe(byLabel['A']!.nodeId);
+    expect(byLabel['B1']!.parentId).toBe(byLabel['B']!.nodeId);
+    expect(byLabel['A']!.parentId).toBeNull();
   });
 });
