@@ -40,7 +40,6 @@ import {
 } from '@/utils/sel';
 import { eventDispatcher } from '@/utils/event';
 import { findTocItemBS } from '@/services/nav';
-import { throttle } from '@/utils/throttle';
 import {
   beginGesture,
   createDeferredActionState,
@@ -289,18 +288,15 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
   );
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const handleDismissPopup = useCallback(
-    throttle(() => {
-      setSelection(null);
-      setShowAnnotPopup(false);
-      setShowAnnotationNotes(false);
-      setAnnotationNotes([]);
-      setShowDictionaryPopup(false);
-      setShowProofreadPopup(false);
-      setEditingAnnotation(null);
-    }, 500),
-    [],
-  );
+  const handleDismissPopup = useCallback(() => {
+    setSelection(null);
+    setShowAnnotPopup(false);
+    setShowAnnotationNotes(false);
+    setAnnotationNotes([]);
+    setShowDictionaryPopup(false);
+    setShowProofreadPopup(false);
+    setEditingAnnotation(null);
+  }, []);
 
   const {
     isTextSelected,

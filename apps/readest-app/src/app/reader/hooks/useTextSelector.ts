@@ -466,6 +466,15 @@ export const useTextSelector = (
         isUpToPopup.current = true;
         makeSelection(sel, index, true, false, trimPoint);
       }
+    } else if (isTextSelected.current) {
+      // The selection was cleared during the pointer drag — a click on blank
+      // space after selecting text. Desktop defers selectionchange to pointerup
+      // (see handleSelectionchange), so without this branch the popup would
+      // stay open after the text highlight is gone; the next tap would be eaten
+      // by the isUpToPopup latch and the popup lingered. Mirrors the touch end
+      // path in handleTouchEnd.
+      handleDismissPopup();
+      isTextSelected.current = false;
     }
   };
 
