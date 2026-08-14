@@ -22,6 +22,7 @@ const GroupItem: React.FC<GroupItemProps> = ({ mode, group, isSelectMode, groupS
   const { settings } = useSettingsStore();
   const iconSize15 = useResponsiveSize(15);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const resetScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(false);
 
@@ -49,11 +50,18 @@ const GroupItem: React.FC<GroupItemProps> = ({ mode, group, isSelectMode, groupS
     checkScrollArrows();
     if (mode === 'list' && scrollContainerRef.current) {
       const container = scrollContainerRef.current;
-      setTimeout(() => {
+      // B15：记下 timer 供 cleanup，卸载后不再触发已卸载组件的样式/滚动操作。
+      resetScrollTimerRef.current = setTimeout(() => {
         container.style.transform = 'translateZ(0)';
         container.scrollLeft = 0;
       }, 0);
     }
+    return () => {
+      if (resetScrollTimerRef.current) {
+        clearTimeout(resetScrollTimerRef.current);
+        resetScrollTimerRef.current = null;
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, group.books.length, scrollContainerRef.current]);
 

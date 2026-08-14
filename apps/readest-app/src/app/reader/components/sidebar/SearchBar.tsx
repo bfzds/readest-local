@@ -16,7 +16,12 @@ import {
   searchLibraryBooks,
   type LibrarySearchSession,
 } from '@/services/librarySearchService';
-import { BookSearchConfig, BookSearchMatch, BookSearchResult } from '@/types/book';
+import {
+  BookSearchConfig,
+  BookSearchMatch,
+  BookSearchResult,
+  LibrarySearchSectionResult,
+} from '@/types/book';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { debounce } from '@/utils/debounce';
 import { isCJKStr } from '@/utils/lang';
@@ -211,7 +216,11 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
       // Fall back to searching the whole book rather than throwing.
       const sectionIndex = searchConfig.scope === 'section' ? progress?.section.current : undefined;
 
-      const results: BookSearchResult[] = [];
+      // B10：累积带 text-offset locator 的原始结果；CFI 解析推迟到搜索结束
+      // 后一次性完成（resolveSearchResultCfis 按 section 分组，每 section 只
+      // createDocument 一次），避免逐结果重开书/重复加载 text-walker，也让
+      // 搜索流不被解析阻塞。
+      const rawResults: LibrarySearchSectionResult[] = [];
       const stopped = () =>
         controller.signal.aborted ||
         getSearchStatus(bookKey) === 'terminated' ||
@@ -228,28 +237,8 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
           if (event.type === 'progress') {
             setSearchProgress(bookKey, event.bookProgress);
           } else if (event.type === 'result') {
-            // Results carry text-offset locators; resolve them to CFIs section
-            // by section so the list and in-page highlights can address the DOM.
-            const resolved = await resolveSearchResultCfis(
-              session,
-              book,
-              event.result.subitems.map((match) => match.locator),
-            );
             if (stopped()) return;
-            const subitems: BookSearchMatch[] = [];
-            event.result.subitems.forEach((match, index) => {
-              const entry = resolved[index];
-              if (!entry) return;
-              subitems.push({
-                cfi: entry.cfi,
-                ...(entry.cfis ? { cfis: entry.cfis } : {}),
-                excerpt: match.excerpt,
-              });
-            });
-            if (subitems.length) {
-              results.push({ index: event.result.index, label: event.result.label, subitems });
-              setSearchResults(bookKey, [...results]);
-            }
+            rawResults.push(event.result);
           } else if (event.type === 'book-error' || event.type === 'book-skipped') {
             const code = event.type === 'book-error' ? event.code : undefined;
             const message =
@@ -270,9 +259,8 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
             return;
           } else if (event.type === 'book-completed') {
             setSearchStatus(bookKey, 'completed');
-            setSearchResults(bookKey, [...results]);
             setSearchProgress(bookKey, 1);
-            if (results.length > 0) {
+            if (rawResults.length > 0) {
               addToHistory(term);
             }
             console.log('search done');
@@ -280,10 +268,43 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
           await new Promise((resolve) => setTimeout(resolve, 0));
         }
 
+        // B10：搜索完成后一次性把所有 locator 解析为 CFI，再显示结果并喂给
+        // foliate 做 in-page 高亮。resolveSearchResultCfis 内部按 section 分组，
+        // 每个涉及 section 只 createDocument 一次；搜索过程不被解析阻塞。
+        let cfiResults: BookSearchResult[] = [];
+        if (!stopped() && rawResults.length > 0) {
+          const resolved = await resolveSearchResultCfis(
+            session,
+            book,
+            rawResults.flatMap((r) => r.subitems.map((m) => m.locator)),
+          );
+          let pos = 0;
+          cfiResults = rawResults
+            .map((r): BookSearchResult | null => {
+              const subitems: BookSearchMatch[] = [];
+              for (const match of r.subitems) {
+                const entry = resolved[pos++];
+                if (!entry) continue;
+                subitems.push({
+                  cfi: entry.cfi,
+                  ...(entry.cfis ? { cfis: entry.cfis } : {}),
+                  excerpt: match.excerpt,
+                });
+              }
+              return subitems.length ? { index: r.index, label: r.label, subitems } : null;
+            })
+            .filter((r): r is BookSearchResult => r != null);
+          if (!stopped()) setSearchResults(bookKey, cfiResults);
+        }
+
         // Replay the resolved matches through the view so every CFI gets its
         // search highlight; the view does no searching of its own here.
-        if (!stopped() && results.length > 0) {
-          for await (const item of view.search({ ...searchConfig, query: term, results })) {
+        if (!stopped() && cfiResults.length > 0) {
+          for await (const item of view.search({
+            ...searchConfig,
+            query: term,
+            results: cfiResults,
+          })) {
             if (stopped()) return;
             if (item === 'done') break;
           }

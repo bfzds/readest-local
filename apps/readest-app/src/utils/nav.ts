@@ -64,7 +64,9 @@ export const showReaderWindow = async (
   if (existing) {
     const cfi = params.get('cfi') ?? undefined;
     const highlight = params.get('highlight') === 'search' ? 'search' : undefined;
-    await emitTo(READER_WINDOW_LABEL, 'open-book', { bookHash: bookIds[0], cfi, highlight });
+    await emitTo(READER_WINDOW_LABEL, 'open-book', { bookHash: bookIds[0], cfi, highlight }).catch(
+      () => {},
+    );
     await existing.show();
     await existing.setFocus();
     return;

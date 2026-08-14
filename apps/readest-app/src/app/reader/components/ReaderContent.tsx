@@ -118,12 +118,12 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
     window.addEventListener('beforeunload', handleCloseBooks);
     eventDispatcher.on('beforereload', handleCloseBooks);
     eventDispatcher.on('close-reader', handleCloseReaderToLibrary);
-    eventDispatcher.on('quit-app', handleCloseBooks);
+    eventDispatcher.on('quit-app', saveAndCloseBooks);
     return () => {
       window.removeEventListener('beforeunload', handleCloseBooks);
       eventDispatcher.off('beforereload', handleCloseBooks);
       eventDispatcher.off('close-reader', handleCloseReaderToLibrary);
-      eventDispatcher.off('quit-app', handleCloseBooks);
+      eventDispatcher.off('quit-app', saveAndCloseBooks);
       unlistenOnCloseWindow?.then((fn) => fn());
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -176,7 +176,10 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
       }
     });
     return () => {
-      void unlisten.then((fn) => fn());
+      void unlisten.then(
+        (fn) => fn(),
+        () => {},
+      );
     };
   }, [appService?.hasWindow]);
 
@@ -225,13 +228,18 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
 
   // Also wired directly to beforeunload/quit-app/window-close, which pass an
   // event object: only a literal `true` keeps TTS alive.
-  const handleCloseBooks = throttle(async (keepTTSAlive?: unknown) => {
+  // B13：拆出可等待的原始保存流程。quit-app 走 eventDispatcher.dispatch（会
+  // await 异步 listener），若注册 throttle 包装（返回 void）则 tauriQuitApp 的
+  // exit(0) 会在保存完成前杀进程。beforeunload / window-close 是同步/节流
+  // 路径，仍用 throttle 包装防重入。
+  const saveAndCloseBooks = async (keepTTSAlive?: unknown) => {
     const settings = useSettingsStore.getState().settings;
     await Promise.all(
       bookKeys.map(async (key) => await saveConfigAndCloseBook(key, keepTTSAlive === true)),
     );
     await saveSettings(envConfig, settings);
-  }, 200);
+  };
+  const handleCloseBooks = throttle(saveAndCloseBooks, 200);
 
   const handleCloseBooksToLibrary = async () => {
     // SPA navigation in the main window (or on web) keeps the webview alive:

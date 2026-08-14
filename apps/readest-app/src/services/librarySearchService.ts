@@ -350,7 +350,23 @@ export const createLibrarySearchSession = (appService: LibrarySearchAppService) 
     return pending;
   };
 
+  // B14：长驻 session（库页搜索 UI 保持打开）期间 turso 无 auto-checkpoint，
+  // search.db-wal 只会在 close() 时折叠。惰性定期 checkpoint 打开的库，防止
+  // -wal 侧车文件无限增长、书目录的文件级拷贝/同步漏数据。幂等、不阻塞。
+  let lastWalCheckpointAt = 0;
+  const WAL_CHECKPOINT_INTERVAL_MS = 30_000;
+  const checkpointOpenDbs = () => {
+    const dbs = [...indexDbs.values()];
+    void Promise.all(
+      dbs.map((pending) => pending.then((db) => db && checkpointSearchIndex(db)).catch(() => {})),
+    );
+  };
+
   const getIndexDb = (book: Book): Promise<DatabaseService | null> => {
+    if (Date.now() - lastWalCheckpointAt >= WAL_CHECKPOINT_INTERVAL_MS) {
+      lastWalCheckpointAt = Date.now();
+      checkpointOpenDbs();
+    }
     const existing = indexDbs.get(book.hash);
     if (existing) {
       indexDbs.delete(book.hash);

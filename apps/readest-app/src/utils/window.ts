@@ -80,7 +80,7 @@ export const tauriHandleOnCloseWindow = async (callback: () => void) => {
     // never strand a reader window whose content is already gone (blank
     // window). The 500ms is a grace period for the async save to land.
     if (isReader) {
-      setTimeout(() => currentWindow.destroy(), 500);
+      setTimeout(() => currentWindow.destroy().catch(() => {}), 500);
     }
     try {
       await callback();
