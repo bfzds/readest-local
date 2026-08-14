@@ -270,6 +270,11 @@ export const writeSearchIndexNodes = async (
 
 const escapeLike = (value: string) => value.replace(/[\\%_]/g, (char) => `\\${char}`);
 
+// SF13: LIKE 预筛候选上限，防止单字中文查询命中全部 section 时全量载入+扫描。
+// 结果上限（每本 500 / 全局 2000）本就会截断超限产出，故候选 LIMIT 不额外丢
+// 匹配；>2000 节的书罕见。
+const SEARCH_CANDIDATE_LIMIT = 2000;
+
 export const loadSearchIndexSections = (db: DatabaseService): Promise<SearchIndexSection[]> =>
   db.select<SectionRow>('SELECT idx, label, text FROM search_sections ORDER BY idx');
 
@@ -285,7 +290,7 @@ export const loadSearchIndexCandidates = (
   const folded = foldValue(query, FOLD_OPTIONS);
   if (!folded) return loadSearchIndexSections(db);
   return db.select<SectionRow>(
-    "SELECT idx, label, text FROM search_sections WHERE COALESCE(folded, text) LIKE ? ESCAPE '\\' ORDER BY idx",
+    `SELECT idx, label, text FROM search_sections WHERE COALESCE(folded, text) LIKE ? ESCAPE '\\' ORDER BY idx LIMIT ${SEARCH_CANDIDATE_LIMIT}`,
     [`%${escapeLike(folded)}%`],
   );
 };
