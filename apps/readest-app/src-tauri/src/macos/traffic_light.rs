@@ -1,6 +1,7 @@
 use dispatch2::DispatchQueue;
 use objc::{msg_send, sel, sel_impl};
 use rand::{distributions::Alphanumeric, Rng};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tauri::{
     command,
     plugin::{Builder, TauriPlugin},
@@ -10,8 +11,11 @@ use tauri::{
 // Tracks visibility + last-known header height for this app so resize /
 // fullscreen-exit callbacks can re-apply the same layout without an
 // extra IPC round-trip from the frontend.
-static mut TRAFFIC_LIGHTS_VISIBLE: bool = true;
-static mut TRAFFIC_LIGHT_HEADER_HEIGHT: f64 = DEFAULT_HEADER_HEIGHT;
+// RF1: 此前用 `static mut`，由 IPC command 线程写（set_traffic_lights）、AppKit
+// 主线程回调读（resize/fullscreen/ready），跨线程读写是 Rust 数据竞争 UB。改
+// 原子类型（f64 用位模式存 AtomicU64）消除 UB，Relaxed 排序足够（仅状态传递）。
+static TRAFFIC_LIGHTS_VISIBLE: AtomicBool = AtomicBool::new(true);
+static TRAFFIC_LIGHT_HEADER_HEIGHT: AtomicU64 = AtomicU64::new(DEFAULT_HEADER_HEIGHT.to_bits());
 
 /// AppKit's natural rest position for `NSWindowButton.origin.y` inside
 /// the title-bar container. This is the per-OS offset Apple shifted in
@@ -51,12 +55,11 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
 
 #[command]
 pub fn set_traffic_lights(window: Window, visible: bool, header_height: f64) {
+    TRAFFIC_LIGHTS_VISIBLE.store(visible, Ordering::Relaxed);
+    if header_height > 0.0 {
+        TRAFFIC_LIGHT_HEADER_HEIGHT.store(header_height.to_bits(), Ordering::Relaxed);
+    }
     unsafe {
-        TRAFFIC_LIGHTS_VISIBLE = visible;
-        if header_height > 0.0 {
-            TRAFFIC_LIGHT_HEADER_HEIGHT = header_height;
-        }
-
         let ns_window = match window.ns_window() {
             Ok(handle) => handle,
             Err(_) => return,
@@ -131,7 +134,7 @@ fn position_traffic_lights(ns_window_handle: UnsafeWindowHandle, visible: bool) 
         let title_bar_frame_height = if visible {
             let (button_height, button_origin_y) = measure_close_button(ns_window_handle.0);
             let y = compute_traffic_light_y(
-                TRAFFIC_LIGHT_HEADER_HEIGHT,
+                f64::from_bits(TRAFFIC_LIGHT_HEADER_HEIGHT.load(Ordering::Relaxed)),
                 button_height,
                 button_origin_y,
             );
@@ -200,7 +203,7 @@ pub fn setup_traffic_light_positioner<R: Runtime>(window: Window<R>) {
     unsafe {
         position_traffic_lights(
             UnsafeWindowHandle(window.ns_window().expect("Failed to create window handle")),
-            TRAFFIC_LIGHTS_VISIBLE,
+            TRAFFIC_LIGHTS_VISIBLE.load(Ordering::Relaxed),
         );
     }
 
@@ -249,7 +252,7 @@ pub fn setup_traffic_light_positioner<R: Runtime>(window: Window<R>) {
                     {
                         position_traffic_lights(
                             UnsafeWindowHandle(id as *mut std::ffi::c_void),
-                            TRAFFIC_LIGHTS_VISIBLE,
+                            TRAFFIC_LIGHTS_VISIBLE.load(Ordering::Relaxed),
                         );
                     }
                 });
@@ -382,7 +385,7 @@ pub fn setup_traffic_light_positioner<R: Runtime>(window: Window<R>) {
                     {
                         position_traffic_lights(
                             UnsafeWindowHandle(id as *mut std::ffi::c_void),
-                            TRAFFIC_LIGHTS_VISIBLE,
+                            TRAFFIC_LIGHTS_VISIBLE.load(Ordering::Relaxed),
                         );
                     }
                 });

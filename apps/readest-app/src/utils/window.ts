@@ -6,6 +6,10 @@ import { eventDispatcher } from './event';
 
 const APP_NAME = 'Readest';
 
+// NF2: reader 关闭时保存完成后销毁的超时兜底。保存慢于此值（挂起）时仍销毁
+// 窗口，防止窗口残留；正常保存远快于此。
+const SAVE_DESTROY_TIMEOUT_MS = 5000;
+
 /**
  * The OS window title, e.g. `Readest - The Hobbit`. It is never drawn in the
  * UI — desktop windows are either decorationless (Windows/Linux) or hide their
@@ -76,24 +80,26 @@ export const tauriHandleOnCloseWindow = async (callback: () => void) => {
       return;
     }
     const isReader = currentWindow.label.startsWith('reader');
-    // Schedule the destroy up-front: a hung or failed save/emit below must
-    // never strand a reader window whose content is already gone (blank
-    // window). The 500ms is a grace period for the async save to land.
+    // NF2: 原固定 500ms destroy 宽限与异步保存赛跑——保存慢于 500ms 会被截断
+    // 丢书签/进度。改为保存完成后销毁；保存挂起时 SAVE_DESTROY_TIMEOUT_MS 超时
+    // 兜底，防止窗口残留。
     if (isReader) {
-      setTimeout(() => currentWindow.destroy().catch(() => {}), 500);
+      const finish = Promise.resolve()
+        .then(() => callback())
+        .catch((error) => console.error('Error saving on window close:', error))
+        .then(() =>
+          emitTo('main', 'close-reader-window', { label: currentWindow.label }).catch(() => {}),
+        );
+      const bail = new Promise<void>((resolve) => setTimeout(resolve, SAVE_DESTROY_TIMEOUT_MS));
+      void Promise.race([finish, bail]).then(() => currentWindow.destroy().catch(() => {}));
+      return;
     }
     try {
       await callback();
     } catch (error) {
       console.error('Error saving on window close:', error);
     }
-    if (isReader) {
-      try {
-        await emitTo('main', 'close-reader-window', { label: currentWindow.label });
-      } catch (error) {
-        console.error('Error notifying main window:', error);
-      }
-    } else if (currentWindow.label === 'main') {
+    if (currentWindow.label === 'main') {
       try {
         await currentWindow.destroy();
       } catch (error) {

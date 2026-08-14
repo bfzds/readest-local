@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  isSafeBackupEntry,
   mergeBookConfigs,
   mergeBookMetadata,
   reviveRestoredBooks,
@@ -282,5 +283,29 @@ describe('reviveRestoredBooks', () => {
     reviveRestoredBooks(revived, NOW);
     expect(revived[0]!.book.downloadedAt).toBe(NOW);
     expect(revived[0]!.book.coverDownloadedAt).toBe(NOW);
+  });
+});
+
+describe('isSafeBackupEntry (SF11 恢复路径校验)', () => {
+  it('允许正常的相对路径', () => {
+    expect(isSafeBackupEntry('abc123/book.epub')).toBe(true);
+    expect(isSafeBackupEntry('abc123/config.json')).toBe(true);
+    expect(isSafeBackupEntry('settings.json')).toBe(true);
+  });
+
+  it('拒绝 ../ 目录逃逸', () => {
+    expect(isSafeBackupEntry('../evil.txt')).toBe(false);
+    expect(isSafeBackupEntry('abc123/../../evil.txt')).toBe(false);
+    expect(isSafeBackupEntry('abc123/..\\evil.txt')).toBe(false);
+  });
+
+  it('拒绝绝对路径', () => {
+    expect(isSafeBackupEntry('/etc/passwd')).toBe(false);
+    expect(isSafeBackupEntry('\\Windows\\System32')).toBe(false);
+  });
+
+  it('拒绝盘符前缀', () => {
+    expect(isSafeBackupEntry('C:/Windows/evil.txt')).toBe(false);
+    expect(isSafeBackupEntry('c:\\tmp\\x')).toBe(false);
   });
 });

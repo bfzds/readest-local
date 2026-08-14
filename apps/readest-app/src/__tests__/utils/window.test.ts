@@ -103,7 +103,7 @@ describe('tauriHandleOnCloseWindow', () => {
     expect(win.destroy).toHaveBeenCalled();
   });
 
-  test('on macOS, dedicated reader windows still destroy after 500ms', async () => {
+  test('on macOS, reader windows destroy after the save completes (no fixed 500ms grace)', async () => {
     vi.mocked(osType).mockReturnValue('macos');
     const { win, trigger } = makeWindow('reader-0');
     vi.mocked(getCurrentWindow).mockReturnValue(
@@ -113,9 +113,34 @@ describe('tauriHandleOnCloseWindow', () => {
     const callback = vi.fn();
     await tauriHandleOnCloseWindow(callback);
     await trigger();
+    await vi.advanceTimersByTimeAsync(0); // flush the finish microtask chain
 
+    expect(callback).toHaveBeenCalled();
+    expect(win.destroy).toHaveBeenCalled();
+  });
+
+  test('on macOS, a hung save still destroys the reader window via timeout fallback', async () => {
+    vi.mocked(osType).mockReturnValue('macos');
+    const { win, trigger } = makeWindow('reader-0');
+    vi.mocked(getCurrentWindow).mockReturnValue(
+      win as unknown as ReturnType<typeof getCurrentWindow>,
+    );
+
+    let resolveSave: (() => void) | undefined;
+    const callback = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    await tauriHandleOnCloseWindow(callback);
+    await trigger();
+
+    // 保存挂起 → 短时内不销毁（不再有固定 500ms 宽限提前销毁）
+    await vi.advanceTimersByTimeAsync(1000);
     expect(win.destroy).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(500);
+    // 超时兜底（SAVE_DESTROY_TIMEOUT_MS=5000）→ 销毁，防止窗口残留
+    await vi.advanceTimersByTimeAsync(5000);
     expect(win.destroy).toHaveBeenCalled();
   });
 });

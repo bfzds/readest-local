@@ -19,7 +19,11 @@ pub async fn read_dir(
     let scope = app.fs_scope();
     let path_buf = std::path::PathBuf::from(&path);
 
-    if !scope.is_allowed(&path_buf) && !path_buf.to_string_lossy().contains("Readest") {
+    // RF2: 仅依 fs_scope 校验。此前 `!contains("Readest")` 会把任何路径字符串
+    // 含 "Readest" 子串的目录（如 C:\xx\MyReadestData\...）直接放行、绕过
+    // scope。当前 capabilities 的 fs:read-all 已使 scope 全开，移除后功能不受
+    // 影响；未来若收紧权限也不会再被子串绕过。
+    if !scope.is_allowed(&path_buf) {
         return Err("Permission denied: Path not in filesystem scope".to_string());
     }
 

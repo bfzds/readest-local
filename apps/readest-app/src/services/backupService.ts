@@ -387,6 +387,14 @@ export function validateBackupStructure(entryNames: string[]): boolean {
   return entryNames.some((name) => name === getLibraryFilename());
 }
 
+/** SF11: 备份 entry 名必须是安全相对路径（`<dir>/<file>`），拒绝 `..` 逃逸、
+ * 绝对路径与盘符前缀；否则不可信备份 zip 恢复时可越界写任意文件。 */
+export const isSafeBackupEntry = (filename: string): boolean => {
+  if (filename.startsWith('/') || filename.startsWith('\\')) return false;
+  if (/^[A-Za-z]:[\\/]/.test(filename)) return false;
+  return !filename.split(/[/\\]/).includes('..');
+};
+
 /**
  * Restore library from a zip backup, merging with existing data.
  * - Override book files and cover images for existing books
@@ -415,6 +423,14 @@ export async function restoreFromBackupZip(
 
   // Filter to file entries only (directories don't have getData)
   const fileEntries = entries.filter((e) => !e.directory);
+
+  // SF11: 统一校验所有待恢复 entry 名，发现越界路径立即拒绝整个恢复，避免
+  // writeFile(entry.filename) 把数据写到 Books 目录之外（任意文件写入）。
+  const hasUnsafeEntry = fileEntries.some((e) => !isSafeBackupEntry(e.filename));
+  if (hasUnsafeEntry) {
+    await reader.close();
+    throw new Error('Backup contains unsafe paths; refusing to restore');
+  }
 
   // Read backup library.json
   const libraryEntry = fileEntries.find((e) => e.filename === getLibraryFilename());
