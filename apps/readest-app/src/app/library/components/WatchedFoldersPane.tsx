@@ -6,7 +6,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { getDirFromUILanguage } from '@/utils/rtl';
 import { getFilename } from '@/utils/path';
 import BoxedList from '@/components/settings/primitives/BoxedList';
-import SettingsSelect from '@/components/settings/primitives/SettingsSelect';
+import AdwaitaSelect from '@/components/settings/primitives/AdwaitaSelect';
 
 export interface WatchedFolder {
   /** Absolute path, exactly as stored in `settings.autoImportFolders`. */
@@ -83,9 +83,9 @@ const WatchedFoldersPane: React.FC<WatchedFoldersPaneProps> = ({
                 </div>
                 <div className='text-base-content/65 truncate text-[0.85em]'>{folder.path}</div>
               </div>
-              <SettingsSelect
+              <AdwaitaSelect
                 value={folder.flatten ? 'flatten' : 'keep'}
-                onChange={(e) => onSetFlatten(folder.path, e.target.value === 'flatten')}
+                onChange={(v) => onSetFlatten(folder.path, v === 'flatten')}
                 options={[
                   { value: 'keep', label: _('Groups') },
                   { value: 'flatten', label: _('Flat') },

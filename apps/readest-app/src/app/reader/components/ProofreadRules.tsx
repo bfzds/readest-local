@@ -31,6 +31,7 @@ import { ProofreadRule, ProofreadScope } from '@/types/book';
 import { eventDispatcher } from '@/utils/event';
 import Dialog from '@/components/Dialog';
 import { SectionTitle } from '@/components/settings/primitives';
+import AdwaitaSelect from '@/components/settings/primitives/AdwaitaSelect';
 
 const dialogId = 'proofread_rules_window';
 
@@ -593,16 +594,16 @@ export const ProofreadRulesManager: React.FC = () => {
               <div className='flex flex-wrap items-center gap-x-5 gap-y-3 pt-0.5'>
                 <label className='flex items-center gap-2'>
                   <span className='text-base-content/70 text-sm'>{_('Scope:')}</span>
-                  <select
-                    className='select select-sm select-bordered eink-bordered min-h-9 h-9'
+                  <AdwaitaSelect
+                    buttonClassName='min-h-9 h-9 !border !border-base-300 !bg-transparent'
                     value={addScope}
-                    onChange={(e) =>
-                      setAddScope(e.target.value as Exclude<ProofreadScope, 'selection'>)
-                    }
-                  >
-                    <option value='book'>{_('Book')}</option>
-                    <option value='library'>{_('Library')}</option>
-                  </select>
+                    onChange={(v) => setAddScope(v as Exclude<ProofreadScope, 'selection'>)}
+                    ariaLabel={_('Scope:')}
+                    options={[
+                      { value: 'book', label: _('Book') },
+                      { value: 'library', label: _('Library') },
+                    ]}
+                  />
                 </label>
                 <label className='flex cursor-pointer items-center gap-2'>
                   <span className='text-base-content/70 text-sm'>{_('Regex:')}</span>

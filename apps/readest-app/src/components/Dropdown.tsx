@@ -27,6 +27,8 @@ interface DropdownProps {
   disabled?: boolean;
   onToggle?: (isOpen: boolean) => void;
   showTooltip?: boolean;
+  /** Optional data-testid forwarded to the toggle button (for tests). */
+  testId?: string;
 }
 
 type MenuItemProps = {
@@ -80,6 +82,7 @@ const Dropdown: React.FC<DropdownProps> = ({
   disabled,
   onToggle,
   showTooltip = true,
+  testId,
 }) => {
   const dropdownId = useId();
   const context = useDropdownContext();
@@ -176,6 +179,7 @@ const Dropdown: React.FC<DropdownProps> = ({
             isFocused && isOpen && 'bg-base-300/50',
             buttonClassName,
           )}
+          data-testid={testId}
           onClick={toggleDropdown}
           onKeyDown={handleKeyDown}
         >

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import ImportFromFolderDialog from '@/app/library/components/ImportFromFolderDialog';
 import type { WatchedFolder } from '@/app/library/components/WatchedFoldersPane';
+import { DropdownProvider } from '@/context/DropdownContext';
 
 vi.mock('@/hooks/useTranslation', () => ({
   useTranslation: () => (key: string, options?: Record<string, string | number>) => {
@@ -51,7 +52,11 @@ const setup = (overrides: Partial<React.ComponentProps<typeof ImportFromFolderDi
     onSetWatchedFolderFlatten: vi.fn(),
     ...overrides,
   };
-  const utils = render(<ImportFromFolderDialog {...props} />);
+  const utils = render(
+    <DropdownProvider>
+      <ImportFromFolderDialog {...props} />
+    </DropdownProvider>,
+  );
   return { ...utils, props };
 };
 
@@ -89,17 +94,16 @@ describe('Import-from-Folder dialog: watched folders pane', () => {
     expect(screen.getByText('Books')).toBeTruthy();
     expect(screen.getByText('Comics')).toBeTruthy();
     const selects = screen.getAllByLabelText('Folder Structure');
-    expect((selects[0] as HTMLSelectElement).value).toBe('keep');
-    expect((selects[1] as HTMLSelectElement).value).toBe('flatten');
+    expect(selects[0]!.textContent).toContain('Groups');
+    expect(selects[1]!.textContent).toContain('Flat');
   });
 
   it('reports a structure change for the right folder', () => {
     const { props } = setup();
     openPane();
 
-    fireEvent.change(screen.getAllByLabelText('Folder Structure')[1]!, {
-      target: { value: 'keep' },
-    });
+    fireEvent.click(screen.getAllByLabelText('Folder Structure')[1]!);
+    fireEvent.click(screen.getByRole('option', { name: 'Groups' }));
 
     expect(props.onSetWatchedFolderFlatten).toHaveBeenCalledWith('/Users/me/Comics', false);
   });
@@ -129,9 +133,8 @@ describe('Import-from-Folder dialog: watched folders pane', () => {
   it('keeps the import form in sync when the current folder changes structure', () => {
     const { props } = setup();
     openPane();
-    fireEvent.change(screen.getAllByLabelText('Folder Structure')[0]!, {
-      target: { value: 'flatten' },
-    });
+    fireEvent.click(screen.getAllByLabelText('Folder Structure')[0]!);
+    fireEvent.click(screen.getByRole('option', { name: 'Flat' }));
     fireEvent.click(screen.getByLabelText('Back'));
 
     fireEvent.click(screen.getByText('OK'));

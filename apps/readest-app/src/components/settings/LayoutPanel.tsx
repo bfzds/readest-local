@@ -21,7 +21,7 @@ import {
   BoxedList,
   SettingLabel,
   SettingsRow,
-  SettingsSelect,
+  AdwaitaSelect,
   SettingsSwitchRow,
 } from './primitives';
 import NumberInput from './NumberInput';
@@ -720,9 +720,9 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
           label={_('Reading Progress Style')}
           data-setting-id='settings.layout.progressDisplay'
         >
-          <SettingsSelect
+          <AdwaitaSelect
             value={progressStyle}
-            onChange={(e) => setProgressStyle(e.target.value as 'percentage' | 'fraction')}
+            onChange={(v) => setProgressStyle(v as 'percentage' | 'fraction')}
             ariaLabel={_('Reading Progress Style')}
             options={[
               { value: 'fraction', label: _('Page Number') },

@@ -3,7 +3,7 @@ import React from 'react';
 import { MdClose, MdPlayCircleOutline } from 'react-icons/md';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
-import { BoxedList, SectionTitle, SettingsRow, SettingsSelect } from '../primitives';
+import { BoxedList, SectionTitle, SettingsRow, AdwaitaSelect } from '../primitives';
 import { PiPlus } from 'react-icons/pi';
 import type { BackgroundTextureScope } from '@/helpers/settings';
 
@@ -175,9 +175,9 @@ const BackgroundTextureSelector: React.FC<BackgroundTextureSelectorProps> = ({
             </div>
           </SettingsRow>
           <SettingsRow label={_('Size')}>
-            <SettingsSelect
+            <AdwaitaSelect
               value={backgroundSize}
-              onChange={(e) => onSizeChange(e.target.value)}
+              onChange={(v) => onSizeChange(v)}
               ariaLabel={_('Size')}
               options={[
                 { value: 'auto', label: _('Auto') },

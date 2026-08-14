@@ -1,9 +1,10 @@
 'use client';
 
-import { render, cleanup, fireEvent } from '@testing-library/react';
+import { render, cleanup, fireEvent, screen } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 
 import RSVPOverlay from '@/app/reader/components/rsvp/RSVPOverlay';
+import { DropdownProvider } from '@/context/DropdownContext';
 import type { RSVPController, RsvpState } from '@/services/rsvp';
 import type { Insets } from '@/types/misc';
 
@@ -110,16 +111,18 @@ const renderOverlay = (
 ) => {
   const controller = buildController(state);
   const result = render(
-    <RSVPOverlay
-      gridInsets={gridInsets}
-      controller={controller as unknown as RSVPController}
-      chapters={[]}
-      currentChapterHref={null}
-      fontFamily={fontFamily}
-      onClose={vi.fn()}
-      onChapterSelect={vi.fn()}
-      onRequestNextPage={vi.fn()}
-    />,
+    <DropdownProvider>
+      <RSVPOverlay
+        gridInsets={gridInsets}
+        controller={controller as unknown as RSVPController}
+        chapters={[]}
+        currentChapterHref={null}
+        fontFamily={fontFamily}
+        onClose={vi.fn()}
+        onChapterSelect={vi.fn()}
+        onRequestNextPage={vi.fn()}
+      />
+    </DropdownProvider>,
   );
   return { ...result, controller };
 };
@@ -672,9 +675,10 @@ describe('RSVPOverlay — start delay setting (#4478)', () => {
 
     const select = container.querySelector(
       '[data-testid="rsvp-start-delay-select"]',
-    ) as HTMLSelectElement;
+    ) as HTMLElement;
     expect(select).not.toBeNull();
-    fireEvent.change(select, { target: { value: '0' } });
+    fireEvent.click(select);
+    fireEvent.click(screen.getByRole('option', { name: 'Off' }));
     expect(controller.setStartDelay).toHaveBeenCalledWith(0);
   });
 });

@@ -10,7 +10,7 @@ import { ProofreadScope } from '@/types/book';
 import { eventDispatcher } from '@/utils/event';
 import { Position, TextSelection } from '@/utils/sel';
 import { isPunctuationOnly, isWholeWord } from '@/utils/word';
-import Select from '@/components/Select';
+import AdwaitaSelect from '@/components/settings/primitives/AdwaitaSelect';
 import Popup from '@/components/Popup';
 import { Toggle } from '@/components/primitives/toggle';
 import { useThemeStore } from '@/store/themeStore';
@@ -68,8 +68,8 @@ const ProofreadPopup: React.FC<ProofreadPopupProps> = ({
     setReplacementText(text);
   };
 
-  const handleScopeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    setScope(event.target.value as ProofreadScope);
+  const handleScopeChange = (value: string) => {
+    setScope(value as ProofreadScope);
   };
 
   const handleApply = async () => {
@@ -249,17 +249,17 @@ const ProofreadPopup: React.FC<ProofreadPopupProps> = ({
         {/* Pinned: the scope select stays reachable however tight the popup is. */}
         <div className='flex shrink-0 items-center justify-between gap-2 p-4'>
           <label
-            htmlFor='scope-select'
             className='line-clamp-1 text-xs font-medium text-base-content/80'
             title={_('Scope:')}
           >
             {_('Scope:')}
           </label>
-          <Select
-            className='max-w-[85%]'
+          <AdwaitaSelect
+            containerClassName='max-w-[85%]'
             value={scope}
             onChange={handleScopeChange}
             options={scopeOptions}
+            ariaLabel={_('Scope:')}
           />
         </div>
       </Popup>

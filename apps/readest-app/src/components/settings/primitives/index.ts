@@ -9,7 +9,7 @@
 export { default as BoxedList } from './BoxedList';
 export { default as SettingsRow } from './SettingsRow';
 export { default as SettingsSwitchRow } from './SettingsSwitchRow';
-export { default as SettingsSelect } from './SettingsSelect';
+export { default as AdwaitaSelect } from './AdwaitaSelect';
 export { default as SettingsInput } from './SettingsInput';
 export { default as NavigationRow } from './NavigationRow';
 export { default as SectionTitle } from './SectionTitle';

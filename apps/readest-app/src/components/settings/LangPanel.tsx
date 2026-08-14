@@ -16,7 +16,7 @@ import {
   BoxedList,
   NavigationRow,
   SettingsRow,
-  SettingsSelect,
+  AdwaitaSelect,
   SettingsSwitchRow,
 } from './primitives';
 import CustomDictionaries from './CustomDictionaries';
@@ -92,8 +92,7 @@ const LangPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
     return options;
   };
 
-  const handleSelectUILang = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    const option = event.target.value;
+  const handleSelectUILang = (option: string) => {
     setUILanguage(option);
   };
 
@@ -142,9 +141,8 @@ const LangPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
     return availableOptions.find((o) => o.value === value) || availableOptions[0]!;
   };
 
-  const handleSelectConvertMode = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    const option = event.target.value as ConvertChineseVariant;
-    setConvertChineseVariant(option);
+  const handleSelectConvertMode = (option: string) => {
+    setConvertChineseVariant(option as ConvertChineseVariant);
   };
 
   useEffect(() => {
@@ -174,7 +172,7 @@ const LangPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
     <div className={clsx('my-4 w-full space-y-6')}>
       <BoxedList title={_('Language')} data-setting-id='settings.language.interfaceLanguage'>
         <SettingsRow label={_('Language')}>
-          <SettingsSelect
+          <AdwaitaSelect
             value={getCurrentUILangOption().value}
             onChange={handleSelectUILang}
             ariaLabel={_('Language')}
@@ -212,7 +210,7 @@ const LangPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
           data-setting-id='settings.language.chineseConversion'
         >
           <SettingsRow label={_('Convert Mode')}>
-            <SettingsSelect
+            <AdwaitaSelect
               value={getConvertModeOption().value}
               onChange={handleSelectConvertMode}
               ariaLabel={_('Convert Mode')}

@@ -32,6 +32,7 @@ import DictionarySheet from '@/app/reader/components/annotator/DictionarySheet';
 import DictionaryPopup from '@/app/reader/components/annotator/DictionaryPopup';
 import TTSFollowIndicator, { TtsSyncStatus } from '@/app/reader/components/tts/TTSFollowIndicator';
 import { Toggle } from '@/components/primitives/toggle';
+import AdwaitaSelect from '@/components/settings/primitives/AdwaitaSelect';
 
 interface FlatChapter {
   label: string;
@@ -1212,36 +1213,32 @@ const RSVPOverlay: React.FC<RSVPOverlayProps> = ({
             {/* Punctuation pause */}
             <label className='flex cursor-pointer items-center gap-1.5 font-medium opacity-80'>
               <span className='mr-0.5 font-medium opacity-50'>{_('Punctuation Delay')}</span>
-              <select
-                className='cursor-pointer rounded border border-gray-500/30 bg-gray-500/20 px-1.5 py-1 text-xs font-medium transition-colors hover:border-gray-500/40 hover:bg-gray-500/30'
-                style={{ color: 'inherit' }}
-                value={state.punctuationPauseMs}
-                onChange={(e) => controller.setPunctuationPause(parseInt(e.target.value, 10))}
-              >
-                {controller.getPunctuationPauseOptions().map((option) => (
-                  <option key={option} value={option}>
-                    {option}ms
-                  </option>
-                ))}
-              </select>
+              <AdwaitaSelect
+                buttonClassName='!h-auto !min-h-0 flex items-center gap-1 rounded border border-gray-500/30 bg-gray-500/20 !px-1.5 !py-1 text-xs font-medium transition-colors hover:border-gray-500/40 hover:bg-gray-500/30'
+                value={String(state.punctuationPauseMs)}
+                onChange={(v) => controller.setPunctuationPause(parseInt(v, 10))}
+                ariaLabel={_('Punctuation Delay')}
+                options={controller.getPunctuationPauseOptions().map((option) => ({
+                  value: String(option),
+                  label: `${option}ms`,
+                }))}
+              />
             </label>
 
             {/* Pre-start countdown delay */}
             <label className='flex cursor-pointer items-center gap-1.5 font-medium opacity-80'>
               <span className='mr-0.5 font-medium opacity-50'>{_('Start Delay')}</span>
-              <select
-                data-testid='rsvp-start-delay-select'
-                className='cursor-pointer rounded border border-gray-500/30 bg-gray-500/20 px-1.5 py-1 text-xs font-medium transition-colors hover:border-gray-500/40 hover:bg-gray-500/30'
-                style={{ color: 'inherit' }}
-                value={state.startDelaySeconds}
-                onChange={(e) => controller.setStartDelay(parseInt(e.target.value, 10))}
-              >
-                {controller.getStartDelayOptions().map((option) => (
-                  <option key={option} value={option}>
-                    {option === 0 ? _('Off') : `${option}s`}
-                  </option>
-                ))}
-              </select>
+              <AdwaitaSelect
+                testId='rsvp-start-delay-select'
+                buttonClassName='!h-auto !min-h-0 flex items-center gap-1 rounded border border-gray-500/30 bg-gray-500/20 !px-1.5 !py-1 text-xs font-medium transition-colors hover:border-gray-500/40 hover:bg-gray-500/30'
+                value={String(state.startDelaySeconds)}
+                onChange={(v) => controller.setStartDelay(parseInt(v, 10))}
+                ariaLabel={_('Start Delay')}
+                options={controller.getStartDelayOptions().map((option) => ({
+                  value: String(option),
+                  label: option === 0 ? _('Off') : `${option}s`,
+                }))}
+              />
             </label>
 
             {/* Font size */}

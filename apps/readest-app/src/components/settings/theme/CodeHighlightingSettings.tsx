@@ -1,7 +1,7 @@
 import React from 'react';
 import { CODE_LANGUAGES, CodeLanguage } from '@/utils/highlightjs';
 import { useTranslation } from '@/hooks/useTranslation';
-import { BoxedList, SettingsRow, SettingsSelect, SettingsSwitchRow } from '../primitives';
+import { BoxedList, SettingsRow, AdwaitaSelect, SettingsSwitchRow } from '../primitives';
 
 interface CodeHighlightingSettingsProps {
   codeHighlighting: boolean;
@@ -28,9 +28,9 @@ const CodeHighlightingSettings: React.FC<CodeHighlightingSettingsProps> = ({
         onChange={() => onToggle(!codeHighlighting)}
       />
       <SettingsRow label={_('Code Language')}>
-        <SettingsSelect
+        <AdwaitaSelect
           value={codeLanguage}
-          onChange={(event) => onLanguageChange(event.target.value as CodeLanguage)}
+          onChange={(v) => onLanguageChange(v as CodeLanguage)}
           ariaLabel={_('Code Language')}
           disabled={!codeHighlighting}
           options={CODE_LANGUAGES.map((lang) => ({

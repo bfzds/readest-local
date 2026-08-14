@@ -39,7 +39,7 @@ import {
 } from '@/services/dictionaries/systemDictionary';
 import type { ImportedDictionary } from '@/services/dictionaries/types';
 import SubPageHeader from './SubPageHeader';
-import { BoxedList, SettingsRow, SettingsSelect, Tips } from './primitives';
+import { BoxedList, SettingsRow, AdwaitaSelect, Tips } from './primitives';
 
 /** Dictionary popup font-size multipliers, surfaced as percentages (#4443). */
 const FONT_SCALE_OPTIONS = [
@@ -269,8 +269,8 @@ const CustomDictionaries: React.FC<CustomDictionariesProps> = ({ onBack }) => {
       cancelled = true;
     };
   }, [appService]);
-  const handleFontScaleChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setFontScale(Number(e.target.value));
+  const handleFontScaleChange = async (value: string) => {
+    setFontScale(Number(value));
     await saveCustomDictionaries(envConfig);
   };
 
@@ -696,7 +696,7 @@ const CustomDictionaries: React.FC<CustomDictionariesProps> = ({ onBack }) => {
         )}
       >
         <SettingsRow label={_('Font Size')}>
-          <SettingsSelect
+          <AdwaitaSelect
             value={String(settings.fontScale ?? 1)}
             onChange={handleFontScaleChange}
             options={FONT_SCALE_OPTIONS}

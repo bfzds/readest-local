@@ -11,7 +11,7 @@ import {
   TTSMediaMetadataMode,
   TTSPlayerStyle,
 } from '@/services/tts/types';
-import { BoxedList, SettingsRow, SettingsSelect } from './primitives';
+import { BoxedList, SettingsRow, AdwaitaSelect } from './primitives';
 import TTSHighlightStyleEditor, { TTSHighlightStyle } from './theme/TTSHighlightStyleEditor';
 
 const TTSPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset }) => {
@@ -105,12 +105,12 @@ const TTSPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset }
     saveSettings(envConfig, settings);
   };
 
-  const handleMediaMetadataChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    setTtsMediaMetadata(event.target.value as TTSMediaMetadataMode);
+  const handleMediaMetadataChange = (value: string) => {
+    setTtsMediaMetadata(value as TTSMediaMetadataMode);
   };
 
-  const handlePlayerStyleChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    setTtsPlayerStyle(event.target.value as TTSPlayerStyle);
+  const handlePlayerStyleChange = (value: string) => {
+    setTtsPlayerStyle(value as TTSPlayerStyle);
   };
 
   const handleTTSGranularityChange = (granularity: TTSHighlightGranularity) => {
@@ -133,7 +133,7 @@ const TTSPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset }
 
       <BoxedList title={_('Media Info')} data-setting-id='settings.tts.mediaMetadata'>
         <SettingsRow label={_('Player Style')} data-setting-id='settings.tts.playerStyle'>
-          <SettingsSelect
+          <AdwaitaSelect
             value={ttsPlayerStyle}
             onChange={handlePlayerStyleChange}
             ariaLabel={_('Player Style')}
@@ -144,7 +144,7 @@ const TTSPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset }
           />
         </SettingsRow>
         <SettingsRow label={_('Update Frequency')}>
-          <SettingsSelect
+          <AdwaitaSelect
             value={ttsMediaMetadata}
             onChange={handleMediaMetadataChange}
             ariaLabel={_('Update Frequency')}

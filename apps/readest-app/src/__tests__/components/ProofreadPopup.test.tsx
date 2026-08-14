@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { EnvProvider } from '@/context/EnvContext';
+import { DropdownProvider } from '@/context/DropdownContext';
 import ProofreadPopup from '@/app/reader/components/annotator/ProofreadPopup';
 
 vi.mock('@/services/environment', async () => {
@@ -30,7 +31,11 @@ global.ResizeObserver = class ResizeObserver {
 };
 
 function renderWithProviders(ui: React.ReactNode) {
-  return render(<EnvProvider>{ui}</EnvProvider>);
+  return render(
+    <DropdownProvider>
+      <EnvProvider>{ui}</EnvProvider>
+    </DropdownProvider>,
+  );
 }
 
 describe('ProofreadPopup Component', () => {
@@ -198,8 +203,9 @@ describe('ProofreadPopup Component', () => {
       const input = screen.getByPlaceholderText('Enter text...');
       fireEvent.change(input, { target: { value: 'replacement' } });
 
-      const scopeSelect = screen.getByRole('combobox');
-      fireEvent.change(scopeSelect, { target: { value: 'book' } });
+      const scopeSelect = screen.getByRole('button', { name: 'Scope:' });
+      fireEvent.click(scopeSelect);
+      fireEvent.click(screen.getByRole('option', { name: 'All occurrences in this book' }));
 
       const applyButton = screen.getByText('Apply');
       fireEvent.click(applyButton);
@@ -215,8 +221,9 @@ describe('ProofreadPopup Component', () => {
       const input = screen.getByPlaceholderText('Enter text...');
       fireEvent.change(input, { target: { value: 'replacement' } });
 
-      const scopeSelect = screen.getByRole('combobox');
-      fireEvent.change(scopeSelect, { target: { value: 'library' } });
+      const scopeSelect = screen.getByRole('button', { name: 'Scope:' });
+      fireEvent.click(scopeSelect);
+      fireEvent.click(screen.getByRole('option', { name: 'All occurrences in your library' }));
 
       const applyButton = screen.getByText('Apply');
       fireEvent.click(applyButton);
@@ -288,13 +295,13 @@ describe('ProofreadPopup Component', () => {
     it('pins the scope row outside the scrollable region so it cannot overflow', () => {
       const { container } = renderWithProviders(<ProofreadPopup {...defaultProps} />);
 
-      const select = container.querySelector('select') as HTMLSelectElement;
-      const scopeRow = select.closest('div') as HTMLElement;
-      expect(scopeRow.className).toContain('shrink-0');
+      const toggle = container.querySelector('.dropdown-toggle') as HTMLElement;
+      const scopeRow = toggle.closest('.shrink-0') as HTMLElement;
+      expect(scopeRow).toBeTruthy();
 
       const scrollArea = container.querySelector('.overflow-y-auto');
       expect(scrollArea).not.toBeNull();
-      expect(scrollArea!.contains(select)).toBe(false);
+      expect(scrollArea!.contains(toggle)).toBe(false);
     });
 
     it('clips the popup surface so no child paints past the rounded box', () => {

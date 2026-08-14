@@ -19,7 +19,7 @@ import {
   BoxedList,
   NavigationRow,
   SettingsRow,
-  SettingsSelect,
+  AdwaitaSelect,
   SettingsSwitchRow,
 } from './primitives';
 import NumberInput from './NumberInput';
@@ -393,10 +393,10 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
     ];
   };
 
-  const handleSelectAnnotationQuickAction = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    const action = event.target.value as typeof annotationQuickAction;
-    setAnnotationQuickAction(action);
-    saveViewSettings(envConfig, bookKey, 'annotationQuickAction', action, false, true);
+  const handleSelectAnnotationQuickAction = (action: string) => {
+    const typedAction = action as typeof annotationQuickAction;
+    setAnnotationQuickAction(typedAction);
+    saveViewSettings(envConfig, bookKey, 'annotationQuickAction', typedAction, false, true);
   };
 
   if (showToolbarCustomizer) {
@@ -555,7 +555,7 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
           onChange={() => setEnableAnnotationQuickActions(!enableAnnotationQuickActions)}
         />
         <SettingsRow label={_('Quick Action')} data-setting-id='settings.control.quickAction'>
-          <SettingsSelect
+          <AdwaitaSelect
             value={annotationQuickAction || ''}
             onChange={handleSelectAnnotationQuickAction}
             ariaLabel={_('Quick Action')}
@@ -583,13 +583,13 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
           onChange={() => setAnimated(!animated)}
         />
         <SettingsRow label={_('Animation Style')} data-setting-id='settings.control.pageTurnStyle'>
-          <SettingsSelect
+          <AdwaitaSelect
             // A synced slide/curl setting from another device still reads as
             // push here when this engine cannot animate it.
             value={
               turnStyleOptions.some((opt) => opt.value === pageTurnStyle) ? pageTurnStyle : 'push'
             }
-            onChange={(e) => setPageTurnStyle(e.target.value as PageTurnStyle)}
+            onChange={(v) => setPageTurnStyle(v as PageTurnStyle)}
             ariaLabel={_('Animation Style')}
             options={turnStyleOptions}
             disabled={!animated}

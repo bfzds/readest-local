@@ -24,6 +24,7 @@ import {
 import { renderNoteTemplate, formatBlockQuote } from '@/utils/note';
 import { buildAnnotationAppUrl } from '@/utils/deeplink';
 import Dialog from '@/components/Dialog';
+import AdwaitaSelect from '@/components/settings/primitives/AdwaitaSelect';
 
 interface ExportMarkdownDialogProps {
   bookKey: string;
@@ -415,20 +416,22 @@ const ExportMarkdownDialog: React.FC<ExportMarkdownDialogProps> = ({
         {/* Export Format */}
         <div className='flex items-center justify-between gap-3'>
           <h3 className='font-bold'>{_('Format')}</h3>
-          <select
+          <AdwaitaSelect
+            buttonClassName='select-sm min-h-9 h-9 !border !border-base-300 !bg-transparent'
             value={exportConfig.exportFormat}
-            onChange={(e) =>
+            onChange={(v) =>
               setExportConfig((prev) => ({
                 ...prev,
-                exportFormat: e.target.value as NoteExportFormat,
+                exportFormat: v as NoteExportFormat,
               }))
             }
-            className='select select-bordered select-sm eink-bordered'
-          >
-            <option value='markdown'>{_('Markdown')}</option>
-            <option value='text'>{_('Plain Text')}</option>
-            <option value='json'>{_('JSON (Readest)')}</option>
-          </select>
+            ariaLabel={_('Format')}
+            options={[
+              { value: 'markdown', label: _('Markdown') },
+              { value: 'text', label: _('Plain Text') },
+              { value: 'json', label: _('JSON (Readest)') },
+            ]}
+          />
         </div>
 
         {isJson && (

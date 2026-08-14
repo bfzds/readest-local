@@ -2,7 +2,7 @@ import React from 'react';
 import { MdClose } from 'react-icons/md';
 import { useTranslation } from '@/hooks/useTranslation';
 import { TTSHighlightGranularity } from '@/services/tts/types';
-import { BoxedList, SettingsRow, SettingsSelect } from '../primitives';
+import { BoxedList, SettingsRow, AdwaitaSelect } from '../primitives';
 import ColorInput from './ColorInput';
 
 export type TTSHighlightStyle =
@@ -66,9 +66,9 @@ const TTSHighlightStyleEditor: React.FC<TTSHighlightStyleEditorProps> = ({
   return (
     <BoxedList title={_('TTS Highlighting')}>
       <SettingsRow label={_('Granularity')}>
-        <SettingsSelect
+        <AdwaitaSelect
           value={granularity}
-          onChange={(e) => onGranularityChange(e.target.value as TTSHighlightGranularity)}
+          onChange={(v) => onGranularityChange(v as TTSHighlightGranularity)}
           ariaLabel={_('Granularity')}
           options={[
             { value: 'word', label: _('Word') },
@@ -78,9 +78,9 @@ const TTSHighlightStyleEditor: React.FC<TTSHighlightStyleEditorProps> = ({
       </SettingsRow>
 
       <SettingsRow label={_('Style')}>
-        <SettingsSelect
+        <AdwaitaSelect
           value={style}
-          onChange={(e) => onStyleChange(e.target.value as TTSHighlightStyle)}
+          onChange={(v) => onStyleChange(v as TTSHighlightStyle)}
           ariaLabel={_('Style')}
           options={[
             { value: 'highlight', label: _('Highlighter') },
