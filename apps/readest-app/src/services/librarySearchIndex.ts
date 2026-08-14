@@ -24,6 +24,9 @@ const FOLD_OPTIONS = { matchCase: false, matchDiacritics: false };
 type IndexAppService = Pick<AppService, 'openDatabase'>;
 
 export interface SearchIndexMeta {
+  // 索引构建时的快照时间戳（历史字段）。不再参与新鲜度判定——阅读进度的
+  // updatedAt 与文件内容版本分离后，它会被阅读进度不断改写，不能作为内容
+  // 版本信号（见 isSearchIndexFresh）。
   updatedAt: number;
   version: number;
   totalSections: number;
@@ -33,6 +36,10 @@ export interface SearchIndexMeta {
   // manual TOC edits), so node freshness is tracked separately from
   // (updatedAt, version).
   navHash: string;
+  // Partial MD5 of the book file the index was built from. Content freshness
+  // is judged against `book.hash`, which only changes when the file is
+  // re-imported as a new version — never on reading progress.
+  bookHash: string;
 }
 
 export interface SearchIndexSection {
@@ -47,6 +54,7 @@ interface MetaRow extends DatabaseRow {
   total_sections: number;
   complete: number;
   nav_hash: string;
+  book_hash: string;
 }
 
 interface SectionRow extends DatabaseRow {
@@ -63,7 +71,7 @@ export const openLibrarySearchDb = (
 
 export const readSearchIndexMeta = async (db: DatabaseService): Promise<SearchIndexMeta | null> => {
   const rows = await db.select<MetaRow>(
-    'SELECT updated_at, version, total_sections, complete, nav_hash FROM search_meta WHERE id = 1',
+    'SELECT updated_at, version, total_sections, complete, nav_hash, book_hash FROM search_meta WHERE id = 1',
   );
   const row = rows[0];
   if (!row) return null;
@@ -73,14 +81,15 @@ export const readSearchIndexMeta = async (db: DatabaseService): Promise<SearchIn
     totalSections: row.total_sections,
     complete: row.complete === 1,
     navHash: row.nav_hash,
+    bookHash: row.book_hash,
   };
 };
 
+// 内容新鲜度以 book.hash（文件 partialMD5）为准：只有重导入新版本时 hash 才
+// 变化。此前用 updatedAt === book.updatedAt，而 updateBookProgress 每页进度
+// 都把 updatedAt 写成 Date.now()，导致任何读过的书下次搜索必判脏、整本重建。
 export const isSearchIndexFresh = (meta: SearchIndexMeta | null, book: Book): boolean =>
-  !!meta &&
-  meta.complete &&
-  meta.version === SEARCH_INDEX_VERSION &&
-  meta.updatedAt === book.updatedAt;
+  !!meta && meta.complete && meta.version === SEARCH_INDEX_VERSION && meta.bookHash === book.hash;
 
 export const beginSearchIndex = async (
   db: DatabaseService,
@@ -92,8 +101,8 @@ export const beginSearchIndex = async (
   await db.execute('DELETE FROM search_nodes');
   await db.execute('DELETE FROM search_meta');
   await db.execute(
-    'INSERT INTO search_meta (id, updated_at, version, total_sections, complete, nav_hash) VALUES (1, ?, ?, ?, 0, ?)',
-    [book.updatedAt, SEARCH_INDEX_VERSION, totalSections, navHash],
+    'INSERT INTO search_meta (id, updated_at, version, total_sections, complete, nav_hash, book_hash) VALUES (1, ?, ?, ?, 0, ?, ?)',
+    [book.updatedAt, SEARCH_INDEX_VERSION, totalSections, navHash, book.hash],
   );
 };
 

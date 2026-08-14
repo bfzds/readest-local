@@ -137,6 +137,16 @@ const useBooksManager = () => {
       return;
     }
     const newKey = `${bookHash}-${uniqueId()}`;
+    // B2：复用 reader 窗口只保留当前打开的 view。换书生成新 key 时必须同步
+    // 释放旧 key 的 viewState 及其 FoliateView——view.close() 销毁 renderer 并
+    // 移除整章 DOM，否则旧 key 永不回收，长会话内存单调增长（700-970MB 高位
+    // 内存的主要来源之一）。clearViewState 在其它路径（显式关闭、编辑重存）
+    // 也会调用，此处只在换书产生新 key 时补上。
+    for (const k of useReaderStore.getState().bookKeys) {
+      if (k === newKey) continue;
+      useReaderStore.getState().getView(k)?.close?.();
+      useReaderStore.getState().clearViewState(k);
+    }
     initViewState(envConfig, bookHash, newKey, true).catch(handleOpenError);
     setBookKeys([newKey]);
     setSideBarBookKey(newKey);

@@ -1,4 +1,5 @@
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 
 // Main-window watchdog for reader windows. Reader windows emit a heartbeat
@@ -34,11 +35,21 @@ export const startReaderWindowWatchdog = (): (() => void) => {
     for (const [label, last] of lastHeartbeat) {
       if (now - last <= ZOMBIE_TIMEOUT_MS) continue;
       lastHeartbeat.delete(label);
-      void WebviewWindow.getByLabel(label)
-        .then((win) => win?.destroy())
-        .catch(() => {
+      void (async () => {
+        const win = await WebviewWindow.getByLabel(label).catch(() => null);
+        await win?.destroy().catch(() => {
           // The window is already gone — nothing to clean up.
         });
+        // B3：销毁僵尸 reader 后把书库窗口带回前台。reader 经系统级关闭或
+        // renderer 崩溃时不会 emit close-reader-window（page.tsx 的 Alt+F4 兜底
+        // 挂在事件路径上，覆盖不到这里），若书库正处于 Plan A 隐藏态，无人
+        // 唤醒它就会"无可见窗口但进程残留"。watchdog 只在 main 窗口注册，
+        // getCurrentWindow 即 main；对已可见窗口这些调用是 no-op。
+        const current = getCurrentWindow();
+        await current.show().catch(() => {});
+        await current.unminimize().catch(() => {});
+        await current.setFocus().catch(() => {});
+      })();
     }
   }, CHECK_INTERVAL_MS);
 

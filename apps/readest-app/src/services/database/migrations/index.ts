@@ -185,6 +185,14 @@ const migrations: Record<SchemaType, MigrationEntry[]> = {
         );
       `,
     },
+    // 索引新鲜度改用 book.hash（文件内容版本），与阅读进度 updatedAt 分离
+    // （B1）。旧索引 book_hash='' 与任何 hash 都不等，首次搜索触发一次重建。
+    {
+      name: '2026081401_library_search_content_hash',
+      sql: `
+        ALTER TABLE search_meta ADD COLUMN book_hash TEXT NOT NULL DEFAULT '';
+      `,
+    },
   ],
   reedy: [
     {

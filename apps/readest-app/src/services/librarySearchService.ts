@@ -289,7 +289,7 @@ const MAX_CACHED_BOOKS = 10;
 const MAX_OPEN_INDEX_DBS = 16;
 
 export const createLibrarySearchSession = (appService: LibrarySearchAppService) => {
-  const documents = new Map<string, { updatedAt: number; pending: Promise<CachedSearchBook> }>();
+  const documents = new Map<string, { bookHash: string; pending: Promise<CachedSearchBook> }>();
   // One handle per search.db within the session: OPFS permits a single access
   // handle per file per origin, so concurrent opens of the same DB would throw.
   const indexDbs = new Map<string, Promise<DatabaseService | null>>();
@@ -308,7 +308,9 @@ export const createLibrarySearchSession = (appService: LibrarySearchAppService) 
 
   const open = (book: Book) => {
     const existing = documents.get(book.hash);
-    if (existing?.updatedAt === book.updatedAt) {
+    // 缓存按内容版本（book.hash）判失效。进度更新会改写 book.updatedAt，把它
+    // 当版本键会让"读过的书"在下次搜索时重新解析整本（B1 同根因）。
+    if (existing?.bookHash === book.hash) {
       documents.delete(book.hash);
       documents.set(book.hash, existing);
       return existing.pending;
@@ -332,7 +334,7 @@ export const createLibrarySearchSession = (appService: LibrarySearchAppService) 
         throw error;
       }
     })();
-    const entry = { updatedAt: book.updatedAt, pending };
+    const entry = { bookHash: book.hash, pending };
     documents.set(book.hash, entry);
     void pending.catch(() => {
       if (documents.get(book.hash) === entry) documents.delete(book.hash);
@@ -525,7 +527,7 @@ export async function* searchLibraryBooks(
   ): Promise<SectionMatchOutcome> => {
     if (usesSearchWorker) {
       const payload = {
-        sectionKey: `${book.hash}:${book.updatedAt}:${sectionIndex}`,
+        sectionKey: `${book.hash}:${sectionIndex}`,
         text,
         query,
         mode: config.mode as 'fuzzy' | 'nearby-words',
@@ -747,7 +749,7 @@ export async function* searchLibraryBooks(
             if (signal?.aborted) return;
             if (doc) {
               const prepared = prepareSearchSection(
-                `${book.hash}:${book.updatedAt}:${sectionIndex}`,
+                `${book.hash}:${sectionIndex}`,
                 doc,
                 acceptNode,
               );

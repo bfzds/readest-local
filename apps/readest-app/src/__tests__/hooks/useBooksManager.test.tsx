@@ -10,6 +10,8 @@ const h = vi.hoisted(() => ({
   initViewStateMock: vi.fn(() => Promise.resolve()),
   setBookKeysMock: vi.fn(),
   setSideBarBookKeyMock: vi.fn(),
+  clearViewStateMock: vi.fn(),
+  getViewMock: vi.fn<(key: string) => { close?: () => void } | null>(() => null),
   bookKeys: [] as string[],
   viewStates: {} as Record<string, { inited: boolean; view: object }>,
   library: [] as { hash: string }[],
@@ -34,7 +36,8 @@ vi.mock('@/store/readerStore', () => ({
     }),
     {
       getState: () => ({
-        getView: () => null,
+        getView: h.getViewMock,
+        clearViewState: h.clearViewStateMock,
         setPreviewMode: vi.fn(),
         viewStates: h.viewStates,
         bookKeys: h.bookKeys,
@@ -60,6 +63,7 @@ describe('useBooksManager open-failure handling', () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    h.getViewMock.mockReset();
     h.bookKeys = [];
     h.viewStates = {};
     setPendingTTSAutoplay(null);
@@ -144,5 +148,35 @@ describe('useBooksManager open-failure handling', () => {
       expect.any(String),
       true,
     );
+  });
+
+  it('换书时释放旧 viewState（B2）', async () => {
+    h.bookKeys = ['hash1-abc'];
+    h.viewStates = { 'hash1-abc': { inited: true, view: {} } };
+    const closeMock = vi.fn();
+    h.getViewMock.mockReturnValue({ close: closeMock });
+
+    renderHook(() => useBooksManager());
+
+    await act(async () => {
+      eventDispatcher.dispatch('open-book-in-reader', { bookHash: 'hash2' });
+      await Promise.resolve();
+    });
+
+    expect(h.clearViewStateMock).toHaveBeenCalledWith('hash1-abc');
+    expect(closeMock).toHaveBeenCalled();
+  });
+
+  it('每次换书都清理当前旧 key（B2）', async () => {
+    h.bookKeys = ['book-a'];
+    renderHook(() => useBooksManager());
+    for (const hash of ['book-b', 'book-c']) {
+      await act(async () => {
+        eventDispatcher.dispatch('open-book-in-reader', { bookHash: hash });
+        await Promise.resolve();
+      });
+    }
+    expect(h.clearViewStateMock).toHaveBeenCalledWith('book-a');
+    expect(h.clearViewStateMock).toHaveBeenCalledTimes(2);
   });
 });
