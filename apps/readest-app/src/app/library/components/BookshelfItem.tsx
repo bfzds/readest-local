@@ -1,11 +1,9 @@
 import clsx from 'clsx';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useEnv } from '@/context/EnvContext';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useLongPress } from '@/hooks/useLongPress';
-import { Menu } from '@tauri-apps/api/menu';
-import { LogicalPosition } from '@tauri-apps/api/dpi';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { eventDispatcher } from '@/utils/event';
 import { getOSPlatform } from '@/utils/misc';
@@ -83,36 +81,6 @@ export const generateBookshelfItems = (
   );
 
   return [...ungroupedBooks, ...groupedBooks].sort((a, b) => b.updatedAt - a.updatedAt);
-};
-
-// A native popup blocks Tauri's main thread until the menu is dismissed and
-// holds the webview's resources table lock for that whole time, while
-// menu.close() destroys the resource through a *synchronous* command, which
-// runs on that same main thread. Releasing a menu while a popup is on screen
-// therefore deadlocks the app: the main thread blocks on a lock that only the
-// dismissal releases, and a blocked main thread can no longer dismiss the
-// menu. The library's startup churn (books streaming in, covers, sync) used
-// to re-render right into that window and freeze the app for good.
-// Native popups are modal and app-wide, so the gate is module scoped: a
-// release queued by any bookshelf item would freeze another item's popup.
-let openPopup: Promise<unknown> | null = null;
-
-const trackPopup = async (popup: Promise<void>) => {
-  const settled = popup.catch(() => {});
-  openPopup = settled;
-  await settled;
-  if (openPopup === settled) openPopup = null;
-};
-
-const releaseMenu = (menu: Promise<Menu>) => {
-  const close = () => {
-    if (openPopup) {
-      void openPopup.then(close);
-      return;
-    }
-    void menu.then((m) => m.close()).catch(() => {});
-  };
-  close();
 };
 
 interface BookshelfItemProps {
@@ -291,42 +259,11 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
   const buildMenuItems = () =>
     'format' in item ? buildBookMenuItems(item as Book) : buildGroupMenuItems(item as BooksGroup);
 
-  // In-app fallback for the native context menu: GTK3 menus popped over
-  // Wayland after the trigger button was already released (a touchpad
-  // two-finger tap) are dismissed as soon as they map, flashing for a single
-  // frame (issue #5360). The popup path (JS → Tauri IPC → muda → GTK) cannot
-  // beat a tap's instant release, so Linux renders the menu in-app instead.
+  // All platforms render the context menu in-app: the OS-native menu (Tauri's
+  // Menu.new) is drawn by the system, so its styling can't match Readest's
+  // Adwaita language. A self-drawn <BookContextMenuPopup> keeps the look
+  // consistent across platforms.
   const [inAppMenuPosition, setInAppMenuPosition] = useState<{ x: number; y: number } | null>(null);
-
-  // Building the menu crosses the Tauri IPC boundary and takes long enough
-  // that the popup visibly lags the right-click (issue #5181). Cache the
-  // built menu so popup() fires immediately; hovering the item prewarms the
-  // cache so even the first opening is instant.
-  const cachedMenuRef = useRef<Promise<Menu> | null>(null);
-
-  const ensureMenu = () => {
-    if (!cachedMenuRef.current) {
-      const building = Menu.new({ items: buildMenuItems() });
-      building.catch(() => {
-        // A failed build must not poison the cache with a rejected promise.
-        if (cachedMenuRef.current === building) cachedMenuRef.current = null;
-      });
-      cachedMenuRef.current = building;
-    }
-    return cachedMenuRef.current;
-  };
-
-  // Drop the cache whenever state baked into the items changes (selection
-  // label, book status, reveal path, language); the cleanup also runs on
-  // unmount so the native menu resource is released — but never while a popup
-  // is still on screen, see releaseMenu.
-  useEffect(() => {
-    return () => {
-      const cached = cachedMenuRef.current;
-      cachedMenuRef.current = null;
-      if (cached) releaseMenu(cached);
-    };
-  }, [item, itemSelected, isSelectMode, settings.localBooksDir, _]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleSelectItem = useCallback(
@@ -361,21 +298,11 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleContextMenu = useCallback(
-    throttle(async (position: { x: number; y: number }) => {
+    throttle((position: { x: number; y: number }) => {
       if (!appService?.hasContextMenu) return;
-      if (appService.isLinuxApp) {
-        setInAppMenuPosition(position);
-        return;
-      }
-      const menu = await ensureMenu();
-      // Pop up at an explicit position so keyboard invocation (ContextMenu /
-      // Shift+F10) anchors the menu to the item instead of wherever the mouse
-      // happens to sit. On macOS and Windows — the only platforms still on the
-      // native menu — CSS px are window-logical px, so the client coordinates
-      // pass through unchanged.
-      await trackPopup(menu.popup(new LogicalPosition(position.x, position.y)));
+      setInAppMenuPosition(position);
     }, 100),
-    [item, itemSelected, isSelectMode, settings.localBooksDir],
+    [],
   );
 
   const { pressing, handlers } = useLongPress(
@@ -432,9 +359,6 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
           transition: 'transform 0.2s',
         }}
         onKeyDown={handleKeyDown}
-        onPointerEnter={() => {
-          if (appService?.hasContextMenu && !appService.isLinuxApp) void ensureMenu();
-        }}
         {...itemDataAttrs}
         {...handlers}
       >

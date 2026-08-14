@@ -105,7 +105,7 @@ const openContextMenu = () =>
     clientY: 20,
   });
 
-describe('library context menu on Linux desktop (issue #5360)', () => {
+describe('library context menu (in-app, all platforms)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     appService.isLinuxApp = true;
@@ -162,23 +162,25 @@ describe('library context menu on Linux desktop (issue #5360)', () => {
     expect(screen.queryByRole('menuitem')).toBeNull();
   });
 
-  it('does not prewarm the native menu on pointer enter on Linux', async () => {
+  it('does not prewarm the native menu on pointer enter', async () => {
     renderItem();
 
     fireEvent.pointerOver(screen.getByRole('button', { name: 'Test Book' }));
 
-    // Menu construction crosses the Tauri IPC boundary for the native menu
-    // only; the in-app menu needs no prewarm.
+    // The in-app menu needs no Tauri IPC prewarm; the native menu path is gone.
     expect(menuNew).not.toHaveBeenCalled();
   });
 
-  it('keeps the native menu on non-Linux desktop platforms', async () => {
+  it('renders the in-app menu on non-Linux desktop platforms too', async () => {
     appService.isLinuxApp = false;
     renderItem();
 
     openContextMenu();
 
-    await vi.waitFor(() => expect(popupSpy).toHaveBeenCalledTimes(1));
-    expect(screen.queryByRole('menuitem')).toBeNull();
+    // Windows/macOS also use the self-drawn menu so the styling matches the
+    // app's Adwaita language; the native menu is never popped.
+    const menuItems = await screen.findAllByRole('menuitem');
+    expect(menuItems.length).toBeGreaterThan(0);
+    expect(popupSpy).not.toHaveBeenCalled();
   });
 });

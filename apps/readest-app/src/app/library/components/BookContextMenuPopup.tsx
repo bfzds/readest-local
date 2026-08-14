@@ -93,7 +93,7 @@ const BookContextMenuPopup: React.FC<BookContextMenuPopupProps> = ({
         style={{ left: placement?.left ?? 0, top: placement?.top ?? 0 }}
       >
         <Menu
-          className='dropdown-content no-triangle bg-base-100 rounded-box !relative z-[1] !mt-0 p-2 shadow'
+          className='dropdown-content no-triangle bgcolor-base-200 !relative z-[1] !mt-0 border border-base-200 p-2 shadow-2xl'
           onCancel={onClose}
         >
           {items.map(({ text, action }) => (

@@ -1,133 +1,36 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
 
-import type { Book } from '@/types/book';
+import { getContextMenuPosition } from '@/app/library/components/BookContextMenuPopup';
 
 /**
- * The native context menu (macOS and Windows; Linux renders it in-app, see
- * book-context-menu-linux-inapp.test.tsx) is popped at an explicit position
- * rather than through a positionless `menu.popup()`, which anchors to the
- * current mouse location. Keyboard invocation — ContextMenu / Shift+F10 — has
- * no mouse to anchor to, so the menu must open at the focused item instead of
- * wherever the pointer was last left.
- *
- * CSS px are window-logical px on both platforms (Tauri leaves webview zoom
- * hotkeys disabled), so the client coordinates pass through unchanged.
+ * The context menu is anchored at the pointer, flipping to the other side of
+ * the pointer when it would run off the right/bottom edge and clamping to
+ * `bounds` as a last resort (matches native context-menu behaviour).
  */
+describe('getContextMenuPosition', () => {
+  const bounds = { left: 0, top: 0, right: 800, bottom: 600 };
 
-const popupSpy = vi.hoisted(() => vi.fn(async (_pos?: unknown) => {}));
-const menuNew = vi.hoisted(() => vi.fn(async () => ({ popup: popupSpy, close: vi.fn() })));
-
-vi.mock('@tauri-apps/api/menu', () => ({
-  Menu: { new: menuNew },
-}));
-
-vi.mock('@tauri-apps/plugin-opener', () => ({
-  revealItemInDir: vi.fn(),
-}));
-
-vi.mock('@/context/EnvContext', () => ({
-  useEnv: () => ({
-    envConfig: {},
-    appService: { hasContextMenu: true, isAndroidApp: false, isMobileApp: false },
-  }),
-}));
-
-vi.mock('@/store/settingsStore', () => ({
-  useSettingsStore: () => ({ settings: { localBooksDir: '/books' } }),
-}));
-
-vi.mock('@/hooks/useTranslation', () => ({
-  useTranslation: () => (text: string) => text,
-}));
-
-vi.mock('@/app/library/hooks/useOpenBook', () => ({
-  useOpenBook: () => ({ openBook: vi.fn() }),
-}));
-
-vi.mock('@/app/library/components/BookItem', () => ({
-  default: () => null,
-}));
-
-vi.mock('@/app/library/components/GroupItem', () => ({
-  default: () => null,
-}));
-
-const BookshelfItem = (await import('@/app/library/components/BookshelfItem')).default;
-
-const book: Book = {
-  hash: 'hash-1',
-  format: 'EPUB',
-  title: 'Test Book',
-  author: 'Test Author',
-  createdAt: 0,
-  updatedAt: 0,
-  downloadedAt: 1,
-};
-
-const renderItem = () =>
-  render(
-    <BookshelfItem
-      mode='grid'
-      item={book}
-      coverFit='crop'
-      isSelectMode={false}
-      itemSelected={false}
-      toggleSelection={vi.fn()}
-      handleGroupBooks={vi.fn()}
-      handleBookDelete={vi.fn(async () => true)}
-      handleBookPurge={vi.fn(async () => true)}
-      handleSetSelectMode={vi.fn()}
-      handleShowDetailsBook={vi.fn()}
-      handleLibraryNavigation={vi.fn()}
-      handleUpdateReadingStatus={vi.fn()}
-      showTimeRemaining={false}
-    />,
-  );
-
-const popupPosition = () =>
-  popupSpy.mock.calls[0]![0] as unknown as { type: string; x: number; y: number };
-
-describe('library context menu popup position', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  it('places the menu top-left at the pointer when it fits', () => {
+    expect(getContextMenuPosition({ x: 100, y: 100 }, { width: 200, height: 300 }, bounds)).toEqual(
+      { left: 100, top: 100 },
+    );
   });
 
-  afterEach(() => {
-    cleanup();
+  it('flips to the left when it would overflow the right edge', () => {
+    expect(getContextMenuPosition({ x: 700, y: 100 }, { width: 200, height: 300 }, bounds)).toEqual(
+      { left: 500, top: 100 },
+    );
   });
 
-  it('passes the contextmenu position to menu.popup in window-logical pixels', async () => {
-    renderItem();
-
-    fireEvent.contextMenu(screen.getByRole('button', { name: 'Test Book' }), {
-      clientX: 123,
-      clientY: 456,
-    });
-
-    await waitFor(() => expect(popupSpy).toHaveBeenCalled());
-    const pos = popupPosition();
-    expect(pos.type).toBe('Logical');
-    expect(pos.x).toBeCloseTo(123);
-    expect(pos.y).toBeCloseTo(456);
+  it('flips above when it would overflow the bottom edge', () => {
+    expect(getContextMenuPosition({ x: 100, y: 500 }, { width: 200, height: 300 }, bounds)).toEqual(
+      { left: 100, top: 200 },
+    );
   });
 
-  it('anchors a keyboard-invoked menu at the center of the focused item', async () => {
-    renderItem();
-
-    const item = screen.getByRole('button', { name: 'Test Book' });
-    vi.spyOn(item, 'getBoundingClientRect').mockReturnValue({
-      left: 200,
-      top: 100,
-      width: 160,
-      height: 240,
-    } as DOMRect);
-
-    fireEvent.keyDown(item, { key: 'ContextMenu' });
-
-    await waitFor(() => expect(popupSpy).toHaveBeenCalled());
-    const pos = popupPosition();
-    expect(pos.x).toBeCloseTo(280);
-    expect(pos.y).toBeCloseTo(220);
+  it('clamps to the bounds as a last resort', () => {
+    expect(getContextMenuPosition({ x: 800, y: 600 }, { width: 200, height: 300 }, bounds)).toEqual(
+      { left: 600, top: 300 },
+    );
   });
 });
