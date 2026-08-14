@@ -253,7 +253,13 @@ pub fn run() {
     #[cfg(desktop)]
     let builder = builder.plugin(
         tauri_plugin_window_state::Builder::default()
-            .map_label(|label| if label.starts_with("reader") { "reader" } else { label })
+            .map_label(|label| {
+                if label.starts_with("reader") {
+                    "reader"
+                } else {
+                    label
+                }
+            })
             .build(),
     );
 
