@@ -30,9 +30,27 @@ const clipPost = (post: string) => {
     : post;
 };
 
-// Context (pre/post) rendered smaller and dimmed so the match dominates.
+// Context (pre/post) rendered in the body color, same size as the match —
+// the preview reads like a plain-text excerpt; the match carries the overlay.
 const ContextSpan: React.FC<{ children: string }> = ({ children }) => (
-  <span className='text-base-content/60 text-[0.72em]'>{children}</span>
+  <span className='text-base-content'>{children}</span>
+);
+
+// Match term: the same amber overlay as in the body (--search-highlight-color,
+// theme-adaptive), text keeps the body color and is bolded. boxDecorationBreak:
+// clone makes every wrapped line carry its own background like a highlighter.
+const MatchHighlight: React.FC<{ children: string }> = ({ children }) => (
+  <span
+    className='font-medium'
+    style={{
+      backgroundColor: 'color-mix(in srgb, var(--search-highlight-color) 45%, transparent)',
+      borderRadius: '2px',
+      boxDecorationBreak: 'clone',
+      WebkitBoxDecorationBreak: 'clone',
+    }}
+  >
+    {children}
+  </span>
 );
 
 // nearby-words excerpts emphasize each matched word; other modes bold the single match span.
@@ -43,9 +61,7 @@ const ExcerptBody: React.FC<{ excerpt: SearchExcerpt }> = ({ excerpt }) => {
         <ContextSpan>{clipPre(excerpt.pre)}</ContextSpan>
         {excerpt.segments.map((seg, i) =>
           seg.emphasized ? (
-            <span key={i} className='search-term-highlight text-[1.1em]'>
-              {seg.text}
-            </span>
+            <MatchHighlight key={i}>{seg.text}</MatchHighlight>
           ) : (
             <span key={i}>{seg.text}</span>
           ),
@@ -57,7 +73,7 @@ const ExcerptBody: React.FC<{ excerpt: SearchExcerpt }> = ({ excerpt }) => {
   return (
     <>
       <ContextSpan>{clipPre(excerpt.pre)}</ContextSpan>
-      <span className='search-term-highlight text-[1.1em]'>{excerpt.match}</span>
+      <MatchHighlight>{excerpt.match}</MatchHighlight>
       <ContextSpan>{clipPost(excerpt.post)}</ContextSpan>
     </>
   );
@@ -80,7 +96,7 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({
       role='button'
       ref={viewRef}
       className={clsx(
-        'my-2 cursor-pointer rounded-lg p-2 text-[clamp(0.8rem,3.8cqw,1.05rem)]',
+        'my-2 cursor-pointer rounded-lg p-2 text-[clamp(0.9rem,4.2cqw,1.2rem)]',
         isCurrent ? 'bg-base-300 hover:bg-gray-300/70' : 'hover:bg-base-300 bg-base-100',
       )}
       tabIndex={0}

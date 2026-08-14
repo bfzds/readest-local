@@ -22,7 +22,8 @@ describe('SearchResults', () => {
     render(<SearchResults bookKey='book-key' results={results} onSelectResult={() => {}} />);
 
     const match = screen.getByText('黄仁勋');
-    expect(match.className).toContain('search-term-highlight');
+    // 匹配词用正文同款琥珀黄遮罩（MatchHighlight：加粗 + --search-highlight-color 背景）
+    expect(match.className).toContain('font-medium');
     const pre = match.previousElementSibling!;
     // The stored excerpt keeps ~50 chars of context, but the sidebar row clamps
     // to three lines — the displayed lead-in must be short enough that the
