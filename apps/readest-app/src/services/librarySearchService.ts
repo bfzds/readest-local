@@ -111,6 +111,9 @@ const DEFAULT_CONFIG: LibrarySearchConfig = {
 const CONTEXT_LENGTH = 50;
 const CONTEXT_SCAN_CHUNK = 2048;
 const MAX_BOOK_SEARCH_RESULTS = 500;
+// 全局结果上限：每本最多 500 条已存在，但千本共搜可累积数十万条进 state/
+// 渲染。超出后停止产出新结果（索引仍继续构建到完整），避免内存与渲染爆炸。
+const MAX_TOTAL_SEARCH_RESULTS = 2000;
 const normalizeWhitespace = (value: string) => value.replace(/\s+/g, ' ');
 
 const contextStart = (value: string) => {
@@ -657,7 +660,10 @@ export async function* searchLibraryBooks(
         const totalSections = meta!.totalSections;
         for (const section of sections) {
           if (signal?.aborted) return;
-          const remaining = MAX_BOOK_SEARCH_RESULTS - bookMatches;
+          const remaining = Math.min(
+            MAX_BOOK_SEARCH_RESULTS - bookMatches,
+            MAX_TOTAL_SEARCH_RESULTS - totalMatches,
+          );
           if (remaining <= 0) {
             bookTruncated = true;
             break;
@@ -784,7 +790,10 @@ export async function* searchLibraryBooks(
                   },
                 );
               }
-              const remaining = MAX_BOOK_SEARCH_RESULTS - bookMatches;
+              const remaining = Math.min(
+                MAX_BOOK_SEARCH_RESULTS - bookMatches,
+                MAX_TOTAL_SEARCH_RESULTS - totalMatches,
+              );
               if (options.sectionIndex != null && options.sectionIndex !== sectionIndex) {
                 // Scoped search: this section is only extracted for the index.
               } else if (remaining <= 0) {

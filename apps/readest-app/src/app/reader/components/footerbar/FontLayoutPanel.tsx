@@ -1,11 +1,12 @@
 import clsx from 'clsx';
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { TbBoxMargin } from 'react-icons/tb';
 import { RxLineHeight } from 'react-icons/rx';
 import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { saveViewSettings } from '@/helpers/settings';
+import { throttle } from '@/utils/throttle';
 import Slider from '@/components/Slider';
 
 const FONT_SIZE_LIMITS = {
@@ -48,15 +49,30 @@ export const FontLayoutPanel: React.FC<FontLayoutPanelProps> = ({
   const viewSettings = getViewSettings(bookKey);
   const view = getView(bookKey);
 
-  const handleFontSizeChange = useCallback(
-    (value: number) => {
-      saveViewSettings(envConfig, bookKey, 'defaultFontSize', value);
-      // Reset any Ctrl+wheel zoom so the live size snaps to the newly set
-      // default (the zoom anchor / cap).
-      void saveViewSettings(envConfig, bookKey, 'effectiveFontSize', undefined);
-    },
-    [envConfig, bookKey],
+  // 滑块拖动每 onChange 一次 saveViewSettings（整章重排 + 写盘），throttle
+  // 120ms 与滚轮调速一致（useIframeEvents）。通过 ref 取最新闭包，节流实例
+  // 本身稳定，跨 render 状态不丢失。
+  const saveFontSizeRef = useRef((_value: number) => {});
+  saveFontSizeRef.current = (value: number) => {
+    saveViewSettings(envConfig, bookKey, 'defaultFontSize', value);
+    // Reset any Ctrl+wheel zoom so the live size snaps to the newly set
+    // default (the zoom anchor / cap).
+    void saveViewSettings(envConfig, bookKey, 'effectiveFontSize', undefined);
+  };
+  const saveFontSizeThrottled = useRef(
+    throttle((value: number) => saveFontSizeRef.current(value), 120),
   );
+  const saveLineHeightRef = useRef((_value: number) => {});
+  saveLineHeightRef.current = (value: number) => {
+    saveViewSettings(envConfig, bookKey, 'lineHeight', value / LINE_HEIGHT_LIMITS.MULTIPLIER);
+  };
+  const saveLineHeightThrottled = useRef(
+    throttle((value: number) => saveLineHeightRef.current(value), 120),
+  );
+
+  const handleFontSizeChange = useCallback((value: number) => {
+    saveFontSizeThrottled.current(value);
+  }, []);
 
   const handleMarginChange = useCallback(
     (value: number) => {
@@ -83,12 +99,9 @@ export const FontLayoutPanel: React.FC<FontLayoutPanelProps> = ({
     [envConfig, bookKey, view, getViewSettings],
   );
 
-  const handleLineHeightChange = useCallback(
-    (value: number) => {
-      saveViewSettings(envConfig, bookKey, 'lineHeight', value / LINE_HEIGHT_LIMITS.MULTIPLIER);
-    },
-    [envConfig, bookKey],
-  );
+  const handleLineHeightChange = useCallback((value: number) => {
+    saveLineHeightThrottled.current(value);
+  }, []);
 
   const getMarginProgressValue = useCallback((marginPx: number, gapPercent: number) => {
     const { MAX_MARGIN_PX, MAX_GAP_PERCENT, MARGIN_RATIO } = MARGIN_CONSTANTS;
