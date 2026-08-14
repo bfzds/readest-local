@@ -45,7 +45,7 @@
  * 0x14: part of speech (0x02), display title (0x18), title translation
  * (0x28), transcriptions (0x50/0x60), and a few opaque fields we skip.
  */
-import { gunzipSync } from 'fflate';
+import { decompressBglData } from './bglDecompress';
 
 export interface BglMetadata {
   title?: string;
@@ -439,7 +439,9 @@ export class BglReader {
     if (gzipOffset < 6 || gzipOffset >= bytes.length) {
       throw new Error(`Not a Babylon glossary (bad gzip offset ${gzipOffset})`);
     }
-    this.data = gunzipSync(bytes.subarray(gzipOffset));
+    // 解压移到 worker（transferable 零拷贝交回），避免大词典 gunzip 在
+    // 主线程产生计算与缓冲峰值；`bytes` 在此之后不再被使用，其缓冲可被 GC。
+    this.data = await decompressBglData(bytes.subarray(gzipOffset));
 
     // Pass 1 — walk the block stream: collect entry spans, raw glossary
     // properties, and the charset hints needed to resolve encodings.

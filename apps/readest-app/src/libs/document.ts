@@ -1,6 +1,7 @@
 import { BookFormat } from '@/types/book';
 import { Collection, Contributor, Identifier, LanguageMap } from '@/utils/book';
 import { configureZip } from '@/utils/zip';
+import { ChapterTextCache } from '@/utils/chapterTextCache';
 import * as epubcfi from 'foliate-js/epubcfi.js';
 
 export const CFI = epubcfi;
@@ -305,11 +306,11 @@ export class DocumentLoader {
     // ~300-500ms per first open. The dedupe is a single Map lookup on the
     // hot path, so the overhead when nothing is in flight is negligible.
     //
-    // We intentionally only dedupe *concurrent* requests: as soon as the
-    // promise settles, we drop it from the map so we don't retain inflated
-    // chapter strings in memory (a long book is megabytes of text). This is
-    // safe because the only consumer that cares about reuse — nav
-    // computation — issues both calls in the same microtask span.
+    // The dedupe only covers *concurrent* requests; after settle, the
+    // inflated HTML is handed to a byte-budget LRU (below) so that flipping
+    // back to an already-read chapter does not re-inflate it. The LRU lives
+    // in this loader's closure and is released with the bookDoc, so a long
+    // book's cache cannot outlive the session.
     const inflight = new Map<string, Promise<string | null>>();
     const dedupedZipLoadText = (name: string, ...args: [string?]): Promise<string | null> => {
       const existing = inflight.get(name);
@@ -317,22 +318,34 @@ export class DocumentLoader {
       const p =
         (zipLoadText(name, ...args) as Promise<string | null> | null) ?? Promise.resolve(null);
       const wrapped = Promise.resolve(p).finally(() => {
-        // Release as soon as the promise settles; subsequent independent
-        // reads will re-inflate (intentional — we don't want a nav-time
-        // cache to hold the whole book in RAM).
         if (inflight.get(name) === wrapped) inflight.delete(name);
       });
       inflight.set(name, wrapped);
       return wrapped;
     };
 
+    // 会话内章节文本 LRU：缓存已解压的 HTML 字符串（UTF-16 字节预算），
+    // 翻回旧章直接命中，避免重复 inflate。仅缓存解压结果，不缓存 DOM —
+    // parseFromString 仍在 createDocument 内执行，规避 Document 生命周期/
+    // 变更风险。随 makeZipLoader 闭包（bookDoc 生命周期）自动回收。
+    const MAX_CHAPTER_TEXT_BUDGET = 32 * 1024 * 1024; // 32 MB 解压文本
+    const chapterTextCache = new ChapterTextCache(MAX_CHAPTER_TEXT_BUDGET);
+    const cachedZipLoadText = (name: string, ...args: [string?]): Promise<string | null> => {
+      const hit = chapterTextCache.get(name);
+      if (hit !== undefined) return Promise.resolve(hit);
+      return dedupedZipLoadText(name, ...args).then((text) => {
+        if (text !== null) chapterTextCache.set(name, text);
+        return text;
+      });
+    };
+
     const loadText = textCache
       ? (name: string, ...args: [string?]) => {
           const cached = textCache.get(name);
           if (cached !== undefined) return Promise.resolve(cached);
-          return dedupedZipLoadText(name, ...args);
+          return cachedZipLoadText(name, ...args);
         }
-      : dedupedZipLoadText;
+      : cachedZipLoadText;
 
     const getSize = sizesOverride
       ? (name: string) => sizesOverride.get(name) ?? getEntry(name)?.uncompressedSize ?? 0

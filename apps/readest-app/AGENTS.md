@@ -2,6 +2,14 @@
 
 Readest is a cross-platform ebook reader built as a **Next.js 16 + Tauri v2** app. It's part of a pnpm monorepo at `/apps/readest-app/`. The app runs on desktop (macOS/Windows/Linux via Tauri).
 
+### 目标平台与优化边界（Target Platform & Optimization Boundary）
+
+本项目主要应用场景为**桌面端**（Tauri：macOS/Windows/Linux）。所有功能、性能与内存优化工作**一律聚焦桌面端**，**web 端不作为优化目标**：
+
+- web 端专属的性能/内存优化建议（如 blob URL 生命周期管理、封面 URL 惰性化、浏览器端备份流式化等）**不采纳、不实施**。
+- 评估任何改动收益时，以桌面端真实场景（本地书籍库、离线阅读、章节解析、词典加载、备份导出）为基准，而非浏览器场景。
+- 桌面端与 web 端共享的改动（如 zip 解压 worker、章节 LRU、SVG 节点合并）允许实施，但其收益论证必须立足桌面端。
+
 ## Common Commands
 
 ```bash

@@ -4,6 +4,7 @@ import { memo, useEffect, useRef, useState } from 'react';
 import { Book } from '@/types/book';
 import { LibraryCoverFitType, LibraryViewModeType } from '@/types/settings';
 import { formatAuthors, formatTitle } from '@/utils/book';
+import { getCoverThumbnailUrl } from '@/utils/coverThumbnail';
 
 interface BookCoverProps {
   book: Book;
@@ -32,8 +33,25 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
     const coverRef = useRef<HTMLDivElement>(null);
     const [imageLoaded, setImageLoaded] = useState(false);
     const [imageError, setImageError] = useState(false);
+    const [thumbUrl, setThumbUrl] = useState<string | null>(null);
+
+    const coverSrc = book.metadata?.coverImageUrl || book.coverImageUrl;
+
+    // 封面重采样到目标宽度后显示，避免源图（常为书内原图）全尺寸解码常驻。
+    // 缓存命中即返回，未命中首次缩略；失败（null）回退原 URL。
+    useEffect(() => {
+      if (!coverSrc) return;
+      let cancelled = false;
+      void getCoverThumbnailUrl.get(coverSrc).then((url: string | null) => {
+        if (!cancelled) setThumbUrl(url);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [coverSrc]);
 
     const shouldShowSpine = showSpine && imageLoaded && !imageError;
+    const displayedSrc = thumbUrl ?? coverSrc ?? '';
 
     const toggleImageVisibility = (showImage: boolean) => {
       if (coverRef.current) {
@@ -77,7 +95,7 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
         {coverFit === 'crop' ? (
           <>
             <Image
-              src={book.metadata?.coverImageUrl || book.coverImageUrl!}
+              src={displayedSrc}
               alt={book.title}
               fill={true}
               loading='lazy'
@@ -99,7 +117,7 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
               )}
             >
               <Image
-                src={book.metadata?.coverImageUrl || book.coverImageUrl!}
+                src={displayedSrc}
                 alt={book.title}
                 width={0}
                 height={0}
