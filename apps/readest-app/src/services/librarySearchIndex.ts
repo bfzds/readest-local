@@ -97,9 +97,13 @@ export const beginSearchIndex = async (
   totalSections: number,
   navHash: string,
 ): Promise<void> => {
-  await db.execute('DELETE FROM search_sections');
-  await db.execute('DELETE FROM search_nodes');
-  await db.execute('DELETE FROM search_meta');
+  // B7：清空三表合并为一次原子事务。双窗口并发重建同一 search.db 时，事务性
+  // 的批量清空 + completeSearchIndex 的完整性校验，避免交错出半成品索引。
+  await db.batch([
+    'DELETE FROM search_sections',
+    'DELETE FROM search_nodes',
+    'DELETE FROM search_meta',
+  ]);
   await db.execute(
     'INSERT INTO search_meta (id, updated_at, version, total_sections, complete, nav_hash, book_hash) VALUES (1, ?, ?, ?, 0, ?, ?)',
     [book.updatedAt, SEARCH_INDEX_VERSION, totalSections, navHash, book.hash],
@@ -136,7 +140,15 @@ export const checkpointSearchIndex = async (db: DatabaseService): Promise<void> 
   );
 };
 
-export const completeSearchIndex = async (db: DatabaseService): Promise<void> => {
+export const completeSearchIndex = async (
+  db: DatabaseService,
+  totalSections: number,
+): Promise<void> => {
+  // B7：置 complete 前校验已写 section 数。并发窗口交错写入部分 section 时数量
+  // 不匹配，保持 complete=0 让 isSearchIndexFresh 判脏、下次搜索重建——防止把
+  // 半成品索引当新鲜索引使用。
+  const rows = await db.select<{ c: number }>('SELECT COUNT(*) AS c FROM search_sections');
+  if ((rows[0]?.c ?? 0) !== totalSections) return;
   await db.execute('UPDATE search_meta SET complete = 1 WHERE id = 1');
   await checkpointSearchIndex(db);
 };

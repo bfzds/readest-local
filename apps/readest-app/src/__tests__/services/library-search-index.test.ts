@@ -55,7 +55,7 @@ describe('librarySearchIndex 索引新鲜度（B1）', () => {
     const book = makeBook('hash-abc', 100);
     await beginSearchIndex(db, book, 1, 'nav-1');
     await writeSearchIndexSection(db, 0, 's0', 'hello world');
-    await completeSearchIndex(db);
+    await completeSearchIndex(db, 1);
     const meta = await readSearchIndexMeta(db);
     expect(meta).not.toBeNull();
     // 模拟：读了几页后 updatedAt 被 updateBookProgress 更新
@@ -68,7 +68,7 @@ describe('librarySearchIndex 索引新鲜度（B1）', () => {
     const book = makeBook('hash-old', 100);
     await beginSearchIndex(db, book, 1, 'nav-1');
     await writeSearchIndexSection(db, 0, 's0', 'hello world');
-    await completeSearchIndex(db);
+    await completeSearchIndex(db, 1);
     const meta = await readSearchIndexMeta(db);
     expect(isSearchIndexFresh(meta, makeBook('hash-new', 100))).toBe(false);
   });
@@ -88,7 +88,7 @@ describe('librarySearchIndex 索引新鲜度（B1）', () => {
     const book = makeBook('hash-abc', 100);
     await beginSearchIndex(db, book, 1, 'nav-1');
     await writeSearchIndexSection(db, 0, 's0', 'hello world');
-    await completeSearchIndex(db);
+    await completeSearchIndex(db, 1);
     const meta = await readSearchIndexMeta(db);
     expect(isSearchIndexFresh(meta, book)).toBe(true);
   });
@@ -99,7 +99,7 @@ describe('librarySearchIndex 索引新鲜度（B1）', () => {
     await beginSearchIndex(db, book, 2, 'nav-1');
     await writeSearchIndexSection(db, 0, 's0', 'hello world');
     await writeSearchIndexSection(db, 1, 's1', 'second chapter');
-    await completeSearchIndex(db);
+    await completeSearchIndex(db, 2);
     const meta = await readSearchIndexMeta(db);
     expect(meta!.totalSections).toBe(2);
     expect(meta!.complete).toBe(true);
@@ -115,7 +115,30 @@ describe('librarySearchIndex DB 生命周期', () => {
     const dbB = await openDb();
     const book = makeBook('h-1', 100);
     await beginSearchIndex(dbA, book, 1, 'n');
-    await completeSearchIndex(dbA);
+    await completeSearchIndex(dbA, 1);
     expect(await readSearchIndexMeta(dbB)).toBeNull();
+  });
+});
+
+describe('completeSearchIndex 完整性校验（B7）', () => {
+  it('只写了部分 section 时不置 complete（防并发交错出半成品索引）', async () => {
+    const db = await openDb();
+    const book = makeBook('hash-abc', 100);
+    await beginSearchIndex(db, book, 2, 'nav-1');
+    await writeSearchIndexSection(db, 0, 's0', 'hello');
+    await completeSearchIndex(db, 2); // 只写了 1/2 节
+    const meta = await readSearchIndexMeta(db);
+    expect(meta!.complete).toBe(false);
+  });
+
+  it('section 写满时置 complete', async () => {
+    const db = await openDb();
+    const book = makeBook('hash-abc', 100);
+    await beginSearchIndex(db, book, 2, 'nav-1');
+    await writeSearchIndexSection(db, 0, 's0', 'hello');
+    await writeSearchIndexSection(db, 1, 's1', 'world');
+    await completeSearchIndex(db, 2);
+    const meta = await readSearchIndexMeta(db);
+    expect(meta!.complete).toBe(true);
   });
 });

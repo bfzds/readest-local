@@ -530,13 +530,17 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         // 处于方案A 的隐藏状态。把它带回前台，避免"无可见窗口但进程残留"。
         // show/unminimize 对已可见窗口是 no-op，正常路径（reader 顶部关闭书籍）
         // 不 emit 此事件，故不影响既有流程。
-        await currentWindow.show();
-        await currentWindow.unminimize();
-        await currentWindow.setFocus();
         const appService = await envConfig.getAppService();
-        const settings = await appService.loadSettings();
-        const library = await appService.loadLibraryBooks();
-        setSettings(settings);
+        // B8：窗口恢复与数据重载并行，缩短关闭阅读页的感知延迟。settings 复用
+        // 内存值不重载——书架渲染不依赖多数设置项，reader 关闭时设置极少跨窗口
+        // 变化，避免 setSettings 触发一轮订阅重渲。
+        const [library] = await Promise.all([
+          appService.loadLibraryBooks(),
+          currentWindow.show().then(async () => {
+            await currentWindow.unminimize();
+            await currentWindow.setFocus();
+          }),
+        ]);
         setLibrary(library);
       });
       return () => {

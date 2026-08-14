@@ -16,6 +16,7 @@ import type { LibrarySearchWorkerMatch } from '@/utils/librarySearchWorkerProtoc
 import { findNearbyMatches } from '@/utils/nearbySearch';
 import { createRejectFilter } from '@/utils/node';
 import { compileSearchRegex, filterWholeWordMatches, findRegexMatches } from '@/utils/textSearch';
+import { perfMark } from '@/utils/perf';
 import { BookFileNotFoundError } from './errors';
 import {
   beginSearchIndex,
@@ -628,6 +629,7 @@ export async function* searchLibraryBooks(
 
       if (indexDb && isSearchIndexFresh(meta, book) && nodesFresh) {
         // Indexed path: search cached text; the book file is never opened.
+        perfMark('search', 'bookFresh.hit');
         const usePrefilter = config.mode === 'contains' || config.mode === 'whole-words';
         let sections: SearchIndexSection[] = usePrefilter
           ? await loadSearchIndexCandidates(indexDb, query)
@@ -692,6 +694,9 @@ export async function* searchLibraryBooks(
       } else {
         // Live path: extract text section by section, persist it to the
         // per-book index, and match the same extracted text.
+        // 埋点：重建全流程（open→extract→write→match）计时，供验证 B1 后
+        // "读过的书不应重建"是否成立。
+        const rebuildT0 = perfMark('search', 'bookFresh.rebuild.start');
         if (options.session) {
           const cached = await options.session.open(book);
           file = cached.file;
@@ -707,6 +712,7 @@ export async function* searchLibraryBooks(
           ).book as SearchableBookDoc;
         }
         if (signal?.aborted) return;
+        perfMark('search', 'index.open', rebuildT0);
 
         const nav = await loadCurrentNav(appService, book);
         if (nav) {
@@ -812,8 +818,9 @@ export async function* searchLibraryBooks(
         }
 
         if (indexDb && indexComplete) {
-          await completeSearchIndex(indexDb).catch(() => {});
+          await completeSearchIndex(indexDb, totalSections).catch(() => {});
         }
+        perfMark('search', 'index.build', rebuildT0);
       }
 
       searchedBooks++;

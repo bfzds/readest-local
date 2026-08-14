@@ -25,6 +25,12 @@ import { useLibraryStore } from './libraryStore';
 import { clearBookProgress, getBookProgress, setBookProgress } from './readerProgressStore';
 import { uniqueId } from '@/utils/misc';
 
+// 翻页热路径 setProgress 的耗时采样周期（每 1s 一次）。每页翻页会多次调用
+// setProgress（rAF 合帧），逐次埋点会刷爆日志；采样到日志量小且能验证 B4
+// 修复后"库写入+订阅"的每页开销是否真降下来。
+const PROGRESS_PERF_SAMPLE_MS = 1000;
+let lastProgressPerfAt = 0;
+
 interface ViewState {
   /* Unique key for each book view */
   key: string;
@@ -400,6 +406,9 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
     range: Range,
     fraction: number,
   ) => {
+    const sampleStart = performance.now();
+    const sampled = sampleStart - lastProgressPerfAt >= PROGRESS_PERF_SAMPLE_MS;
+    if (sampled) lastProgressPerfAt = sampleStart;
     const id = key.split('-')[0]!;
     const bookData = useBookDataStore.getState().booksData[id];
     const viewState = get().viewStates[key];
@@ -464,6 +473,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
       range,
       page: pageInfo.current + 1,
     } as BookProgress);
+    if (sampled) perfMark('setProgress', 'total', sampleStart);
   },
   setBookmarkRibbonVisibility: (key: string, visible: boolean) =>
     set((state) => ({
