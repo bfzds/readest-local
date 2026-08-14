@@ -19,6 +19,11 @@ const h = vi.hoisted(() => ({
   // whose data is gone (a deleted book clears its entry via clearBookData), so
   // tests populate this for the books they expect to switch to.
   bookDataMap: {} as Record<string, object>,
+  // Reader search-bar interlock state (see useBooksManager onBack/onForward).
+  isSearchBarVisible: false,
+  isSideBarPinned: false,
+  setSearchBarVisibleMock: vi.fn(),
+  setSideBarVisibleMock: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({
@@ -51,7 +56,17 @@ vi.mock('@/store/readerStore', () => ({
   ),
 }));
 vi.mock('@/store/sidebarStore', () => ({
-  useSidebarStore: () => ({ sideBarBookKey: null, setSideBarBookKey: h.setSideBarBookKeyMock }),
+  useSidebarStore: Object.assign(
+    () => ({ sideBarBookKey: null, setSideBarBookKey: h.setSideBarBookKeyMock }),
+    {
+      getState: () => ({
+        isSearchBarVisible: h.isSearchBarVisible,
+        isSideBarPinned: h.isSideBarPinned,
+        setSearchBarVisible: h.setSearchBarVisibleMock,
+        setSideBarVisible: h.setSideBarVisibleMock,
+      }),
+    },
+  ),
 }));
 vi.mock('@/store/libraryStore', () => ({
   useLibraryStore: Object.assign(() => ({ library: h.library }), {
@@ -82,6 +97,8 @@ describe('useBooksManager open-failure handling', () => {
     h.bookKeys = [];
     h.viewStates = {};
     h.bookDataMap = {};
+    h.isSearchBarVisible = false;
+    h.isSideBarPinned = false;
     setPendingTTSAutoplay(null);
   });
 
@@ -286,5 +303,24 @@ describe('useBooksManager open-failure handling', () => {
       expect.any(String),
       true,
     );
+  });
+
+  it('back side-nav hides the search bar instead of switching books while it is visible', async () => {
+    h.bookKeys = ['book2-abc'];
+    h.bookDataMap = { book2: { hash: 'book2' }, book3: { hash: 'book3' } };
+    h.isSearchBarVisible = true;
+    renderHook(() => useBooksManager());
+    await act(async () => {
+      eventDispatcher.dispatch('open-book-in-reader', { bookHash: 'book3' });
+      await Promise.resolve();
+    });
+    h.setSideBarBookKeyMock.mockClear();
+    await act(async () => {
+      eventDispatcher.dispatch('library-nav-back');
+      await Promise.resolve();
+    });
+    expect(h.setSearchBarVisibleMock).toHaveBeenCalledWith(false);
+    expect(h.setSideBarVisibleMock).toHaveBeenCalledWith(false);
+    expect(h.setSideBarBookKeyMock).not.toHaveBeenCalled();
   });
 });

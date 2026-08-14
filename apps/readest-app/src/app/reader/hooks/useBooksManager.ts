@@ -226,8 +226,24 @@ const useBooksManager = () => {
     void advanceSwitch();
   };
   useEffect(() => {
-    const onBack = () => switchBook(-1);
-    const onForward = () => switchBook(1);
+    // 搜索栏开着时,侧键"后退"收起搜索栏(而不是切书),并关闭侧边栏回到阅读
+    // 正文。useMouseNavigation 新逻辑会在派发前拦截,这里兜底是因为窗口级
+    // mousedown 监听的热更新不可靠——无论事件由哪个版本派发到,都以搜索栏
+    // 状态决定是否切书,侧键动作不会和切书冲突。
+    const onBack = () => {
+      const { isSearchBarVisible, setSearchBarVisible } = useSidebarStore.getState();
+      if (isSearchBarVisible) {
+        setSearchBarVisible(false);
+        // 收起搜索栏即回到阅读正文,侧边栏非固定则一并关闭(否则停在目录页)。
+        const { isSideBarPinned, setSideBarVisible } = useSidebarStore.getState();
+        if (!isSideBarPinned) setSideBarVisible(false);
+        return;
+      }
+      switchBook(-1);
+    };
+    const onForward = () => {
+      switchBook(1);
+    };
     eventDispatcher.on('library-nav-back', onBack);
     eventDispatcher.on('library-nav-forward', onForward);
     return () => {

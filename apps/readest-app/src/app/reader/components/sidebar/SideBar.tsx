@@ -113,13 +113,25 @@ const SideBar = ({}) => {
     setSideBarVisible(false);
   };
 
+  // F / Ctrl+F toggles the search bar: open it, or dismiss it (clearing the
+  // search) when it's already showing. Single owner of onShowSearchBar — the
+  // useBookShortcuts instance stopped registering it so a bare F doesn't
+  // double-fire the toggle. Dismissing returns to the reader (closes the
+  // sidebar unless it's pinned), not to the sidebar's TOC tab.
   const handleShowSearchBar = useCallback(() => {
-    setTimeout(() => {
-      setSideBarVisible(true);
-      setSearchBarVisible(true);
-    }, 100);
+    if (isSearchBarVisible) {
+      setSearchBarVisible(false);
+      if (sideBarBookKey) clearSearch(sideBarBookKey);
+      getView(sideBarBookKey)?.clearSearch();
+      if (!isSideBarPinned) setSideBarVisible(false);
+    } else {
+      setTimeout(() => {
+        setSideBarVisible(true);
+        setSearchBarVisible(true);
+      }, 100);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isSearchBarVisible, sideBarBookKey, clearSearch, isSideBarPinned]);
 
   const handleHideSearchBar = useCallback(() => {
     setSearchBarVisible(false);
@@ -127,8 +139,10 @@ const SideBar = ({}) => {
       if (sideBarBookKey) clearSearch(sideBarBookKey);
     }, 100);
     getView(sideBarBookKey)?.clearSearch();
+    // 收起搜索栏即回到阅读正文,侧边栏若不是固定则一并关闭,避免停在目录页。
+    if (!isSideBarPinned) setSideBarVisible(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sideBarBookKey, clearSearch]);
+  }, [sideBarBookKey, clearSearch, isSideBarPinned]);
 
   const handleHideSideBar = useCallback(() => {
     if (searchTermRef.current) {
@@ -141,6 +155,7 @@ const SideBar = ({}) => {
 
   useShortcuts({ onShowSearchBar: handleShowSearchBar, onEscape: handleHideSideBar }, [
     handleHideSideBar,
+    handleShowSearchBar,
   ]);
 
   const handleSearchResultClick = (cfi: string) => {

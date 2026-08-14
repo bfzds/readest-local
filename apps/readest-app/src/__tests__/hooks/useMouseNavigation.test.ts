@@ -6,11 +6,33 @@ vi.mock('@/utils/event', () => ({
   eventDispatcher: { dispatch: vi.fn() },
 }));
 
+const sideNav = vi.hoisted(() => ({
+  isSearchBarVisible: false,
+  isSideBarPinned: false,
+  setSearchBarVisible: vi.fn(),
+  setSideBarVisible: vi.fn(),
+}));
+
+vi.mock('@/store/sidebarStore', () => ({
+  useSidebarStore: {
+    getState: () => ({
+      isSearchBarVisible: sideNav.isSearchBarVisible,
+      isSideBarPinned: sideNav.isSideBarPinned,
+      setSearchBarVisible: sideNav.setSearchBarVisible,
+      setSideBarVisible: sideNav.setSideBarVisible,
+    }),
+  },
+}));
+
 import { eventDispatcher } from '@/utils/event';
 
 describe('useMouseNavigation', () => {
   beforeEach(() => {
     vi.mocked(eventDispatcher.dispatch).mockClear();
+    sideNav.isSearchBarVisible = false;
+    sideNav.isSideBarPinned = false;
+    sideNav.setSearchBarVisible.mockClear();
+    sideNav.setSideBarVisible.mockClear();
   });
   afterEach(() => {
     cleanup();
@@ -34,6 +56,24 @@ describe('useMouseNavigation', () => {
     fireMouseDown(4);
     expect(eventDispatcher.dispatch).toHaveBeenCalledWith('library-nav-forward');
     expect(eventDispatcher.dispatch).not.toHaveBeenCalledWith('library-nav-back');
+  });
+
+  test('back side button hides the search bar (not switches books) while it is visible', () => {
+    sideNav.isSearchBarVisible = true;
+    renderHook(() => useMouseNavigation());
+    fireMouseDown(3);
+    expect(sideNav.setSearchBarVisible).toHaveBeenCalledWith(false);
+    expect(sideNav.setSideBarVisible).toHaveBeenCalledWith(false);
+    expect(eventDispatcher.dispatch).not.toHaveBeenCalledWith('library-nav-back');
+  });
+
+  test('back side button keeps a pinned sidebar open while hiding the search bar', () => {
+    sideNav.isSearchBarVisible = true;
+    sideNav.isSideBarPinned = true;
+    renderHook(() => useMouseNavigation());
+    fireMouseDown(3);
+    expect(sideNav.setSearchBarVisible).toHaveBeenCalledWith(false);
+    expect(sideNav.setSideBarVisible).not.toHaveBeenCalled();
   });
 
   test('primary (button 0) and middle (button 1) do not navigate', () => {

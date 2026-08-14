@@ -367,6 +367,22 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
           value={searchTerm}
           spellCheck={false}
           onChange={handleInputChange}
+          onKeyDown={(e) => {
+            // F toggle 的关闭半边:搜索框聚焦时 window 级 useShortcuts 会跳过
+            // 输入框内的按键(避免干扰输入),这里在搜索框为空时兜底 —— 刚打开的
+            // 空搜索框按 F 关闭;有内容时 F 保留为输入,关闭走 Esc/侧键。
+            if (
+              e.key === 'f' &&
+              !e.ctrlKey &&
+              !e.metaKey &&
+              !e.altKey &&
+              !e.shiftKey &&
+              !searchTerm
+            ) {
+              e.preventDefault();
+              onHideSearchBar();
+            }
+          }}
           placeholder={
             searchMode === 'regex'
               ? _('Search with regex')

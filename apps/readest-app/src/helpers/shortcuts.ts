@@ -19,7 +19,7 @@ const DEFAULT_SHORTCUTS = {
     section: 'General',
   },
   onShowSearchBar: {
-    keys: ['ctrl+f', 'cmd+f'],
+    keys: ['f', 'ctrl+f', 'cmd+f'],
     description: _('Search in Book'),
     section: 'General',
   },

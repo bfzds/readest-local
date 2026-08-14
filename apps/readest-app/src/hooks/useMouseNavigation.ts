@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { eventDispatcher } from '@/utils/event';
+import { useSidebarStore } from '@/store/sidebarStore';
 
 /**
  * Mouse side-button navigation mapped to the app's own back/forward
@@ -10,6 +11,12 @@ import { eventDispatcher } from '@/utils/event';
  * We forward a window-level app event and let the active page decide what
  * "back" and "forward" mean — the library goes up/down one group level,
  * keeping behaviour consistent with the on-screen and keyboard navigation.
+ *
+ * Reader search-bar interlock: while the reader's search bar is visible,
+ * "back" dismisses it (instead of switching books); the next "forward" then
+ * restores it. This makes the side buttons feel like a dialog dismiss/restore
+ * pair without stealing the book-switch gesture — book switching only kicks
+ * in when the search bar isn't in this interaction.
  *
  * Guard rails:
  * - Presses inside editable fields are ignored (typing/selection shouldn't
@@ -29,10 +36,22 @@ export const useMouseNavigation = () => {
       // accidental.
       if (e.buttons & 1) return;
       // Stop the host's default side-button history navigation so the gesture
-      // maps to exactly one app-level navigation.
+      // maps to exactly one app-level action.
       e.preventDefault();
-      if (e.button === 3) eventDispatcher.dispatch('library-nav-back');
-      else eventDispatcher.dispatch('library-nav-forward');
+      const { isSearchBarVisible, setSearchBarVisible, isSideBarPinned, setSideBarVisible } =
+        useSidebarStore.getState();
+      if (e.button === 3) {
+        // Search bar open → dismiss it (not switch books) and close the
+        // sidebar unless pinned, so the reader comes back rather than the TOC.
+        if (isSearchBarVisible) {
+          setSearchBarVisible(false);
+          if (!isSideBarPinned) setSideBarVisible(false);
+          return;
+        }
+        eventDispatcher.dispatch('library-nav-back');
+      } else {
+        eventDispatcher.dispatch('library-nav-forward');
+      }
     };
     window.addEventListener('mousedown', onMouseDown);
     return () => window.removeEventListener('mousedown', onMouseDown);
