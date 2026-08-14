@@ -117,13 +117,13 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ onSave, onEdit }) => {
 
       <div className='flex items-center pt-2'>
         <div
-          className='me-2 mt-0.5 min-h-full self-stretch rounded-xl bg-gray-300'
+          className='me-2 mt-0.5 min-h-full self-stretch rounded-xl bg-base-300'
           style={{
             minWidth: `${separatorWidth}px`,
           }}
         ></div>
         <div className='content font-size-sm line-clamp-3'>
-          <span className='content font-size-xs text-gray-500'>{getAnnotationText()}</span>
+          <span className='content font-size-xs text-base-content/65'>{getAnnotationText()}</span>
         </div>
       </div>
 

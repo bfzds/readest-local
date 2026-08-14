@@ -334,12 +334,12 @@ const BookmarkPullDown: React.FC<BookmarkPullDownProps> = ({ bookKey, ribbonHidd
         <div className='pointer-events-none absolute inset-0 z-20'>
           <div
             ref={bandRef}
-            className='bookmark-pull-band absolute left-0 right-0 top-0 overflow-hidden bg-[#6C717A]'
+            className='bookmark-pull-band absolute left-0 right-0 top-0 overflow-hidden bg-base-content/85'
             style={{ height: 0 }}
           >
             <div
               ref={hintRef}
-              className='absolute bottom-1.5 right-12 flex items-center gap-1.5 text-sm text-white/90'
+              className='absolute bottom-1.5 right-12 flex items-center gap-1.5 text-sm text-base-100'
             >
               <RiArrowDownLine
                 aria-hidden

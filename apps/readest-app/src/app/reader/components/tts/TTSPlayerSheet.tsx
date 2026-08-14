@@ -345,7 +345,7 @@ const TTSPlayerSheet = ({
             </button>
             <button
               type='button'
-              className='btn btn-primary btn-circle mx-2 h-14 min-h-14 w-14'
+              className='btn btn-contrast btn-circle mx-2 h-14 min-h-14 w-14'
               aria-label={isPlaying ? _('Pause') : _('Play')}
               onClick={onTogglePlay}
             >

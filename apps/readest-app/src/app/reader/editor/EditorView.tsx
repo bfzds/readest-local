@@ -4,6 +4,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { BookDoc } from '@/libs/document';
 import { useTranslation } from '@/hooks/useTranslation';
+import ModalPortal from '@/components/ModalPortal';
+import Alert from '@/components/Alert';
 import { serializeEditedSection } from './sectionSerializer';
 
 const EDITOR_CSS = `
@@ -23,6 +25,7 @@ export const EditorView: React.FC<{
   const originalHtmlRef = useRef<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,8 +54,8 @@ export const EditorView: React.FC<{
   }, []);
 
   const handleCancel = useCallback(() => {
-    if (window.confirm(_('Unsaved changes will be lost'))) onCancel();
-  }, [onCancel, _]);
+    setShowDiscardConfirm(true);
+  }, []);
 
   const handleSave = useCallback(async () => {
     const originalHtml = originalHtmlRef.current;
@@ -84,7 +87,7 @@ export const EditorView: React.FC<{
             {_('Cancel')}
           </button>
           <button
-            className='btn btn-primary h-8 min-h-8 px-3 text-sm'
+            className='btn btn-contrast h-8 min-h-8 px-3 text-sm'
             onClick={handleSave}
             disabled={saving}
           >
@@ -99,6 +102,21 @@ export const EditorView: React.FC<{
         title={_('Edit Book Content')}
         onLoad={handleIframeLoad}
       />
+      {showDiscardConfirm && (
+        <ModalPortal>
+          <Alert
+            title={_('Discard Changes')}
+            message={_('Unsaved changes will be lost')}
+            confirmLabel={_('Discard')}
+            confirmButtonClassName='btn-contrast'
+            onCancel={() => setShowDiscardConfirm(false)}
+            onConfirm={() => {
+              setShowDiscardConfirm(false);
+              onCancel();
+            }}
+          />
+        </ModalPortal>
+      )}
     </div>
   );
 };

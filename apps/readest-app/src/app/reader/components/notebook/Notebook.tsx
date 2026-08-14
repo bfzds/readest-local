@@ -434,7 +434,7 @@ const Notebook: React.FC = ({}) => {
         ) : (
           <div className='flex-grow overflow-y-auto px-3'>
             {isSearchBarVisible && searchResults && !hasSearchResults && hasAnyNotes && (
-              <div className='flex h-32 items-center justify-center text-gray-500'>
+              <div className='flex h-32 items-center justify-center text-base-content/65'>
                 <p className='font-size-sm text-center'>{_('No notes match your search')}</p>
               </div>
             )}
@@ -443,7 +443,7 @@ const Notebook: React.FC = ({}) => {
                 <p className='content font-size-base'>
                   {_('Excerpts')}
                   {isSearchBarVisible && searchResults && (
-                    <span className='font-size-xs ml-2 text-gray-500'>
+                    <span className='font-size-xs ml-2 text-base-content/65'>
                       ({filteredExcerptNotes.length})
                     </span>
                   )}

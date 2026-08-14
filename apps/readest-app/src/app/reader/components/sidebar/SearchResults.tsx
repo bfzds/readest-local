@@ -97,7 +97,7 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({
       ref={viewRef}
       className={clsx(
         'my-2 cursor-pointer rounded-lg p-2 text-[clamp(0.9rem,4.2cqw,1.2rem)]',
-        isCurrent ? 'bg-base-300 hover:bg-gray-300/70' : 'hover:bg-base-300 bg-base-100',
+        isCurrent ? 'bg-base-300 hover:bg-base-300/70' : 'hover:bg-base-300 bg-base-100',
       )}
       tabIndex={0}
       onClick={() => onSelectResult(cfi)}

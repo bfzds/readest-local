@@ -910,7 +910,7 @@ const ExportMarkdownDialog: React.FC<ExportMarkdownDialogProps> = ({
             </button>
             <button
               onClick={handleExport}
-              className='btn btn-primary btn-sm'
+              className='btn btn-contrast btn-sm'
               disabled={filteredNotesCount === 0}
             >
               {_('Export')}

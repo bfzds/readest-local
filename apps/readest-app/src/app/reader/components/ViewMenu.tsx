@@ -234,7 +234,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
               onClick={zoomOut}
               className={clsx(
                 'hover:bg-base-300 text-base-content rounded-full p-2',
-                zoomLevel <= MIN_ZOOM_LEVEL && 'btn-disabled text-gray-400',
+                zoomLevel <= MIN_ZOOM_LEVEL && 'btn-disabled text-base-content/40',
               )}
             >
               <MdZoomOut />
@@ -253,7 +253,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
               onClick={zoomIn}
               className={clsx(
                 'hover:bg-base-300 text-base-content rounded-full p-2',
-                zoomLevel >= MAX_ZOOM_LEVEL && 'btn-disabled text-gray-400',
+                zoomLevel >= MAX_ZOOM_LEVEL && 'btn-disabled text-base-content/40',
               )}
             >
               <MdZoomIn />
@@ -269,7 +269,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
               onClick={decreaseContrast}
               className={clsx(
                 'hover:bg-base-300 text-base-content rounded-full p-2',
-                contrast <= MIN_CONTRAST && 'btn-disabled text-gray-400',
+                contrast <= MIN_CONTRAST && 'btn-disabled text-base-content/40',
               )}
             >
               <MdRemove />
@@ -289,7 +289,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
               onClick={increaseContrast}
               className={clsx(
                 'hover:bg-base-300 text-base-content rounded-full p-2',
-                contrast >= MAX_CONTRAST && 'btn-disabled text-gray-400',
+                contrast >= MAX_CONTRAST && 'btn-disabled text-base-content/40',
               )}
             >
               <MdAdd />

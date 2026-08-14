@@ -313,7 +313,7 @@ const HighlightOptions: React.FC<HighlightOptionsProps> = ({
               <div key={color} className='relative flex items-center justify-center'>
                 {previewColor === color && (
                   <div
-                    className='eink-bordered pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-800 px-2 py-0.5 text-[10px] text-white'
+                    className='eink-bordered pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-base-content px-2 py-0.5 text-[10px] text-base-100'
                     style={{ maxWidth: 120 }}
                   >
                     {label}

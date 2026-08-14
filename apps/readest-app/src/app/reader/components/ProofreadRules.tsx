@@ -162,10 +162,10 @@ const RuleItem: React.FC<{
         )}
 
         <div className='mt-1 flex gap-2'>
-          <button className='btn btn-primary btn-sm flex-1' onClick={onSave}>
+          <button className='btn btn-contrast btn-sm flex-1' onClick={onSave}>
             {_('Save')}
           </button>
-          <button className='btn btn-sm flex-1' onClick={onCancel}>
+          <button className='btn btn-ghost btn-sm flex-1' onClick={onCancel}>
             {_('Cancel')}
           </button>
         </div>
@@ -195,7 +195,7 @@ const RuleItem: React.FC<{
               role='none'
               className={clsx(
                 'text-base-content/70 font-medium',
-                scope === 'selection' && 'cursor-pointer text-blue-400 hover:text-blue-500',
+                scope === 'selection' && 'cursor-pointer text-primary hover:text-primary/80',
               )}
               onClick={scope === 'selection' ? navigateToSelection : undefined}
             >
