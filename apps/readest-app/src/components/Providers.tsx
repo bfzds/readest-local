@@ -10,6 +10,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useCustomTextureStore } from '@/store/customTextureStore';
 import { useSafeAreaInsets } from '@/hooks/useSafeAreaInsets';
 import { useMouseNavigation } from '@/hooks/useMouseNavigation';
+import { useSuppressDefaultContextMenu } from '@/hooks/useSuppressDefaultContextMenu';
 import { useSettingsSync } from '@/hooks/useSettingsSync';
 import { useDefaultIconSize } from '@/hooks/useResponsiveSize';
 import { useBackgroundTexture } from '@/hooks/useBackgroundTexture';
@@ -38,6 +39,7 @@ const Providers = ({ children }: { children: React.ReactNode }) => {
   const iconSize = useDefaultIconSize();
   useSafeAreaInsets(); // Initialize safe area insets
   useMouseNavigation(); // Mouse side-button (back/forward) navigation
+  useSuppressDefaultContextMenu(); // Hide WebView2's browser context menu on non-editable areas
   useSettingsSync(); // Adopt global settings broadcast by other windows (#4580)
 
   useEffect(() => {
