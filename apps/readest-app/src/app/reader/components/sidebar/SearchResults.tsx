@@ -16,38 +16,49 @@ interface SearchResultItemProps {
 }
 
 // The excerpt stores ~50 chars of context per side, but the sidebar row clamps
-// to three lines — clip the displayed lead-in so the match itself can never be
-// pushed past the clamp.
-const PRE_DISPLAY_LIMIT = 20;
+// to three lines — clip both lead-in and tail so the match itself stays
+// prominent instead of being buried in long context.
+const PRE_DISPLAY_LIMIT = 10;
 const clipPre = (pre: string) => {
   const points = Array.from(pre);
   return points.length > PRE_DISPLAY_LIMIT ? `…${points.slice(-PRE_DISPLAY_LIMIT).join('')}` : pre;
 };
+const clipPost = (post: string) => {
+  const points = Array.from(post);
+  return points.length > PRE_DISPLAY_LIMIT
+    ? `${points.slice(0, PRE_DISPLAY_LIMIT).join('')}…`
+    : post;
+};
+
+// Context (pre/post) rendered smaller and dimmed so the match dominates.
+const ContextSpan: React.FC<{ children: string }> = ({ children }) => (
+  <span className='text-base-content/60 text-[0.72em]'>{children}</span>
+);
 
 // nearby-words excerpts emphasize each matched word; other modes bold the single match span.
 const ExcerptBody: React.FC<{ excerpt: SearchExcerpt }> = ({ excerpt }) => {
   if (excerpt.segments) {
     return (
       <>
-        <span>{clipPre(excerpt.pre)}</span>
+        <ContextSpan>{clipPre(excerpt.pre)}</ContextSpan>
         {excerpt.segments.map((seg, i) =>
           seg.emphasized ? (
-            <span key={i} className='search-term-highlight'>
+            <span key={i} className='search-term-highlight text-[1.1em]'>
               {seg.text}
             </span>
           ) : (
             <span key={i}>{seg.text}</span>
           ),
         )}
-        <span>{excerpt.post}</span>
+        <ContextSpan>{clipPost(excerpt.post)}</ContextSpan>
       </>
     );
   }
   return (
     <>
-      <span>{clipPre(excerpt.pre)}</span>
-      <span className='search-term-highlight'>{excerpt.match}</span>
-      <span>{excerpt.post}</span>
+      <ContextSpan>{clipPre(excerpt.pre)}</ContextSpan>
+      <span className='search-term-highlight text-[1.1em]'>{excerpt.match}</span>
+      <ContextSpan>{clipPost(excerpt.post)}</ContextSpan>
     </>
   );
 };
@@ -69,7 +80,7 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({
       role='button'
       ref={viewRef}
       className={clsx(
-        'my-2 cursor-pointer rounded-lg p-2 text-sm',
+        'my-2 cursor-pointer rounded-lg p-2 text-[clamp(0.8rem,3.8cqw,1.05rem)]',
         isCurrent ? 'bg-base-300 hover:bg-gray-300/70' : 'hover:bg-base-300 bg-base-100',
       )}
       tabIndex={0}
@@ -260,7 +271,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({ bookKey, results, onSelec
   }
 
   return (
-    <div className='search-results overflow-y-auto px-2 font-sans text-sm font-light'>
+    <div className='search-results @container overflow-y-auto px-2 font-sans text-sm font-light'>
       <ul className='px-2'>
         {results.map((result, index) => {
           if ('subitems' in result) {
