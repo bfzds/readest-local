@@ -43,7 +43,7 @@ const MatchHighlight: React.FC<{ children: string }> = ({ children }) => (
   <span
     className='font-medium'
     style={{
-      backgroundColor: 'color-mix(in srgb, var(--search-highlight-color) 45%, transparent)',
+      backgroundColor: 'var(--search-highlight-bg)',
       borderRadius: '2px',
       boxDecorationBreak: 'clone',
       WebkitBoxDecorationBreak: 'clone',

@@ -58,6 +58,12 @@ export const useTheme = ({ appThemeColor = 'base-100' }: UseThemeProps = {}) => 
       '--search-highlight-color',
       isDarkMode ? '#f59e0b' : '#fbbf24',
     );
+    // 预览遮罩背景（完整 rgba，含 alpha）——不依赖 color-mix 的插值/兼容性，
+    // 由搜索预览的 MatchHighlight 直接引用，保证与正文遮罩同色。
+    document.documentElement.style.setProperty(
+      '--search-highlight-bg',
+      isDarkMode ? 'rgba(245, 158, 11, 0.45)' : 'rgba(251, 191, 36, 0.45)',
+    );
     document.documentElement.style.setProperty(
       '--bg-texture-blend-mode',
       isDarkMode ? 'lighten' : 'multiply',
