@@ -35,7 +35,8 @@ const SideBar = ({}) => {
   const { isSearchBarVisible, setSearchBarVisible } = useSidebarStore();
   const searchNavState = sideBarBookKey ? getSearchNavState(sideBarBookKey) : null;
   const { searchTerm = '', searchResults = null } = searchNavState || {};
-  const { getBookData, getConfig } = useBookDataStore();
+  const getBookData = useBookDataStore((s) => s.getBookData);
+  const getConfig = useBookDataStore((s) => s.getConfig);
   const { getView, getViewSettings } = useReaderStore();
   const searchTermRef = useRef(searchTerm);
   const isMobile = window.innerWidth < 640;

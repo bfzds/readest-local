@@ -67,7 +67,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
   const viewSettings = getViewSettings(bookKey);
   const setEditing = useReaderStore((s) => s.setEditing);
   const editing = useReaderStore((s) => s.viewStates[bookKey]?.editing ?? false);
-  const { getBookData } = useBookDataStore();
+  const getBookData = useBookDataStore((s) => s.getBookData);
   const bookData = getBookData(bookKey);
   const canEditBookContent = isTauriAppPlatform() && bookData?.book?.format === 'EPUB' && !editing;
 

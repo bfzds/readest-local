@@ -26,7 +26,9 @@ const FooterBar: React.FC<FooterBarProps> = ({
 }) => {
   const _ = useTranslation();
   const { appService } = useEnv();
-  const { getConfig, setConfig, getBookData } = useBookDataStore();
+  const getConfig = useBookDataStore((s) => s.getConfig);
+  const setConfig = useBookDataStore((s) => s.setConfig);
+  const getBookData = useBookDataStore((s) => s.getBookData);
   const { hoveredBookKey, setHoveredBookKey, bottomBarTab, setBottomBarTab } = useReaderStore();
   const { getView, getViewState, getProgress, getViewSettings } = useReaderStore();
   const { isSideBarVisible, isSideBarPinned, setSideBarVisible } = useSidebarStore();

@@ -45,7 +45,10 @@ const Notebook: React.FC = ({}) => {
   const { notebookWidth, isNotebookVisible, isNotebookPinned, notebookActiveTab } =
     useNotebookStore();
   const { notebookNewAnnotation, notebookEditAnnotation, setNotebookPin } = useNotebookStore();
-  const { getBookData, getConfig, saveConfig, updateBooknotes } = useBookDataStore();
+  const getBookData = useBookDataStore((s) => s.getBookData);
+  const getConfig = useBookDataStore((s) => s.getConfig);
+  const saveConfig = useBookDataStore((s) => s.saveConfig);
+  const updateBooknotes = useBookDataStore((s) => s.updateBooknotes);
   const { getView, getViewsById, getProgress, getViewSettings } = useReaderStore();
   const { getNotebookWidth, setNotebookWidth, setNotebookVisible, toggleNotebookPin } =
     useNotebookStore();
