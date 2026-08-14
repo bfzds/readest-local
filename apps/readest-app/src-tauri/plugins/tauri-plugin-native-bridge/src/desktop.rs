@@ -97,7 +97,17 @@ impl<R: Runtime> NativeBridge<R> {
     }
 
     pub fn get_sys_fonts_list(&self) -> crate::Result<GetSysFontsListResponse> {
-        let font_collection = font_enumeration::Collection::new().unwrap();
+        // RF5: 字体枚举失败不再 unwrap panic（会让 IPC 永不返回），返回空列表 + error。
+        let font_collection = match font_enumeration::Collection::new() {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("font enumeration failed: {e:?}");
+                return Ok(GetSysFontsListResponse {
+                    fonts: HashMap::new(),
+                    error: Some(format!("font enumeration failed: {e:?}")),
+                });
+            }
+        };
         let mut fonts = HashMap::new();
         for font in font_collection.all() {
             if cfg!(target_os = "windows") {

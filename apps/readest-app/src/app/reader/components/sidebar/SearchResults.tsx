@@ -238,7 +238,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({ bookKey, results, onSelec
   const { getProgress } = useReaderStore();
   const { getSearchNavState } = useSidebarStore();
   const progress = getProgress(bookKey);
-  const { searchProgress, searchError } = getSearchNavState(bookKey);
+  const { searchProgress, searchError, searchTruncated } = getSearchNavState(bookKey);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => new Set());
 
   // Starting a search resets progress to 0 while the previous results stay
@@ -288,6 +288,12 @@ const SearchResults: React.FC<SearchResultsProps> = ({ bookKey, results, onSelec
 
   return (
     <div className='search-results @container overflow-y-auto px-2 font-sans text-sm font-light'>
+      {/* SF9: 结果因每本/全局上限被截断时提示，避免静默截断被误认为结果完整 */}
+      {searchTruncated && (
+        <div className='text-base-content/60 px-1 pb-1 text-xs'>
+          {_('Results truncated: showing the first matches')}
+        </div>
+      )}
       <ul className='px-2'>
         {results.map((result, index) => {
           if ('subitems' in result) {

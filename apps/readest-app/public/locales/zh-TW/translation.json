@@ -1713,6 +1713,7 @@
   "Stop reading aloud": "停止朗讀",
   "Enter at least two words": "請至少輸入兩個單詞",
   "Search failed": "搜尋失敗",
+  "Results truncated: showing the first matches": "結果已截斷：僅顯示前若干條匹配",
   "Search with regex": "使用正規表示式搜尋",
   "Words to find near each other": "要就近尋找的單詞",
   "Contains": "包含",

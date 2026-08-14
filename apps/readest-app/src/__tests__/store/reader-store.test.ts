@@ -70,6 +70,7 @@ vi.mock('@/services/rss/feedReader', () => ({
 
 import { useReaderStore } from '@/store/readerStore';
 import { useBookDataStore } from '@/store/bookDataStore';
+import { useLibraryStore } from '@/store/libraryStore';
 import { uniqueId } from '@/utils/misc';
 
 /**
@@ -374,6 +375,40 @@ describe('readerStore', () => {
 
       expect(mountedKeys).toEqual(['book-1-uid-1']);
       uniqueIdMock.mockImplementation(() => 'mock-uid-123');
+    });
+  });
+
+  describe('NF4: total===0 除零', () => {
+    test('分页未就绪（total=0）时不误标 finished', () => {
+      const library = useLibraryStore.getState() as unknown as {
+        getBookByHash: ReturnType<typeof vi.fn>;
+        updateBookProgress: ReturnType<typeof vi.fn>;
+      };
+      library.getBookByHash.mockReturnValue({ hash: 'h1', readingStatus: 'unread' });
+      library.updateBookProgress.mockClear();
+      useBookDataStore.setState({
+        booksData: { h1: { isFixedLayout: false, config: { updatedAt: 0 } } } as never,
+      });
+      seedViewState('h1-k', { inited: true });
+
+      useReaderStore
+        .getState()
+        .setProgress(
+          'h1-k',
+          'loc',
+          {} as never,
+          null,
+          { current: 0, total: 0 } as never,
+          { current: 0, total: 0 } as never,
+          {} as never,
+          {} as never,
+          0,
+        );
+
+      expect(library.updateBookProgress).toHaveBeenCalled();
+      // total=0 → progressPercentage 为 0，不进入 finished 分支
+      const status = library.updateBookProgress.mock.calls[0]![2];
+      expect(status).not.toBe('finished');
     });
   });
 });

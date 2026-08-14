@@ -1,4 +1,5 @@
 import { mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { connect } from '@tursodatabase/database';
 import { timed, type Bench, type BenchResult } from './lib.ts';
 import { findContainsMatches } from '../src/utils/containsSearch.ts';
@@ -43,7 +44,7 @@ const NGRAM_BOOK_COUNT = 30;
 const EN_TEXT = readFileSync(new URL('./fixtures/alice.txt', import.meta.url), 'utf8');
 const ZH_TEXT = readFileSync(new URL('./fixtures/hongloumeng.txt', import.meta.url), 'utf8');
 const OFFSET_STRIDE = 9973;
-const DB_ROOT = new URL('./tmp-library-search-turso/', import.meta.url).pathname;
+const DB_ROOT = fileURLToPath(new URL('./tmp-library-search-turso/', import.meta.url));
 
 const sectionAt = (text: string, globalIndex: number) => {
   const start = (globalIndex * OFFSET_STRIDE) % (text.length - SECTION_CHARS);

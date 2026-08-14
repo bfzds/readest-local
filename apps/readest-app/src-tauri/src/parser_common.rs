@@ -31,6 +31,9 @@ use std::path::Path;
 /// is downscaled with [`COVER_RESIZE_FILTER`] and re-encoded as JPEG q85.
 pub const COVER_MAX_LONG_EDGE: u32 = 512;
 pub const COVER_JPEG_QUALITY: u8 = 85;
+// RF7: 解压炸弹防护——封面解码前的尺寸上限。超过则不解码、保留原始字节，
+// 避免对超大像素图（如 10000×10000）全量解码占用无界内存/时间。
+pub const MAX_COVER_DECODE_DIMENSION: u32 = 8192;
 
 /// Resampling filter used to downscale covers. We deliberately use
 /// `Triangle` (4-tap bilinear-ish) instead of `Lanczos3` (36-tap): at the
@@ -60,6 +63,15 @@ pub struct RawCoverImage {
 /// sniffs the actual format from the magic bytes, so misclaimed MIMEs in
 /// the source container don't trip us up.
 pub fn maybe_resize_cover(bytes: Vec<u8>, hint_mime: &str) -> (Vec<u8>, String) {
+    // RF7: 解码前先用 ImageReader 只读图像头（不分配像素）检查尺寸，超限直接
+    // 返回原始字节，防止解压炸弹（恶意超大封面）导致无界内存/时间消耗。
+    if let Ok(reader) = image::ImageReader::new(Cursor::new(&bytes)).with_guessed_format() {
+        if let Ok((w, h)) = reader.into_dimensions() {
+            if w.max(h) > MAX_COVER_DECODE_DIMENSION {
+                return (bytes, hint_mime.to_string());
+            }
+        }
+    }
     let img = match image::load_from_memory(&bytes) {
         Ok(i) => i,
         Err(_) => return (bytes, hint_mime.to_string()),

@@ -50,7 +50,8 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
   const { getBookData } = useBookDataStore();
   const { getConfig, setConfig, saveConfig } = useBookDataStore();
   const { getView, getProgress, getViewSettings } = useReaderStore();
-  const { setSearchTerm, setSearchResults, setSearchProgress, setSearchError } = useSidebarStore();
+  const { setSearchTerm, setSearchResults, setSearchProgress, setSearchError, setSearchTruncated } =
+    useSidebarStore();
   const { getSearchNavState, getSearchStatus, setSearchStatus } = useSidebarStore();
   const viewSettings = getViewSettings(bookKey);
   const searchNavState = getSearchNavState(bookKey);
@@ -260,6 +261,8 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
           } else if (event.type === 'book-completed') {
             setSearchStatus(bookKey, 'completed');
             setSearchProgress(bookKey, 1);
+            // SF9: 结果被每本/全局上限截断时标记，供结果列表顶部提示"结果不完整"
+            if (event.truncated) setSearchTruncated(bookKey, true);
             if (rawResults.length > 0) {
               addToHistory(term);
             }

@@ -1724,6 +1724,7 @@
   "Stop reading aloud": "停止朗读",
   "Enter at least two words": "请至少输入两个单词",
   "Search failed": "搜索失败",
+  "Results truncated: showing the first matches": "结果已截断：仅显示前若干条匹配",
   "Search with regex": "使用正则表达式搜索",
   "Words to find near each other": "要就近查找的单词",
   "Contains": "包含",

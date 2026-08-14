@@ -12,6 +12,7 @@
   "Search in {{count}} Book(s)..._other": "Search in {{count}} books...",
   "Search contents in {{count}} Book(s)..._one": "Search contents in {{count}} book...",
   "Search contents in {{count}} Book(s)..._other": "Search contents in {{count}} books...",
+  "Results truncated: showing the first matches": "Results truncated: showing the first matches",
   "{{count}} pages left in chapter_one": "<0>{{count}}</0><1> page left in chapter</1>",
   "{{count}} pages left in chapter_other": "<0>{{count}}</0><1> pages left in chapter</1>",
   "{{count}} pages left in book_one": "<0>{{count}}</0><1> page left in book</1>",

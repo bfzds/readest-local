@@ -416,7 +416,8 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
 
     const pageInfo = bookData.isFixedLayout ? section : pageinfo;
     const progress: [number, number] = [pageInfo.current + 1, pageInfo.total];
-    const progressPercentage = Math.round((progress[0] / progress[1]) * 100);
+    // NF4: total===0 时分页未就绪，除零得 Infinity 会误标 finished——此时记为 0。
+    const progressPercentage = progress[1] > 0 ? Math.round((progress[0] / progress[1]) * 100) : 0;
 
     // Lightweight library update — O(1) lookup, no array copy, no refreshGroups
     const { getBookByHash, updateBookProgress } = useLibraryStore.getState();

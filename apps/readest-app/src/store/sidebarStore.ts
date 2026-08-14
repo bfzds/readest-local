@@ -10,6 +10,9 @@ interface SearchNavState {
   searchResultIndex: number;
   searchProgress: number; // 0 to 1, where 1 means search complete
   searchError: string | null; // invalid regex / nearby-words parse error, shown inline
+  // SF9: 搜索结果因每本/全局上限被截断，结果列表不完整（静默截断会被误认为
+  // 结果完整）。
+  searchTruncated: boolean;
 }
 
 // Per-book booknotes navigation state
@@ -50,6 +53,7 @@ interface SidebarState {
   setSearchResultIndex: (bookKey: string, index: number) => void;
   setSearchProgress: (bookKey: string, progress: number) => void;
   setSearchError: (bookKey: string, error: string | null) => void;
+  setSearchTruncated: (bookKey: string, truncated: boolean) => void;
   clearSearch: (bookKey: string) => void;
   // Booknotes navigation actions (per bookKey)
   getBooknotesNavState: (bookKey: string) => BooknotesNavState;
@@ -65,6 +69,7 @@ const defaultSearchNavState: SearchNavState = {
   searchResultIndex: 0,
   searchProgress: 1,
   searchError: null,
+  searchTruncated: false,
 };
 
 const defaultBooknotesNavState: BooknotesNavState = {
@@ -146,6 +151,16 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
         [bookKey]: {
           ...(state.searchNavStates[bookKey] || defaultSearchNavState),
           searchError: error,
+        },
+      },
+    })),
+  setSearchTruncated: (bookKey: string, truncated: boolean) =>
+    set((state) => ({
+      searchNavStates: {
+        ...state.searchNavStates,
+        [bookKey]: {
+          ...(state.searchNavStates[bookKey] || defaultSearchNavState),
+          searchTruncated: truncated,
         },
       },
     })),

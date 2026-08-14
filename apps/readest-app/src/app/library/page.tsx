@@ -534,12 +534,15 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         // B8：窗口恢复与数据重载并行，缩短关闭阅读页的感知延迟。settings 复用
         // 内存值不重载——书架渲染不依赖多数设置项，reader 关闭时设置极少跨窗口
         // 变化，避免 setSettings 触发一轮订阅重渲。
+        // NF1：窗口操作各自 .catch 隔离失败域——unminimize/setFocus 任一 reject
+        // 都不再让 Promise.all 整体拒绝，保证 setLibrary（数据刷新）一定执行。
         const [library] = await Promise.all([
           appService.loadLibraryBooks(),
-          currentWindow.show().then(async () => {
-            await currentWindow.unminimize();
-            await currentWindow.setFocus();
-          }),
+          (async () => {
+            await currentWindow.show().catch(() => {});
+            await currentWindow.unminimize().catch(() => {});
+            await currentWindow.setFocus().catch(() => {});
+          })(),
         ]);
         setLibrary(library);
       });

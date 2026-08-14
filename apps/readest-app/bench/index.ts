@@ -1,6 +1,6 @@
 import { readdirSync, appendFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execSync } from 'node:child_process';
 import { type Bench, type BenchResult, formatHeader, formatResults, machineInfo } from './lib.ts';
 
@@ -33,7 +33,9 @@ async function loadBenches(): Promise<Bench[]> {
   const files = readdirSync(BENCH_DIR).filter((f) => f.endsWith('.bench.ts'));
   const benches: Bench[] = [];
   for (const file of files) {
-    const mod = await import(resolve(BENCH_DIR, file));
+    // TF1: Windows 下动态 import 绝对路径需 file:// URL，直接 resolve 报
+    // ERR_UNSUPPORTED_ESM_URL_SCHEME（Protocol 'c:'）。
+    const mod = await import(pathToFileURL(resolve(BENCH_DIR, file)).href);
     const bench = mod.default as Bench;
     if (!bench || typeof bench.run !== 'function') {
       console.error(`Skipping ${file}: no default export with .run()`);
