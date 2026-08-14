@@ -72,7 +72,15 @@ fn sanitize_file(path: &Path) {
     if sanitized.trim() == "{}" {
         let _ = std::fs::remove_file(path);
     } else {
-        let _ = std::fs::write(path, sanitized);
+        // RF8: temp + rename 原子写，写盘中途崩溃不会留下截断/损坏的状态文件。
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let tmp = path.with_file_name(format!("{name}.tmp"));
+        if std::fs::write(&tmp, sanitized).is_ok() {
+            let _ = std::fs::rename(&tmp, path);
+        }
     }
 }
 

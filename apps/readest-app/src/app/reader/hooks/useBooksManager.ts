@@ -10,6 +10,10 @@ import { eventDispatcher } from '@/utils/event';
 import { consumePendingTTSAutoplay } from '@/utils/ttsAutoplay';
 import { useTranslation } from '@/hooks/useTranslation';
 
+// NF5: 等 view 就绪的订阅超时兜底——view 初始化悬挂（不 error 不 inited）时
+// 若无超时，订阅永不解除，每次深链打开累积一个僵尸订阅。
+const READINESS_TIMEOUT_MS = 10000;
+
 const useBooksManager = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -67,6 +71,8 @@ const useBooksManager = () => {
       unsub();
       if (ok) jump();
     });
+    // NF5: view 初始化悬挂时超时解除订阅，防僵尸订阅累积
+    setTimeout(() => unsub(), READINESS_TIMEOUT_MS);
   };
 
   // Android Auto "Resume last book" cold-start: once the freshly-opened book's
@@ -90,6 +96,8 @@ const useBooksManager = () => {
       unsub();
       if (ok) eventDispatcher.dispatch('tts-speak', { bookKey });
     });
+    // NF5: view 初始化悬挂时超时解除订阅，防僵尸订阅累积
+    setTimeout(() => unsub(), READINESS_TIMEOUT_MS);
   };
 
   // Open a book in-place when a widget/deep link targets a book while a reader

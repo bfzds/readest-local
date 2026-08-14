@@ -128,6 +128,10 @@ export const tauriHandleOnCloseMainWindow = async () => {
       await currentWindow.hide();
       return;
     }
+    // NF9: 主窗口关闭 = 应用退出，flush 待保存的库写入（saveLibraryBooks 有节流），
+    // 避免丢退出前节流窗口内的数据。动态 import 避免循环依赖。
+    const { flushPendingLibrarySave } = await import('@/store/bookDataStore');
+    await flushPendingLibrarySave().catch(() => {});
     await Promise.all(readers.map((w) => w.destroy().catch(() => {})));
   });
 };

@@ -241,7 +241,14 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
     );
     await saveSettings(envConfig, settings);
   };
-  const handleCloseBooks = throttle(saveAndCloseBooks, 200);
+  // NF8: throttle 实例用 ref 稳定——每次渲染重建会让节流状态（lastCall/定时器）
+  // 丢失，快速开关书时防重入失效、残留定时器与新书交互。闭包经 ref 取最新。
+  const saveAndCloseBooksRef = useRef(saveAndCloseBooks);
+  saveAndCloseBooksRef.current = saveAndCloseBooks;
+  const handleCloseBooksRef = useRef(
+    throttle((keepTTSAlive?: unknown) => saveAndCloseBooksRef.current(keepTTSAlive), 200),
+  );
+  const handleCloseBooks = handleCloseBooksRef.current;
 
   const handleCloseBooksToLibrary = async () => {
     // SPA navigation in the main window (or on web) keeps the webview alive:

@@ -76,17 +76,31 @@ export default function ReadingStatsTracker({ bookKey }: { bookKey: string }) {
     }
   };
 
+  // SF6: 翻页事件累积到 pending，由 idle/隐藏/关闭等低频率时机批量写库，避免
+  // 每次翻页一次 IPC 写入（长时间阅读的写入放大）。统计是后台遥测，非实时 UI，
+  // 批量写延迟可接受。
+  const pendingRef = useRef<FlushedEvent[]>([]);
+  const enqueue = (events: FlushedEvent[]) => {
+    if (events.length) pendingRef.current.push(...events);
+  };
+  const flushPending = async () => {
+    if (!pendingRef.current.length) return;
+    const batch = pendingRef.current;
+    pendingRef.current = [];
+    await persist(batch);
+  };
+
   const armIdle = () => {
     if (idleRef.current) clearTimeout(idleRef.current);
-    idleRef.current = setTimeout(
-      () => void persist(coreRef.current.onIdle(nowSec())),
-      DEFAULT_STATS_TRACKING_CONFIG.idleTimeoutSeconds * 1000,
-    );
+    idleRef.current = setTimeout(() => {
+      enqueue(coreRef.current.onIdle(nowSec()));
+      void flushPending();
+    }, DEFAULT_STATS_TRACKING_CONFIG.idleTimeoutSeconds * 1000);
   };
 
   const openPageAt = (info: { current?: number; total: number } | undefined) => {
     if (!info) return;
-    void persist(coreRef.current.onPage((info.current ?? 0) + 1, info.total || 1, nowSec()));
+    enqueue(coreRef.current.onPage((info.current ?? 0) + 1, info.total || 1, nowSec()));
     armIdle();
   };
 
@@ -111,7 +125,8 @@ export default function ReadingStatsTracker({ bookKey }: { bookKey: string }) {
       ttsPlayingRef.current = playing;
       if (playing) {
         if (idleRef.current) clearTimeout(idleRef.current);
-        void persist(coreRef.current.onIdle(nowSec()));
+        enqueue(coreRef.current.onIdle(nowSec()));
+        void flushPending();
       } else {
         openPageAt(getBookProgress(bookKey)?.pageinfo);
       }
@@ -126,7 +141,8 @@ export default function ReadingStatsTracker({ bookKey }: { bookKey: string }) {
     const onVis = () => {
       if (document.visibilityState === 'hidden') {
         if (idleRef.current) clearTimeout(idleRef.current);
-        void persist(coreRef.current.onHide(nowSec()));
+        enqueue(coreRef.current.onHide(nowSec()));
+        void flushPending();
       }
     };
     document.addEventListener('visibilitychange', onVis);
@@ -138,7 +154,8 @@ export default function ReadingStatsTracker({ bookKey }: { bookKey: string }) {
   useEffect(() => {
     return () => {
       if (idleRef.current) clearTimeout(idleRef.current);
-      runBestEffort(persist(coreRef.current.onClose(nowSec())));
+      enqueue(coreRef.current.onClose(nowSec()));
+      runBestEffort(flushPending());
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookMd5]);
