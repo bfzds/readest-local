@@ -4,38 +4,35 @@ import { MdChevronRight } from 'react-icons/md';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { navigateToLibrary } from '@/utils/nav';
-import { LibraryGroupByType } from '@/types/settings';
 
 interface GroupHeaderProps {
-  groupBy: LibraryGroupByType;
   groupName: string;
 }
 
 /**
- * Header component displayed when viewing books inside a virtual group.
- * Shows the group type, group name, and a back button to return to the main bookshelf.
+ * 虚拟分组（作者/系列/标签/主题）内的导航头：显示组名与"全部"返回按钮。
+ * 返回目标是进入时的来源（URL `from` 参数 —— 一个文件夹，或顶层），而不是
+ * 一律回顶层：文件夹内打开的作者分组必须能退回到那个文件夹。
  */
-const GroupHeader: React.FC<GroupHeaderProps> = ({ groupBy, groupName }) => {
+const GroupHeader: React.FC<GroupHeaderProps> = ({ groupName }) => {
   const _ = useTranslation();
   const router = useRouter();
   const iconSize = useResponsiveSize(20);
 
   const handleBack = () => {
     const params = new URLSearchParams(window.location.search);
-    // Set `group` to an empty string instead of deleting it. After a cold start
-    // the URL inside a series/author folder is just `?group=X` (groupBy comes
-    // from settings, not the URL), so deleting `group` would leave an empty
-    // search string — and `router.replace('/library')` with an empty search
-    // silently no-ops under the Next.js 16.2 static export, leaving the back
-    // button dead (#4437). This mirrors the workaround in
-    // `handleLibraryNavigation` (see page.tsx, originally #3782/#3832): the
-    // resulting `/library?group=` does commit, and the trailing empty `group=`
-    // is stripped cosmetically by the cleanup effect in page.tsx.
-    params.set('group', '');
-    // Carry this virtual dimension so "back" lands on the dimension's top-level
-    // list (e.g. the author list), not the library home page in whatever
-    // dimension the top level happens to remember.
-    params.set('groupBy', groupBy);
+    // 回到进入时的来源：`from` 记录来源 group（文件夹 id 或空 = 顶层）。
+    // 文件夹内打开的虚拟分组必须退回该文件夹，而不是全库首页。
+    const fromGroup = params.get('from');
+    // 用 `group=` 而非删掉 group 参数：无 `from`（来源顶层）时 group 置空字符串，
+    // 保证 query 非空 —— Next.js 16.2 静态导出下 `router.replace('/library')`
+    // （空 search）会静默 no-op，返回按钮失效（#4437，同 #3782 根因）。空 `group=`
+    // 由 page.tsx 的清理 effect 在导航提交后 cosmetically 移除。
+    params.set('group', fromGroup ?? '');
+    params.delete('from');
+    // 来源视图用自身 per-group 记忆（groupByByGroup）解析分组维度，删掉 URL 的
+    // groupBy override，避免把虚拟维度强加到来源视图上。
+    params.delete('groupBy');
     navigateToLibrary(router, params.toString());
   };
 

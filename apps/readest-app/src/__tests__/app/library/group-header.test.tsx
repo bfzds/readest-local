@@ -2,7 +2,6 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import GroupHeader from '@/app/library/components/GroupHeader';
-import { LibraryGroupByType } from '@/types/settings';
 
 vi.mock('@/hooks/useTranslation', () => ({
   useTranslation: () => (key: string) => key,
@@ -38,7 +37,7 @@ describe('GroupHeader back button', () => {
   // navigation actually commits.
   it('keeps a non-empty query when group is the only param', () => {
     window.history.replaceState(null, '', '?group=abc123');
-    render(<GroupHeader groupBy={LibraryGroupByType.Series} groupName='My Series' />);
+    render(<GroupHeader groupName='My Series' />);
 
     fireEvent.click(screen.getByRole('button', { name: 'All' }));
 
@@ -50,18 +49,34 @@ describe('GroupHeader back button', () => {
     expect(params.get('group')).toBe('');
   });
 
-  it('preserves other params and the virtual dimension while clearing the group', () => {
+  it('backs out to the top level when no source group is recorded', () => {
     window.history.replaceState(null, '', '?groupBy=author&sort=title&group=abc123');
-    render(<GroupHeader groupBy={LibraryGroupByType.Author} groupName='Jane Doe' />);
+    render(<GroupHeader groupName='Jane Doe' />);
 
     fireEvent.click(screen.getByRole('button', { name: 'All' }));
 
     const query = navigateToLibraryMock.mock.calls[0]![1] as string;
     const params = new URLSearchParams(query);
-    // Back must keep this virtual dimension so it lands on the author list, not
-    // the library home page in whatever dimension the top level remembers.
-    expect(params.get('groupBy')).toBe('author');
-    expect(params.get('sort')).toBe('title');
+    // No `from` param → top level (empty group). The groupBy override is dropped
+    // so the source view resolves its own dimension from per-group memory; other
+    // params like sort are preserved.
     expect(params.get('group')).toBe('');
+    expect(params.has('groupBy')).toBe(false);
+    expect(params.get('sort')).toBe('title');
+  });
+
+  // A virtual group opened inside a folder records the source folder in `from`;
+  // "back" must return to that folder, not the whole-library top level.
+  it('backs out to the recorded source folder when from is set', () => {
+    window.history.replaceState(null, '', '?group=abc123&groupBy=author&from=folder456');
+    render(<GroupHeader groupName='Jane Doe' />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'All' }));
+
+    const query = navigateToLibraryMock.mock.calls[0]![1] as string;
+    const params = new URLSearchParams(query);
+    expect(params.get('group')).toBe('folder456');
+    expect(params.has('from')).toBe(false);
+    expect(params.has('groupBy')).toBe(false);
   });
 });

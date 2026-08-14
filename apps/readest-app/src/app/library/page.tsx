@@ -399,18 +399,21 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         currentGroupBy === LibraryGroupByType.Author ||
         currentGroupBy === LibraryGroupByType.Tag ||
         currentGroupBy === LibraryGroupByType.Subject;
-      // Clicking into a virtual group (author/series/tag/subject) must carry
-      // that dimension in the URL, or the group would resolve back to the
-      // global default and show an empty shelf. Only apply it when the target
-      // is actually a virtual group (its id is not in the folder-groups map) —
-      // backing up to a parent FOLDER must not inherit the virtual dimension.
+      // 进入虚拟分组（作者/系列/标签/主题）时必须把该维度写进 URL，否则分组会按
+      // 全局默认解析，书架变空。仅在目标是虚拟分组（其 id 不在文件夹分组映射里）
+      // 时携带——回退到父级文件夹不能继承虚拟维度。
+      // 同时把来源 group（'' = 顶层，或文件夹 id）记进 `from`，让退出虚拟分组能
+      // 精确回到进入时的位置；否则在文件夹内打开的作者分组，退出后落到全库顶层，
+      // 面包屑/导航头消失、回不到来源文件夹（用户曾报的"导航栏消失"bug）。
       const targetFolderPath = targetGroup
         ? useLibraryStore.getState().getGroupName(targetGroup)
         : undefined;
       if (targetGroup && isVirtualDimension && !targetFolderPath) {
         params.set('groupBy', currentGroupBy);
+        params.set('from', currentGroup);
       } else {
         params.delete('groupBy');
+        params.delete('from');
       }
 
       navigateToLibrary(router, params.toString());
@@ -429,18 +432,22 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       handleLibraryNavigation(parentGroupId);
       return;
     }
-    // Inside a virtual group (author/series/tag/subject): back returns to that
-    // dimension's top-level list (e.g. the author list), carrying `groupBy` so
-    // it doesn't land on the library home page in another remembered dimension.
+    // 虚拟分组（作者/系列/标签/主题）内后退：回到进入时的来源 —— `from` 参数记录
+    // 来源 group（文件夹 id 或空 = 顶层）。没有它，文件夹内打开的作者分组会退回
+    // 全库顶层，丢失文件夹上下文（"导航栏消失、回不到上级目录"bug）。
     const group = searchParams?.get('group') || '';
-    if (!group) return; // top level — nothing to step back to
-    if (getGroupName(group)) return; // a folder group always has currentGroupPath
+    if (!group) return; // 顶层 — 没有更上级可退
+    if (getGroupName(group)) return; // 文件夹分组恒有 currentGroupPath，已在上方处理
     setIsSelectAll(false);
     setIsSelectNone(false);
     const params = new URLSearchParams(window.location.search);
-    params.set('group', '');
-    const urlGroupBy = searchParams?.get('groupBy');
-    if (urlGroupBy) params.set('groupBy', urlGroupBy);
+    const fromGroup = params.get('from');
+    params.set('group', fromGroup ?? '');
+    params.delete('from');
+    // 来源视图用自己 per-group 记忆（groupByByGroup[来源]）解析分组维度，所以这里
+    // 必须删掉 URL 上的 groupBy override——否则虚拟维度会被强加到来源视图上，回退
+    // 到顶层/文件夹时仍按错误的维度渲染。
+    params.delete('groupBy');
     navigateToLibrary(router, params.toString());
   };
 
@@ -451,16 +458,17 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   // Mouse side-button navigation (see useMouseNavigation). The library maps
   // back/forward to moving up/down one group level. A small forward stack
   // remembers the group we stepped back from so "forward" can return to it.
-  const forwardGroupStackRef = useRef<{ group: string; groupBy?: string }[]>([]);
+  const forwardGroupStackRef = useRef<{ group: string; groupBy?: string; from?: string }[]>([]);
   const handleMouseNavBack = () => {
     const currentGroup = searchParams?.get('group') || '';
     if (currentGroup) {
-      // Remember the group plus its virtual dimension (if any) so "forward" can
-      // restore it — an author group entered from a folder would otherwise be
-      // ambiguous after stepping back.
+      // 记住退出的 group 及其虚拟维度，供"前进"恢复——文件夹内打开的作者分组，
+      // 退回后再前进时若缺少维度会无法复原。`from` 一并记下该虚拟分组的来源，
+      // 使恢复后的虚拟分组再后退仍能回到同一文件夹。
       forwardGroupStackRef.current.push({
         group: currentGroup,
         groupBy: searchParams?.get('groupBy') || undefined,
+        from: searchParams?.get('from') || undefined,
       });
     }
     handleBackUpOneGroupLevel();
@@ -470,15 +478,16 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     if (!target) return;
     setIsSelectAll(false);
     setIsSelectNone(false);
-    // Restore the remembered group and its virtual dimension directly (the plain
-    // handleLibraryNavigation path would re-derive the dimension from the
-    // current top level and lose it). Keep the scroll/direction bookkeeping.
+    // 直接恢复记住的 group 与虚拟维度（走 handleLibraryNavigation 会从当前顶层
+    // 重新推导维度而丢失它）。同时维持滚动位置与导航方向的簿记。
     saveScrollPosition(searchParams?.get('group') || '');
     document.documentElement.setAttribute('data-nav-direction', 'forward');
     const params = new URLSearchParams(window.location.search);
     params.set('group', target.group);
     if (target.groupBy) params.set('groupBy', target.groupBy);
     else params.delete('groupBy');
+    if (target.from) params.set('from', target.from);
+    else params.delete('from');
     navigateToLibrary(router, params.toString());
   };
   const handleMouseNavBackRef = useRef(handleMouseNavBack);
@@ -1150,6 +1159,9 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     const params = new URLSearchParams(window.location.search);
     params.set('groupBy', groupBy);
     params.set('group', targetGroup.id);
+    // 与 handleLibraryNavigation 一致：从详情模态跳入标签/主题虚拟分组也要记来源
+    // group（当前所在位置），否则退出该分组会回顶层而非打开详情前的视图。
+    params.set('from', searchParams?.get('group') || '');
     params.delete('q');
     setShowDetailsBook(null);
     navigateToLibrary(router, params.toString());
@@ -1754,12 +1766,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           </div>
         </div>
       )}
-      {currentVirtualGroup && (
-        <GroupHeader
-          groupBy={currentVirtualGroup.groupBy}
-          groupName={currentVirtualGroup.groupName}
-        />
-      )}
+      {currentVirtualGroup && <GroupHeader groupName={currentVirtualGroup.groupName} />}
       {showBookshelf &&
         (libraryBooks.some((book) => !book.deletedAt) ? (
           <div aria-label={_('Your Bookshelf')} className='flex min-h-0 flex-grow flex-col'>
