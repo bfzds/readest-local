@@ -15,6 +15,10 @@ const h = vi.hoisted(() => ({
   bookKeys: [] as string[],
   viewStates: {} as Record<string, { inited: boolean; view: object }>,
   library: [] as { hash: string }[],
+  // Parsed-book data keyed by hash. Side-button switching skips history books
+  // whose data is gone (a deleted book clears its entry via clearBookData), so
+  // tests populate this for the books they expect to switch to.
+  bookDataMap: {} as Record<string, object>,
 }));
 
 vi.mock('next/navigation', () => ({
@@ -54,10 +58,21 @@ vi.mock('@/store/libraryStore', () => ({
     getState: () => ({ library: h.library }),
   }),
 }));
+vi.mock('@/store/bookDataStore', () => ({
+  useBookDataStore: Object.assign(() => ({ booksData: {} }), {
+    getState: () => ({
+      getBookData: (key: string) => h.bookDataMap[key.split('-')[0]!] ?? null,
+      clearBookData: (key: string) => {
+        delete h.bookDataMap[key.split('-')[0]!];
+      },
+    }),
+  }),
+}));
 vi.mock('@/utils/nav', () => ({ navigateToReader: vi.fn() }));
 
 import useBooksManager from '@/app/reader/hooks/useBooksManager';
 import { setPendingTTSAutoplay } from '@/utils/ttsAutoplay';
+import { useBookDataStore } from '@/store/bookDataStore';
 
 describe('useBooksManager open-failure handling', () => {
   afterEach(() => {
@@ -66,6 +81,7 @@ describe('useBooksManager open-failure handling', () => {
     h.getViewMock.mockReset();
     h.bookKeys = [];
     h.viewStates = {};
+    h.bookDataMap = {};
     setPendingTTSAutoplay(null);
   });
 
@@ -112,6 +128,7 @@ describe('useBooksManager open-failure handling', () => {
 
   it('mouse nav back steps through the session read history', async () => {
     h.bookKeys = ['book2-abc'];
+    h.bookDataMap = { book2: { hash: 'book2' }, book3: { hash: 'book3' } };
     renderHook(() => useBooksManager());
     // Open book3 — read history becomes [book2, book3], current = book3.
     await act(async () => {
@@ -129,6 +146,7 @@ describe('useBooksManager open-failure handling', () => {
 
   it('mouse nav forward advances through the session read history', async () => {
     h.bookKeys = ['book2-abc'];
+    h.bookDataMap = { book2: { hash: 'book2' }, book3: { hash: 'book3' } };
     renderHook(() => useBooksManager());
     // History [book2, book3]; step back to book2, then forward returns to book3.
     await act(async () => {
@@ -178,5 +196,95 @@ describe('useBooksManager open-failure handling', () => {
     }
     expect(h.clearViewStateMock).toHaveBeenCalledWith('book-a');
     expect(h.clearViewStateMock).toHaveBeenCalledTimes(2);
+  });
+
+  // 侧键切书的历史可能残留已删除的书（Plan A 复用 reader 窗口，关闭书籍只隐藏
+  // 窗口、组件不卸载）。删除书会清除其 bookData，切书时必须跳过这种书，否则会
+  // 尝试重新加载一本 "Book not found" 的书。
+  it('侧键切书跳过已删除（bookData 已被清）的书，不触发 Book not found', async () => {
+    h.bookKeys = ['book2-abc'];
+    h.bookDataMap = { book2: { hash: 'book2' }, book3: { hash: 'book3' } };
+    renderHook(() => useBooksManager());
+    // 打开 book3 → 会话历史 [book2, book3]，当前 = book3
+    await act(async () => {
+      eventDispatcher.dispatch('open-book-in-reader', { bookHash: 'book3' });
+      await Promise.resolve();
+    });
+    // book2 已从 reader 卸载（bookKeys 只剩 book3）
+    h.bookKeys = ['book3-xyz'];
+    // 在书库删除 book2：清除其 bookData
+    useBookDataStore.getState().clearBookData('book2');
+    h.initViewStateMock.mockClear();
+    h.setSideBarBookKeyMock.mockClear();
+    // 侧键后退：book2 已删应被跳过 → 无操作，不报错
+    await act(async () => {
+      eventDispatcher.dispatch('library-nav-back');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(h.initViewStateMock).not.toHaveBeenCalled();
+    expect(h.setSideBarBookKeyMock).not.toHaveBeenCalled();
+  });
+
+  // 只要历史书仍有效（未被删除），侧键切书依旧可用——本会话内连续读过多本书时
+  // 后退切回之前那本仍应成功。
+  it('有效的历史书仍可被侧键切回（跳过逻辑不误伤）', async () => {
+    h.bookKeys = ['book2-abc'];
+    h.bookDataMap = { book2: { hash: 'book2' }, book3: { hash: 'book3' } };
+    renderHook(() => useBooksManager());
+    await act(async () => {
+      eventDispatcher.dispatch('open-book-in-reader', { bookHash: 'book3' });
+      await Promise.resolve();
+    });
+    h.bookKeys = ['book3-xyz'];
+    h.setSideBarBookKeyMock.mockClear();
+    await act(async () => {
+      eventDispatcher.dispatch('library-nav-back');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    // book2 数据仍存在 → 走 existing 分支 focus 它
+    expect(h.setSideBarBookKeyMock).toHaveBeenCalled();
+  });
+
+  // 侧键切回较早的书（navIndex 回移）后再打开新书时，历史不能被截断成
+  // "切回点之前的书 + 新书"（只剩两本可切）。打开新书应把历史当成一个保留
+  // 全部已读书的列表（去重后 append 到末尾），而不是浏览器式的前进栈截断。
+  it('侧键切回较早的书后打开新书，历史不被截断（切书范围保留）', async () => {
+    h.bookKeys = ['book1-abc'];
+    h.bookDataMap = { book1: {}, book2: {}, book3: {}, book4: {} };
+    renderHook(() => useBooksManager());
+    // 打开 book2、book3 → 历史 [book1, book2, book3]
+    await act(async () => {
+      eventDispatcher.dispatch('open-book-in-reader', { bookHash: 'book2' });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      eventDispatcher.dispatch('open-book-in-reader', { bookHash: 'book3' });
+      await Promise.resolve();
+    });
+    // 侧键后退切回 book2（navIndex 从 2 移到 1）
+    await act(async () => {
+      eventDispatcher.dispatch('library-nav-back');
+      await Promise.resolve();
+    });
+    // 打开新书 book4 → 历史应保留全部已读书而非截断
+    await act(async () => {
+      eventDispatcher.dispatch('open-book-in-reader', { bookHash: 'book4' });
+      await Promise.resolve();
+    });
+    h.initViewStateMock.mockClear();
+    // 从 book4 后退应切到 book3（被截断的话只会切到切回点 book1）
+    await act(async () => {
+      eventDispatcher.dispatch('library-nav-back');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(h.initViewStateMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'book3',
+      expect.any(String),
+      true,
+    );
   });
 });

@@ -106,25 +106,37 @@ const useBooksManager = () => {
   // the OS re-delivering the launch deep link, looped. The store update renders
   // the new book immediately; closing the previous key follows the same path as
   // dismissBook. An optional cfi (annotation deep link) is applied once ready.
-  // Session read-history: the books opened in THIS reader session, in open
-  // order. Side-button navigation walks this list (not the whole library), so
-  // every step lands on a book already parsed & cached — instant and never
-  // "Book file not found". Reset naturally on restart (in-memory).
+  //
+  // 会话阅读历史：本会话按打开顺序读过的书。鼠标侧键切书就在这张表上前后
+  // 移动（见 advanceSwitch），不扫整个书库——保证每次切到的都是已解析缓存的
+  // 书，切换瞬间完成，且绝不因文件缺失报错。组件随 reader 窗口常驻（Plan A
+  // 复用窗口，关闭书籍只隐藏、不卸载），故历史跨多次打开保留；内存态，重启即清。
   const navHistoryRef = useRef<string[]>([]);
   const navIndexRef = useRef(-1);
-  // Bound the read history and evict the dropped books' parsed data so
-  // bookDataStore doesn't accumulate an unbounded set of parsed books.
-  const MAX_HISTORY = 3;
+  // 历史长度上限，防止 bookDataStore 里堆积无限多本书的解析数据（每本含
+  // bookDoc、章节 DOM 等，内存可观）。超出即淘汰最老一本并释放其解析数据。
+  const MAX_HISTORY = 5;
   const recordOpen = (bookHash: string) => {
     const history = navHistoryRef.current;
     if (history[navIndexRef.current] === bookHash) return;
-    history.length = navIndexRef.current + 1;
+    // 历史是有序的"读过哪些书"列表，不是浏览器的前进/后退栈：把已读过的书
+    // 移到末尾（去重），新书 append 到末尾。绝不能按 navIndex 截断（旧实现曾
+    // `history.length = navIndex + 1`）——用户侧键切回较早的书后再打开新书，
+    // 截断会把切回点之后的历史丢弃，历史被压缩成两三本，侧键切书范围随之
+    // 缩小。注意移动已存在的书时要修正 navIndex：被移动的书位于当前书之前时，
+    // splice 移除会让当前书的下标前移一位。
+    const existingIdx = history.indexOf(bookHash);
+    if (existingIdx !== -1) {
+      history.splice(existingIdx, 1);
+      if (existingIdx < navIndexRef.current) navIndexRef.current--;
+    }
     history.push(bookHash);
     navIndexRef.current = history.length - 1;
     while (history.length > MAX_HISTORY) {
       const evicted = history.shift()!;
       navIndexRef.current--;
       const currentHash = useReaderStore.getState().bookKeys[0]?.split('-')[0];
+      // 当前正在看的书绝不淘汰其解析数据（它仍在使用）；只有被挤掉的最老历史书需要释放。
       if (evicted !== currentHash) {
         useBookDataStore.getState().clearBookData(evicted);
       }
@@ -174,17 +186,25 @@ const useBooksManager = () => {
     return () => eventDispatcher.off('open-book-in-reader', handle);
   }, []);
 
-  // Mouse side-button navigation (see useMouseNavigation): back = previous book
-  // in this session's read history, forward = next. Only the reading content
-  // swaps in place — the reused reader window keeps its position and size.
-  // Rapid presses serialize (one switch at a time); stepping past the start/end
-  // of the history clears the queue instead of erroring.
+  // 鼠标侧键导航（见 useMouseNavigation）：后退 = 会话历史上一本，前进 = 下一本。
+  // 只换阅读内容，复用 reader 窗口的位置与尺寸不变。连按串行处理（一次切一本，
+  // switchInFlightRef 保证）；走到历史头/尾时清空待切队列而不是报错。
+  //
+  // 历史里可能残留已删除的书：Plan A 复用 reader 窗口，关闭书籍只隐藏、历史跨
+  // 打开保留；而删除书会 clearBookData 掉它的解析数据。若切到这种书，openBook
+  // 会重新 initViewState 一个已不存在的文件，报 "Book not found"。因此按方向
+  // 跳过任何解析数据已消失的历史条目——数据在 = 书仍有效（侧键切到的历史书
+  // 必然已解析过，数据缺失即异常，不必怀疑误判）。
   const pendingDirRef = useRef(0);
   const switchInFlightRef = useRef(false);
   const advanceSwitch = () => {
     if (switchInFlightRef.current || pendingDirRef.current === 0) return;
     const dir = pendingDirRef.current > 0 ? 1 : -1;
-    const idx = navIndexRef.current + dir;
+    let idx = navIndexRef.current + dir;
+    while (idx >= 0 && idx < navHistoryRef.current.length) {
+      if (useBookDataStore.getState().getBookData(navHistoryRef.current[idx]!)) break;
+      idx += dir;
+    }
     if (idx < 0 || idx >= navHistoryRef.current.length) {
       pendingDirRef.current = 0;
       return;
@@ -192,13 +212,10 @@ const useBooksManager = () => {
     pendingDirRef.current -= dir;
     switchInFlightRef.current = true;
     navIndexRef.current = idx;
-    // updateUrl:false keeps the reader URL unchanged — switching books is an
-    // in-place content swap (no history entry, no ViewTransitions churn).
+    // updateUrl:false —— 切书是原地内容替换（不产生历史记录、不触发 ViewTransitions）。
     openBookRef.current(navHistoryRef.current[idx]!, undefined, false, false);
-    // History books are already parsed & cached, so a switch is just a
-    // focus/swap — release the lock on the next microtask and drain the queue
-    // (avoids deadlocking when a step lands on an already-open book, which
-    // never changes bookKeys).
+    // 历史书已解析缓存，切换只是 focus/swap —— 下个微任务解锁并继续排空队列
+    // （防止切到一本已打开的书时 bookKeys 不变导致的死锁）。
     queueMicrotask(() => {
       switchInFlightRef.current = false;
       void advanceSwitch();
