@@ -69,8 +69,9 @@ describe('MigrateDataWindow e-ink button hierarchy', () => {
     const cancelButton = await screen.findByRole('button', { name: 'Cancel' });
     const startButton = screen.getByRole('button', { name: 'Start Migration' });
 
-    // The primary CTA keeps btn-primary, which e-ink inverts to a solid black fill.
-    expect(startButton.className).toContain('btn-primary');
+    // The primary action uses btn-contrast, which e-ink renders as a solid
+    // base-content fill, keeping it distinct from the ghost Cancel button.
+    expect(startButton.className).toContain('btn-contrast');
 
     // The Cancel button must NOT use btn-outline: in e-ink, btn-outline inverts
     // to the SAME solid black fill as btn-primary, leaving the two buttons

@@ -216,12 +216,12 @@ export const BackupWindow: React.FC<BackupWindowProps> = ({ onPullLibrary }) => 
                 </span>
               </label>
 
-              <button className='btn btn-outline w-full gap-2' onClick={handleBackup}>
+              <button className='btn btn-contrast w-full gap-2' onClick={handleBackup}>
                 <RiUploadCloud2Line className='h-5 w-5' />
                 {_('Backup Library')}
               </button>
 
-              <button className='btn btn-outline w-full gap-2' onClick={handleRestore}>
+              <button className='btn btn-ghost w-full gap-2' onClick={handleRestore}>
                 <RiDownloadCloud2Line className='h-5 w-5' />
                 {_('Restore Library')}
               </button>
@@ -310,18 +310,18 @@ export const BackupWindow: React.FC<BackupWindowProps> = ({ onPullLibrary }) => 
           <div className='flex gap-3 pt-2'>
             {status === 'completed' || status === 'error' ? (
               <>
-                <button className='btn btn-outline flex-1' onClick={handleClose}>
+                <button className='btn btn-ghost flex-1' onClick={handleClose}>
                   {_('Close')}
                 </button>
                 {status === 'error' && (
-                  <button className='btn btn-primary flex-1' onClick={resetState}>
+                  <button className='btn btn-contrast flex-1' onClick={resetState}>
                     {_('Try Again')}
                   </button>
                 )}
               </>
             ) : (
               !isProcessing && (
-                <button className='btn btn-outline flex-1' onClick={handleClose}>
+                <button className='btn btn-ghost flex-1' onClick={handleClose}>
                   {_('Cancel')}
                 </button>
               )

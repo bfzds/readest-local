@@ -456,7 +456,7 @@ const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
           >
             <input
               type='checkbox'
-              className='checkbox checkbox-sm mt-0.5'
+              className='toggle mt-0.5'
               checked={effectiveReadInPlace}
               disabled={readInPlaceLocked}
               onChange={(e) => setReadInPlace(e.target.checked)}
@@ -479,7 +479,7 @@ const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
             <label className='ms-6 flex cursor-pointer items-start gap-2 rounded-md px-1 py-1 text-sm hover:bg-base-200/50'>
               <input
                 type='checkbox'
-                className='checkbox checkbox-sm mt-0.5'
+                className='toggle mt-0.5'
                 checked={autoImport}
                 onChange={(e) => setAutoImport(e.target.checked)}
               />

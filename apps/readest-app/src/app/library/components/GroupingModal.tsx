@@ -264,7 +264,7 @@ const GroupingModal: React.FC<GroupingModalProps> = ({
         <div className={clsx('mt-4 grid grid-cols-1 gap-2 text-base md:grid-cols-2')}>
           <button
             onClick={handleRemoveFromGroup}
-            className='flex items-center space-x-2 p-2 text-blue-500 disabled:text-gray-400'
+            className='flex items-center space-x-2 p-2 text-primary disabled:text-base-content/40'
             disabled={!isSelectedBooksHasGroup}
           >
             <HiOutlineFolderRemove size={iconSize} />
@@ -272,14 +272,14 @@ const GroupingModal: React.FC<GroupingModalProps> = ({
           </button>
           <button
             onClick={handleCreateGroup}
-            className='flex items-center space-x-2 p-2 text-blue-500 disabled:text-gray-400'
+            className='flex items-center space-x-2 p-2 text-primary disabled:text-base-content/40'
           >
             <HiOutlineFolderAdd size={iconSize} />
             <span className='truncate'>{_('Create New Group')}</span>
           </button>
           <button
             onClick={handleRenameGroup}
-            className='flex items-center space-x-2 p-2 text-blue-500 disabled:text-gray-400'
+            className='flex items-center space-x-2 p-2 text-primary disabled:text-base-content/40'
             disabled={!canRenameGroup}
           >
             <MdEdit size={iconSize} />
@@ -315,7 +315,7 @@ const GroupingModal: React.FC<GroupingModalProps> = ({
                 )}
                 onClick={() => handleConfirmCreateGroup()}
               >
-                <div className='pr-1 align-bottom text-base text-blue-500 sm:text-sm'>
+                <div className='pr-1 align-bottom text-base text-primary sm:text-sm'>
                   {_('Save')}
                 </div>
               </button>
@@ -381,7 +381,7 @@ const GroupingModal: React.FC<GroupingModalProps> = ({
                   </div>
                   <span className='text-neutral-content flex shrink-0 text-sm'>
                     {selectedGroup && selectedGroup.id === group.id && (
-                      <MdCheck className='fill-blue-500' size={iconSize} />
+                      <MdCheck className='fill-primary' size={iconSize} />
                     )}
                   </span>
                 </button>
@@ -406,7 +406,7 @@ const GroupingModal: React.FC<GroupingModalProps> = ({
           <button
             onClick={handleConfirmGrouping}
             className={clsx(
-              'flex items-center text-blue-500',
+              'flex items-center text-primary',
               !selectedGroup && 'btn-disabled opacity-50',
             )}
           >

@@ -86,7 +86,7 @@ const SetStatusAlert: React.FC<SetStatusAlertProps> = ({
               key={label}
               className={clsx(
                 'flex items-center gap-2 rounded-full border px-4 py-2',
-                'shadow-sm transition-all duration-200 ease-out active:scale-[0.97]',
+                'shadow-sm transition-colors duration-200',
                 className,
               )}
               onClick={() => onUpdateStatus(status)}
@@ -99,7 +99,7 @@ const SetStatusAlert: React.FC<SetStatusAlertProps> = ({
               'hidden items-center gap-2 rounded-full border px-4 py-2',
               'not-eink:bg-base-300 not-eink:text-base-content not-eink:border-base-content/10 not-eink:shadow-sm',
               'eink-bordered',
-              'transition-all duration-200 ease-out active:scale-[0.97]',
+              'transition-colors duration-200',
               'sm:flex',
             )}
             onClick={onCancel}

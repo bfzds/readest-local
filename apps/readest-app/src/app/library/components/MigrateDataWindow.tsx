@@ -249,11 +249,11 @@ export const MigrateDataWindow = () => {
             {newDataDir && (
               <button
                 title={_(fileRevealLabel)}
-                className='bg-primary/10 border-primary/20 flex w-full items-center gap-2 rounded-lg border p-3'
+                className='border-base-300 bg-base-300/70 flex w-full items-center gap-2 rounded-lg border p-3'
                 onClick={() => handleRevealDir(newDataDir)}
               >
-                <RiFolderOpenLine className='text-primary h-4 w-4 flex-shrink-0' />
-                <span className='text-primary break-all text-start font-mono text-sm'>
+                <RiFolderOpenLine className='text-base-content h-4 w-4 flex-shrink-0' />
+                <span className='text-base-content break-all text-start font-mono text-sm'>
                   {newDataDir}
                 </span>
               </button>
@@ -365,7 +365,7 @@ export const MigrateDataWindow = () => {
                 <button className='btn btn-ghost flex-1' onClick={handleClose}>
                   {_('Close')}
                 </button>
-                <button className='btn btn-primary flex-1' onClick={handleRestartApp}>
+                <button className='btn btn-contrast flex-1' onClick={handleRestartApp}>
                   {_('Restart App')}
                 </button>
               </>
@@ -379,7 +379,7 @@ export const MigrateDataWindow = () => {
                   {_('Cancel')}
                 </button>
                 <button
-                  className='btn btn-primary flex-1'
+                  className='btn btn-contrast flex-1'
                   onClick={handleStartMigration}
                   disabled={!canStartMigration || migrationStatus !== 'idle'}
                 >

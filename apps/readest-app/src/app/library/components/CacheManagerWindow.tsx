@@ -125,9 +125,9 @@ export const CacheManagerWindow = () => {
   const progressPercentage =
     progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
 
-  const primaryBtn = 'btn btn-contrast h-11 min-h-0 rounded-xl text-sm font-medium';
+  const primaryBtn = 'btn btn-contrast h-11 min-h-0 rounded-lg text-sm font-medium';
   const ghostBtn = clsx(
-    'eink-bordered flex h-11 items-center justify-center rounded-xl border border-transparent',
+    'eink-bordered flex h-11 items-center justify-center rounded-lg border border-transparent',
     'text-base-content hover:bg-base-200 text-sm font-medium transition-colors',
     'focus-visible:ring-base-content/15 focus-visible:outline-none focus-visible:ring-2',
     'disabled:opacity-40',
@@ -188,7 +188,7 @@ export const CacheManagerWindow = () => {
                   style={{ width: `${progressPercentage}%` }}
                 />
               </div>
-              <div className='text-base-content/55 flex items-center justify-between gap-3 text-xs'>
+              <div className='text-base-content/70 flex items-center justify-between gap-3 text-xs'>
                 <span
                   className='overflow-hidden font-mono'
                   style={{
