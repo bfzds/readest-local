@@ -4,7 +4,7 @@ import { RiFontSize, RiDashboardLine, RiTranslate } from 'react-icons/ri';
 import { VscSymbolColor } from 'react-icons/vsc';
 import { LiaHandPointerSolid } from 'react-icons/lia';
 import { IoAccessibilityOutline } from 'react-icons/io5';
-import { PiSpeakerHigh, PiSun, PiMoon } from 'react-icons/pi';
+import { PiKeyboard, PiSpeakerHigh, PiSun, PiMoon } from 'react-icons/pi';
 import { TbSunMoon } from 'react-icons/tb';
 import { MdRefresh } from 'react-icons/md';
 import { IconType } from 'react-icons';
@@ -154,6 +154,7 @@ const panelIcons: Record<SettingsPanelType, IconType> = {
   TTS: PiSpeakerHigh,
   Language: RiTranslate,
   Custom: IoAccessibilityOutline,
+  Keyboard: PiKeyboard,
 };
 
 // font panel items

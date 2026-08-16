@@ -7,7 +7,7 @@ import { useCommandPalette } from '@/components/command-palette';
 import { RiFontSize } from 'react-icons/ri';
 import { RiDashboardLine, RiTranslate } from 'react-icons/ri';
 import { VscSymbolColor } from 'react-icons/vsc';
-import { PiDotsThreeVerticalBold, PiSpeakerHigh } from 'react-icons/pi';
+import { PiDotsThreeVerticalBold, PiKeyboard, PiSpeakerHigh } from 'react-icons/pi';
 import { LiaHandPointerSolid } from 'react-icons/lia';
 import { IoAccessibilityOutline } from 'react-icons/io5';
 import {
@@ -30,6 +30,7 @@ import ControlPanel from './ControlPanel';
 import LangPanel from './LangPanel';
 import MiscPanel from './MiscPanel';
 import TTSPanel from './TTSPanel';
+import KeyboardShortcutsPanel from './KeyboardShortcutsPanel';
 
 export type SettingsPanelType =
   | 'Font'
@@ -38,7 +39,8 @@ export type SettingsPanelType =
   | 'Control'
   | 'TTS'
   | 'Language'
-  | 'Custom';
+  | 'Custom'
+  | 'Keyboard';
 export type SettingsPanelPanelProp = {
   bookKey: string;
   onRegisterReset: (resetFn: () => void) => void;
@@ -110,6 +112,11 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       icon: IoAccessibilityOutline,
       label: _('Custom'),
     },
+    {
+      tab: 'Keyboard',
+      icon: PiKeyboard,
+      label: _('Keyboard Shortcuts'),
+    },
   ] as TabConfig[];
 
   const [activePanel, setActivePanel] = useState<SettingsPanelType>(() => {
@@ -162,6 +169,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     TTS: null,
     Language: null,
     Custom: null,
+    Keyboard: null,
   });
 
   const registerResetFunction = (panel: SettingsPanelType, resetFn: () => void) => {
@@ -194,6 +202,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         tts: 'TTS',
         language: 'Language',
         custom: 'Custom',
+        keyboard: 'Keyboard',
       };
       const panelKey = parts[1]?.toLowerCase();
       const targetPanel = panelMap[panelKey || ''];
@@ -452,6 +461,12 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
           <MiscPanel
             bookKey={bookKey}
             onRegisterReset={(fn) => registerResetFunction('Custom', fn)}
+          />
+        )}
+        {activePanel === 'Keyboard' && (
+          <KeyboardShortcutsPanel
+            bookKey={bookKey}
+            onRegisterReset={(fn) => registerResetFunction('Keyboard', fn)}
           />
         )}
       </div>

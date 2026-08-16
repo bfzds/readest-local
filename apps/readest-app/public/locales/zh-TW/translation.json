@@ -1987,5 +1987,11 @@
   "Danger Zone": "危險區域",
   "Delete All Books": "刪除所有書籍",
   "All books deleted.": "已刪除所有書籍。",
-  "Failed to delete books. Please try again later.": "刪除書籍失敗。請稍後再試。"
+  "Failed to delete books. Please try again later.": "刪除書籍失敗。請稍後再試。",
+  "Press new shortcut": "按下新快捷鍵",
+  "No shortcut": "無快捷鍵",
+  "Restore Default": "恢復預設",
+  "Used by {{action}}": "已被 {{action}} 使用",
+  "Record Shortcuts": "錄製快捷鍵",
+  "Click Edit, then press the new key combination. Esc cancels, Backspace clears.": "點擊編輯，然後按下新的組合鍵。Esc 取消，Backspace 清除。"
 }

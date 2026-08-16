@@ -358,4 +358,16 @@ export const saveShortcuts = (shortcuts: ShortcutConfig) => {
     keysOnly[key] = entry.keys;
   }
   localStorage.setItem('customShortcuts', JSON.stringify(keysOnly));
+  // Notify every useShortcuts instance to reload the overrides
+  window.dispatchEvent(new Event('shortcutUpdate'));
+};
+
+// Default keys for a single action, used by the "restore default" row action
+export const getDefaultShortcutKeys = (actionKey: keyof ShortcutConfig): string[] =>
+  DEFAULT_SHORTCUTS[actionKey].keys;
+
+// Drop all custom overrides and notify listeners
+export const resetShortcuts = () => {
+  localStorage.removeItem('customShortcuts');
+  window.dispatchEvent(new Event('shortcutUpdate'));
 };
