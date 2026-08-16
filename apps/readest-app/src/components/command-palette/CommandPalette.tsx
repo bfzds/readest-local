@@ -151,6 +151,16 @@ const CommandPalette: React.FC = () => {
             placeholder={_('Search settings and actions...')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onBlur={() => {
+              // Keep focus inside the palette while it's open: once the input
+              // loses focus (clicking empty dialog space, the page below, ...)
+              // arrow keys bubble from body/iframe to the window-level shortcut
+              // handler and move the page instead of the palette. Pulling focus
+              // back lets the input swallow them (useShortcuts skips INPUTs).
+              if (isOpen && document.hasFocus()) {
+                requestAnimationFrame(() => inputRef.current?.focus());
+              }
+            }}
             spellCheck={false}
             autoComplete='off'
             autoCorrect='off'

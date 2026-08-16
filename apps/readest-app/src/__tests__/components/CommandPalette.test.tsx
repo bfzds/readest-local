@@ -26,7 +26,7 @@ describe('CommandPalette', () => {
 
   it('does not propagate keydown events to the window', () => {
     // When the input loses focus, arrow keys must not bubble to the global
-    // shortcut handler and move the page underneath (#...). The palette traps
+    // shortcut handler and move the page underneath. The palette traps
     // its own keyboard navigation.
     const windowHandler = vi.fn();
     window.addEventListener('keydown', windowHandler);
@@ -40,5 +40,17 @@ describe('CommandPalette', () => {
     } finally {
       window.removeEventListener('keydown', windowHandler);
     }
+  });
+
+  it('restores focus to the search input when it loses focus', async () => {
+    render(<CommandPalette />);
+    const input = screen.getByRole('textbox');
+    input.focus();
+    expect(document.activeElement).toBe(input);
+    input.blur();
+    await new Promise((r) => requestAnimationFrame(r));
+    // focus is pulled back into the palette so arrow keys never fall through
+    // to the page (e.g. after clicking empty dialog space)
+    expect(document.activeElement).toBe(input);
   });
 });
