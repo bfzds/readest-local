@@ -145,8 +145,7 @@ const KeyboardShortcutsPanel: React.FC<SettingsPanelPanelProp> = ({ onRegisterRe
                           {keys.map((key) => (
                             <kbd
                               key={key}
-                              className='border-base-300 bg-base-200 text-base-content inline-flex h-[22px] min-w-[22px] items-center justify-center rounded border px-1.5 text-xs shadow-sm'
-                              style={{ fontFamily: 'monospace' }}
+                              className='border-base-300/40 bg-base-300/75 text-neutral-content inline-flex items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-medium shadow-sm'
                             >
                               {formatKeyForDisplay(key, isMac)}
                             </kbd>
