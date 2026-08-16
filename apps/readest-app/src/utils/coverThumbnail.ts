@@ -51,4 +51,6 @@ const createThumbnail = async (src: string): Promise<string | null> => {
   }
 };
 
-export const getCoverThumbnailUrl = createCoverThumbnailCache(createThumbnail);
+export const getCoverThumbnailUrl = createCoverThumbnailCache(createThumbnail, {}, (url) =>
+  URL.revokeObjectURL(url),
+);

@@ -6,6 +6,7 @@ import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useTranslation } from '@/hooks/useTranslation';
+import { blurActiveElement } from '@/utils/focus';
 import { eventDispatcher } from '@/utils/event';
 import { getBookDirFromLanguage } from '@/utils/book';
 import { getPanelTopInset } from '@/utils/insets';
@@ -120,6 +121,9 @@ const SideBar = ({}) => {
   // sidebar unless it's pinned), not to the sidebar's TOC tab.
   const handleShowSearchBar = useCallback(() => {
     if (isSearchBarVisible) {
+      // 与 handleHideSearchBar 同理：关闭前归还焦点，否则焦点留在隐藏 input
+      // 内，useShortcuts 判定为输入态而跳过 F/翻页/全屏。
+      blurActiveElement();
       setSearchBarVisible(false);
       if (sideBarBookKey) clearSearch(sideBarBookKey);
       getView(sideBarBookKey)?.clearSearch();
@@ -134,6 +138,9 @@ const SideBar = ({}) => {
   }, [isSearchBarVisible, sideBarBookKey, clearSearch, isSideBarPinned]);
 
   const handleHideSearchBar = useCallback(() => {
+    // visibility:hidden 不触发 blur，焦点留在隐藏 input 内会使 useShortcuts
+    // 视为"正在输入"而跳过全部快捷键（F/翻页/全屏失效）。先归还焦点。
+    blurActiveElement();
     setSearchBarVisible(false);
     setTimeout(() => {
       if (sideBarBookKey) clearSearch(sideBarBookKey);

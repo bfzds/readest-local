@@ -51,6 +51,7 @@ import {
   handleAuxclick,
   handleClick,
   handleClickCapture,
+  handleContextMenu,
   handleWheel,
   handleMouseDown,
   handleTouchStart,
@@ -421,6 +422,8 @@ const FoliateViewer: React.FC<{
         detail.doc.addEventListener('mouseup', handleMouseup.bind(null, bookKey));
         detail.doc.addEventListener('mousemove', handleMousemove.bind(null, bookKey));
         detail.doc.addEventListener('auxclick', handleAuxclick.bind(null, bookKey));
+        // contextmenu 不冒泡到父 window，必须在这里屏蔽浏览器默认菜单。
+        detail.doc.addEventListener('contextmenu', handleContextMenu.bind(null, bookKey));
         detail.doc.addEventListener('click', handleClickCapture.bind(null, bookKey), {
           capture: true,
         });

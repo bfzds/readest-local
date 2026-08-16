@@ -78,6 +78,17 @@ const makeService = (files: Map<string, File | null>) => {
         close: async () => {},
       };
     }),
+    // SF3 文件锁：单测里 createDir 永不失败 → 永远拿到锁，重建照常进行。
+    createDir: vi.fn().mockResolvedValue(undefined),
+    stats: vi.fn().mockResolvedValue({
+      isFile: false,
+      isDirectory: true,
+      size: 0,
+      mtime: new Date(),
+      atime: null,
+      birthtime: null,
+    }),
+    deleteDir: vi.fn().mockResolvedValue(undefined),
   } as Pick<
     AppService,
     | 'databaseExists'
@@ -87,6 +98,9 @@ const makeService = (files: Map<string, File | null>) => {
     | 'resolveNativeBookFilePath'
     | 'loadBookNav'
     | 'openDatabase'
+    | 'createDir'
+    | 'stats'
+    | 'deleteDir'
   >;
 };
 

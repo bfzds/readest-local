@@ -66,4 +66,59 @@ describe('createCoverThumbnailCache', () => {
     await cache.get('a');
     expect(loader).toHaveBeenCalledTimes(2);
   });
+
+  test('delete removes a single entry so the next get reloads it', async () => {
+    const loader = vi.fn().mockResolvedValue('thumb');
+    const cache = createCoverThumbnailCache(loader);
+    await cache.get('a');
+    expect(cache.delete('a')).toBe(true);
+    await cache.get('a');
+    expect(loader).toHaveBeenCalledTimes(2);
+  });
+
+  test('delete returns false for an unknown src and leaves other entries intact', async () => {
+    const loader = vi.fn().mockResolvedValue('thumb');
+    const cache = createCoverThumbnailCache(loader);
+    await cache.get('a');
+    expect(cache.delete('missing')).toBe(false);
+    expect(await cache.get('a')).toBe('thumb');
+    expect(loader).toHaveBeenCalledTimes(1);
+  });
+
+  test('revoke is called for a resolved value on eviction', async () => {
+    const revoke = vi.fn();
+    const loader = vi.fn().mockResolvedValue('thumb-url');
+    const cache = createCoverThumbnailCache(loader, { capacity: 1 }, revoke);
+    await cache.get('a');
+    await cache.get('b'); // evicts a
+    await vi.waitFor(() => expect(revoke).toHaveBeenCalledWith('thumb-url'));
+  });
+
+  test('revoke is called for a resolved value on delete', async () => {
+    const revoke = vi.fn();
+    const loader = vi.fn().mockResolvedValue('thumb-url');
+    const cache = createCoverThumbnailCache(loader, {}, revoke);
+    await cache.get('a');
+    cache.delete('a');
+    await vi.waitFor(() => expect(revoke).toHaveBeenCalledWith('thumb-url'));
+  });
+
+  test('revoke is called for resolved values on clear', async () => {
+    const revoke = vi.fn();
+    const loader = vi.fn().mockResolvedValue('thumb-url');
+    const cache = createCoverThumbnailCache(loader, {}, revoke);
+    await cache.get('a');
+    await cache.get('b');
+    cache.clear();
+    await vi.waitFor(() => expect(revoke).toHaveBeenCalledTimes(2));
+  });
+
+  test('null results are not revoked', async () => {
+    const revoke = vi.fn();
+    const loader = vi.fn().mockResolvedValue(null);
+    const cache = createCoverThumbnailCache(loader, { capacity: 1 }, revoke);
+    await cache.get('a');
+    await cache.get('b'); // evicts a, but a resolved to null
+    await vi.waitFor(() => expect(revoke).not.toHaveBeenCalled());
+  });
 });

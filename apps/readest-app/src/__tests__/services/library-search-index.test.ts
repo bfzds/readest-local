@@ -8,10 +8,13 @@ import {
   buildSearchIndexNodes,
   completeSearchIndex,
   isSearchIndexFresh,
+  loadSearchIndexSections,
   readSearchIndexMeta,
   SEARCH_INDEX_VERSION,
   writeSearchIndexSection,
+  writeSearchIndexSections,
   type SearchIndexMeta,
+  type SearchIndexSection,
 } from '@/services/librarySearchIndex';
 import type { Book } from '@/types/book';
 
@@ -141,6 +144,49 @@ describe('completeSearchIndex 完整性校验（B7）', () => {
     await completeSearchIndex(db, 2);
     const meta = await readSearchIndexMeta(db);
     expect(meta!.complete).toBe(true);
+  });
+});
+
+describe('writeSearchIndexSections 批量写（SF2）', () => {
+  it('批量写入后 loadSearchIndexSections 回读一致（含单引号/折叠文本）', async () => {
+    const db = await openDb();
+    const book = makeBook('hash-abc', 100);
+    await beginSearchIndex(db, book, 3, 'nav-1');
+    const sections: SearchIndexSection[] = [
+      { idx: 0, label: "It's a title", text: "don't panic" },
+      { idx: 1, label: 's1', text: 'HELLO WORLD' },
+      { idx: 2, label: 's2', text: 'hello world' },
+    ];
+    await writeSearchIndexSections(db, sections);
+    const rows = await loadSearchIndexSections(db);
+    expect(rows).toEqual([
+      { idx: 0, label: "It's a title", text: "don't panic" },
+      { idx: 1, label: 's1', text: 'HELLO WORLD' },
+      { idx: 2, label: 's2', text: 'hello world' },
+    ]);
+  });
+
+  it('批量写入覆盖同 idx 旧内容（DELETE+INSERT 语义）', async () => {
+    const db = await openDb();
+    const book = makeBook('hash-abc', 100);
+    await beginSearchIndex(db, book, 2, 'nav-1');
+    await writeSearchIndexSection(db, 0, 'old', 'old text');
+    await writeSearchIndexSections(db, [
+      { idx: 0, label: 'new', text: 'new text' },
+      { idx: 1, label: 's1', text: 'second' },
+    ]);
+    const rows = await loadSearchIndexSections(db);
+    expect(rows).toEqual([
+      { idx: 0, label: 'new', text: 'new text' },
+      { idx: 1, label: 's1', text: 'second' },
+    ]);
+  });
+
+  it('空数组为 no-op', async () => {
+    const db = await openDb();
+    const book = makeBook('hash-abc', 100);
+    await beginSearchIndex(db, book, 1, 'nav-1');
+    await expect(writeSearchIndexSections(db, [])).resolves.toBeUndefined();
   });
 });
 

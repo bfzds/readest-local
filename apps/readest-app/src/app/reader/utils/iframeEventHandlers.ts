@@ -195,6 +195,15 @@ export const handleClickCapture = (bookKey: string, event: MouseEvent) => {
   consumeSuppressedDomClick(bookKey, event, Date.now());
 };
 
+// contextmenu 不跨文档冒泡：正文 iframe 内的右键事件到不了父 window 的
+// useSuppressDefaultContextMenu 监听器。这里在 iframe 内容文档上独立挂监听，
+// 屏蔽 WebView2 浏览器默认菜单；编辑元素保留原生复制粘贴菜单。
+export const handleContextMenu = (_bookKey: string, event: MouseEvent) => {
+  const target = event.target as HTMLElement | null;
+  if (target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+  event.preventDefault();
+};
+
 // The event's position in main-window viewport coordinates: iframe client
 // coordinates offset by the frame's on-screen rect. The rect already includes
 // any zoom transform on the frame's ancestors, so client sizes are rescaled.

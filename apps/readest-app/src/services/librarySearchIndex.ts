@@ -128,6 +128,31 @@ export const writeSearchIndexSection = async (
   ]);
 };
 
+// SF2：批量写多节合并为一次 batch（2 条语句），替代逐节 2 次 execute。
+// 500 节从 ~1,000 次 IPC 往返降到 1 次。batch 只接受纯 SQL 字符串（无参数
+// 绑定），值内联进语句；label/text/folded 是书内容，单引号按 SQLite 字符串
+// 字面量规则翻倍转义，idx 是数字直接内联。
+const sqlLiteral = (value: string): string => `'${value.replace(/'/g, "''")}'`;
+
+export const writeSearchIndexSections = async (
+  db: DatabaseService,
+  sections: SearchIndexSection[],
+): Promise<void> => {
+  if (sections.length === 0) return;
+  const statements: string[] = [];
+  const deletes = sections.map((s) => `${s.idx}`).join(', ');
+  statements.push(`DELETE FROM search_sections WHERE idx IN (${deletes})`);
+  const inserts = sections.map((s) => {
+    const folded = foldValue(s.text, FOLD_OPTIONS);
+    const foldedSql = folded === s.text ? 'NULL' : sqlLiteral(folded);
+    return `(${s.idx}, ${sqlLiteral(s.label)}, ${sqlLiteral(s.text)}, ${foldedSql})`;
+  });
+  statements.push(
+    `INSERT INTO search_sections (idx, label, text, folded) VALUES ${inserts.join(', ')}`,
+  );
+  await db.batch(statements);
+};
+
 // Turso is WAL-only (PRAGMA journal_mode = DELETE is ignored) and implements
 // no auto-checkpoint (see statisticsDb), so without an explicit checkpoint
 // every indexed byte stays in search.db-wal and the main file never grows

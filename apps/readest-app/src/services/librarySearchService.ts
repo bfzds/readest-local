@@ -30,11 +30,12 @@ import {
   openLibrarySearchDb,
   readSearchIndexMeta,
   writeSearchIndexNodes,
-  writeSearchIndexSection,
+  writeSearchIndexSections,
   type SearchIndexSection,
 } from './librarySearchIndex';
 import { hydrateBookNav, isBookNavCacheCurrent, type BookNav } from './nav';
 import { createLibrarySearchWorker } from './librarySearchWorker';
+import { releaseSearchBuildLock, tryAcquireSearchBuildLock } from './searchIndexLock';
 import * as CFI from 'foliate-js/epubcfi.js';
 import { TOCProgress } from 'foliate-js/progress.js';
 
@@ -47,6 +48,9 @@ type LibrarySearchAppService = Pick<
   | 'resolveNativeBookFilePath'
   | 'loadBookNav'
   | 'openDatabase'
+  | 'createDir'
+  | 'stats'
+  | 'deleteDir'
 >;
 
 // The nav the reader shows (nav.json enrichment applied via hydrateBookNav),
@@ -80,7 +84,7 @@ export type LibrarySearchEvent =
     }
   | { type: 'result'; book: Book; result: LibrarySearchSectionResult }
   | { type: 'book-completed'; book: Book; matchCount: number; truncated?: boolean }
-  | { type: 'book-skipped'; book: Book; reason: 'unavailable' }
+  | { type: 'book-skipped'; book: Book; reason: 'unavailable' | 'index-building' }
   | { type: 'book-error'; book: Book; error: string; code?: string }
   | {
       type: 'completed';
@@ -291,6 +295,9 @@ interface CachedSearchBook {
 
 const MAX_CACHED_BOOKS = 10;
 const MAX_OPEN_INDEX_DBS = 16;
+// SF2：节写入攒批大小。每 100 节一次 batch，500 节从 ~1,000 次 execute IPC
+// 往返降到 ~5 次；批次过大单条 SQL 字符串过长，适中即可。
+const SECTION_WRITE_BATCH_SIZE = 100;
 
 export const createLibrarySearchSession = (appService: LibrarySearchAppService) => {
   const documents = new Map<string, { bookHash: string; pending: Promise<CachedSearchBook> }>();
@@ -607,6 +614,9 @@ export async function* searchLibraryBooks(
     let bookDoc: SearchableBookDoc | null = null;
     let indexDb: DatabaseService | null = null;
     const ownsIndexDb = !options.session;
+    // SF3：跨窗口互斥。拿到锁的窗口独占重建，拿不到的跳过本书（另一窗口
+    // 在重建同一 search.db），避免双窗口各做一遍完整重建。
+    let buildLockHeld = false;
     try {
       yield { type: 'book-started', book, bookIndex, totalBooks: books.length };
       const locale = book.primaryLanguage || 'en';
@@ -716,6 +726,14 @@ export async function* searchLibraryBooks(
       } else {
         // Live path: extract text section by section, persist it to the
         // per-book index, and match the same extracted text.
+        // SF3：重建前抢跨窗口锁。拿不到说明另一窗口正在重建同一本书，
+        // 本次跳过这本书（不重复建索引），后续搜索等它建完即命中。
+        buildLockHeld = await tryAcquireSearchBuildLock(appService, book.hash);
+        if (!buildLockHeld) {
+          skippedBooks++;
+          yield { type: 'book-skipped', book, reason: 'index-building' };
+          continue;
+        }
         // 埋点：重建全流程（open→extract→write→match）计时，供验证 B1 后
         // "读过的书不应重建"是否成立。
         const rebuildT0 = perfMark('search', 'bookFresh.rebuild.start');
@@ -770,6 +788,16 @@ export async function* searchLibraryBooks(
           });
         }
 
+        // SF2：批量写节。逐节提取（document creation 是主要开销）不变，但
+        // 写库攒批，每 100 节一次 batch，替代逐节 2 次 execute 的 IPC 往返。
+        const sectionWriteBatch: SearchIndexSection[] = [];
+        const flushSectionBatch = async () => {
+          if (sectionWriteBatch.length === 0) return;
+          const batch = sectionWriteBatch.splice(0);
+          await writeSearchIndexSections(indexDb!, batch).catch(() => {
+            indexComplete = false;
+          });
+        };
         for (const [sectionIndex, section] of bookDoc.sections.entries()) {
           if (signal?.aborted) return;
           if (typeof section.createDocument === 'function') {
@@ -784,11 +812,10 @@ export async function* searchLibraryBooks(
               const sectionLocale = doc.body?.lang || doc.documentElement?.lang || locale;
               const label = tocProgress?.getProgress(sectionIndex, null)?.label ?? '';
               if (indexDb) {
-                await writeSearchIndexSection(indexDb, sectionIndex, label, prepared.text).catch(
-                  () => {
-                    indexComplete = false;
-                  },
-                );
+                sectionWriteBatch.push({ idx: sectionIndex, label, text: prepared.text });
+                if (sectionWriteBatch.length >= SECTION_WRITE_BATCH_SIZE) {
+                  await flushSectionBatch();
+                }
               }
               const remaining = Math.min(
                 MAX_BOOK_SEARCH_RESULTS - bookMatches,
@@ -841,6 +868,7 @@ export async function* searchLibraryBooks(
           // the cache ends complete; only the matcher work is skipped.
           await yieldSlice();
         }
+        await flushSectionBatch();
 
         if (indexDb && indexComplete) {
           await completeSearchIndex(indexDb, totalSections).catch(() => {});
@@ -871,6 +899,9 @@ export async function* searchLibraryBooks(
         ...((error as { code?: string })?.code ? { code: (error as { code: string }).code } : {}),
       };
     } finally {
+      if (buildLockHeld) {
+        await releaseSearchBuildLock(appService, book.hash).catch(() => {});
+      }
       if (!options.session) await closeBook(bookDoc, file);
       if (ownsIndexDb && indexDb) {
         await checkpointSearchIndex(indexDb);

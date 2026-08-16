@@ -39,6 +39,9 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
 
     // 封面重采样到目标宽度后显示，避免源图（常为书内原图）全尺寸解码常驻。
     // 缓存命中即返回，未命中首次缩略；失败（null）回退原 URL。
+    // 依赖 updatedAt：桌面端 coverImageUrl 是稳定路径，换封面覆写同一文件后
+    // URL 不变，仅靠 coverSrc 不会重新生成；updatedAt 变化触发重新走缓存
+    // （配合 updateCoverImage 处的失效）以显示新封面。
     useEffect(() => {
       if (!coverSrc) return;
       let cancelled = false;
@@ -48,7 +51,7 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
       return () => {
         cancelled = true;
       };
-    }, [coverSrc]);
+    }, [coverSrc, book.updatedAt]);
 
     const shouldShowSpine = showSpine && imageLoaded && !imageError;
     const displayedSrc = thumbUrl ?? coverSrc ?? '';

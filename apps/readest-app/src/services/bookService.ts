@@ -25,6 +25,7 @@ import {
 import type { BookNav } from '@/services/nav';
 import { partialMD5, md5 } from '@/utils/md5';
 import { perfMark } from '@/utils/perf';
+import { getCoverThumbnailUrl } from '@/utils/coverThumbnail';
 import { getBaseFilename, getFilename } from '@/utils/path';
 import { BookDoc, DocumentLoader } from '@/libs/document';
 import { hasMediaOverlays } from '@/services/tts/mediaOverlay';
@@ -271,6 +272,10 @@ export async function updateCoverImage(
     const arrayBuffer = await imageToArrayBuffer(ctx, imageUrl, imageFile);
     await ctx.fs.writeFile(getCoverFilename(book), 'Books', arrayBuffer);
   }
+  // 桌面端 coverImageUrl 是稳定路径（<hash>/cover.png），覆写同一文件后 URL
+  // 不变，缩略缓存按 coverSrc 命中旧图。这里按稳定路径精确失效，配合
+  // BookCover 依赖 updatedAt 重新走缓存，换封面后显示新图。
+  getCoverThumbnailUrl.delete(getCoverImageUrl(ctx, book));
 }
 
 /**
