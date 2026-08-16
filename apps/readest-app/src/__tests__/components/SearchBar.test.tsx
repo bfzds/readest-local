@@ -145,4 +145,14 @@ describe('SearchBar', () => {
     fireEvent.keyDown(input, { key: 'w', ctrlKey: true });
     expect(onHideSearchBar).toHaveBeenCalledTimes(1);
   });
+
+  it('closes the search bar with Ctrl+F while the input is focused (three-state cycle)', () => {
+    const onHideSearchBar = vi.fn();
+    const { container } = render(
+      <SearchBar isVisible bookKey='book-1' onHideSearchBar={onHideSearchBar} />,
+    );
+    const input = container.querySelector('input')!;
+    fireEvent.keyDown(input, { key: 'f', ctrlKey: true });
+    expect(onHideSearchBar).toHaveBeenCalledTimes(1);
+  });
 });

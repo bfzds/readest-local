@@ -376,10 +376,11 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
           spellCheck={false}
           onChange={handleInputChange}
           onKeyDown={(e) => {
-            // 聚焦时 window 级 useShortcuts 跳过输入框按键，这里兜底：
-            // Ctrl/Cmd+W 关闭搜索栏而非整个窗口（未聚焦时由 closeWindow
-            // 拦截 dispatch close-search-bar）。
-            if (e.key === 'w' && (e.ctrlKey || e.metaKey)) {
+            // 兜底：reader 的 useBookShortcuts 已在捕获阶段拦截聚焦时的
+            // Ctrl+F / Ctrl+W（WebView2 加速键，React 冒泡 preventDefault 拦
+            // 不住）。此处仅在捕获拦截未生效时再关一次搜索栏，避免原生查找
+            // 框弹出或 Ctrl+W 关掉窗口。
+            if ((e.key === 'f' || e.key === 'w') && (e.ctrlKey || e.metaKey)) {
               e.preventDefault();
               onHideSearchBar();
             }

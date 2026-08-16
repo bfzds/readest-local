@@ -12,6 +12,7 @@ const shortcutState = {
 
 const sidebarMocks = vi.hoisted(() => ({
   isSearchBarVisible: false,
+  requestSearchBarFocus: vi.fn(),
 }));
 
 const envMocks = vi.hoisted(() => ({
@@ -58,7 +59,12 @@ vi.mock('@/store/sidebarStore', () => ({
       toggleSideBar: vi.fn(),
       setSideBarBookKey: vi.fn(),
     }),
-    { getState: () => ({ isSearchBarVisible: sidebarMocks.isSearchBarVisible }) },
+    {
+      getState: () => ({
+        isSearchBarVisible: sidebarMocks.isSearchBarVisible,
+        requestSearchBarFocus: sidebarMocks.requestSearchBarFocus,
+      }),
+    },
   ),
 }));
 
@@ -217,5 +223,40 @@ describe('useBookShortcuts', () => {
 
     expect(dispatchSpy).not.toHaveBeenCalledWith('close-search-bar', {});
     expect(tauriHandleClose).toHaveBeenCalled();
+  });
+
+  it('capture handler focuses search input on Ctrl+F when the search bar is visible but unfocused', () => {
+    sidebarMocks.isSearchBarVisible = true;
+    render(<Harness />);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true }));
+    expect(sidebarMocks.requestSearchBarFocus).toHaveBeenCalledTimes(1);
+  });
+
+  it('capture handler closes the search bar on Ctrl+F when the input is focused', () => {
+    sidebarMocks.isSearchBarVisible = true;
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+    const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
+    render(<Harness />);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true }));
+    expect(dispatchSpy).toHaveBeenCalledWith('close-search-bar', {});
+    document.body.removeChild(input);
+  });
+
+  it('capture handler closes the search bar on Ctrl+W when it is visible', () => {
+    sidebarMocks.isSearchBarVisible = true;
+    const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
+    render(<Harness />);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', ctrlKey: true, bubbles: true }));
+    expect(dispatchSpy).toHaveBeenCalledWith('close-search-bar', {});
+  });
+
+  it('capture handler does not intercept Ctrl+W when the search bar is hidden', () => {
+    sidebarMocks.isSearchBarVisible = false;
+    const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
+    render(<Harness />);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', ctrlKey: true, bubbles: true }));
+    expect(dispatchSpy).not.toHaveBeenCalledWith('close-search-bar', {});
   });
 });
