@@ -40,6 +40,26 @@ describe('KeyboardShortcutsPanel', () => {
     expect(screen.getByText('Next Page')).toBeTruthy();
   });
 
+  it('marks keycaps that conflict with another action', () => {
+    renderPanel();
+    // onShowSearchBar and onSearchSelection both bind ctrl+f
+    const conflicted = Array.from(document.querySelectorAll('kbd[title]')).filter((k) =>
+      (k.getAttribute('title') ?? '').includes('Shared with'),
+    );
+    expect(conflicted.length).toBeGreaterThan(0);
+  });
+
+  it('does not mark unique keycaps as conflicts', () => {
+    renderPanel();
+    // onToggleSideBar's 's' is unique — its keycap must not carry a conflict title
+    const row = rowFor('Toggle Sidebar', 'onToggleSideBar');
+    const keycaps = Array.from(row.querySelectorAll('kbd'));
+    expect(keycaps.length).toBeGreaterThan(0);
+    for (const keycap of keycaps) {
+      expect(keycap.getAttribute('title') ?? '').not.toContain('Shared with');
+    }
+  });
+
   it('records a new shortcut, persists it, and dispatches shortcutUpdate', () => {
     const handler = vi.fn();
     window.addEventListener('shortcutUpdate', handler);
@@ -81,15 +101,16 @@ describe('KeyboardShortcutsPanel', () => {
     expect(within(row).getByText('No shortcut')).toBeTruthy();
   });
 
-  it('cancels recording with Escape without saving', () => {
+  it('unbinds a shortcut with Escape and shows it as unbound', () => {
     renderPanel();
     const row = rowFor('Toggle Sidebar', 'onToggleSideBar');
     const input = startRecording(row);
 
     fireEvent.keyDown(input, { key: 'Escape' });
 
-    expect(localStorage.getItem('customShortcuts')).toBeNull();
-    expect(within(row).queryByPlaceholderText('Press new shortcut')).toBeNull();
+    const stored = JSON.parse(localStorage.getItem('customShortcuts') ?? '{}');
+    expect(stored.onToggleSideBar).toEqual([]);
+    expect(within(row).getByText('No shortcut')).toBeTruthy();
   });
 
   it('shows Restore Default after editing and restores the original keys', () => {

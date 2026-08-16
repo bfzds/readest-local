@@ -63,3 +63,31 @@ export const findConflictingActions = (
   }
   return conflicts;
 };
+
+export interface ShortcutConflict {
+  key: string;
+  actionKey: string;
+  description: string;
+}
+
+/**
+ * Actions other than `actionKey` that bind the same normalized key. Used to
+ * surface pre-existing shared bindings in the shortcuts panel (e.g. ctrl+f on
+ * both search and search-selection), distinct from the record-time guard in
+ * findConflictingActions.
+ */
+export const findKeyConflicts = (
+  shortcuts: ShortcutConfig,
+  actionKey: string,
+  key: string,
+): ShortcutConflict[] => {
+  const normKey = normalizeShortcutKey(key);
+  const conflicts: ShortcutConflict[] = [];
+  for (const [name, entry] of Object.entries(shortcuts)) {
+    if (name === actionKey) continue;
+    if (entry.keys.some((k) => normalizeShortcutKey(k) === normKey)) {
+      conflicts.push({ key: normKey, actionKey: name, description: entry.description });
+    }
+  }
+  return conflicts;
+};

@@ -2009,5 +2009,6 @@
   "Restore Default": "恢复默认",
   "Used by {{action}}": "已被 {{action}} 使用",
   "Record Shortcuts": "录制快捷键",
-  "Click Edit, then press the new key combination. Esc cancels, Backspace clears.": "点击编辑，然后按下新的组合键。Esc 取消，Backspace 清除。"
+  "Click Edit, then press the new key combination. Esc cancels, Backspace clears.": "点击编辑，然后按下新的组合键。Esc 取消，Backspace 清除。",
+  "Shared with {{action}}": "与 {{action}} 共用"
 }

@@ -121,5 +121,6 @@
   "Restore Default": "Restore Default",
   "Used by {{action}}": "Used by {{action}}",
   "Record Shortcuts": "Record Shortcuts",
-  "Click Edit, then press the new key combination. Esc cancels, Backspace clears.": "Click Edit, then press the new key combination. Esc cancels, Backspace clears."
+  "Click Edit, then press the new key combination. Esc cancels, Backspace clears.": "Click Edit, then press the new key combination. Esc cancels, Backspace clears.",
+  "Shared with {{action}}": "Shared with {{action}}"
 }

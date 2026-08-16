@@ -1993,5 +1993,6 @@
   "Restore Default": "恢復預設",
   "Used by {{action}}": "已被 {{action}} 使用",
   "Record Shortcuts": "錄製快捷鍵",
-  "Click Edit, then press the new key combination. Esc cancels, Backspace clears.": "點擊編輯，然後按下新的組合鍵。Esc 取消，Backspace 清除。"
+  "Click Edit, then press the new key combination. Esc cancels, Backspace clears.": "點擊編輯，然後按下新的組合鍵。Esc 取消，Backspace 清除。",
+  "Shared with {{action}}": "與 {{action}} 共用"
 }

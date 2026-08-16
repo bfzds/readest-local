@@ -3,6 +3,7 @@ import { loadShortcuts, ShortcutConfig } from '../../helpers/shortcuts';
 import {
   buildShortcutFromKeyEvent,
   findConflictingActions,
+  findKeyConflicts,
   normalizeShortcutKey,
 } from '../../utils/shortcutRecorder';
 
@@ -141,5 +142,45 @@ describe('findConflictingActions', () => {
   it('does not flag keys an action already owns as its own conflict', () => {
     // onToggleBookmark owns ctrl+b and no other action uses it.
     expect(findConflictingActions(shortcuts, 'onToggleBookmark', ['ctrl+b'])).toEqual([]);
+  });
+});
+
+describe('findKeyConflicts', () => {
+  let shortcuts: ShortcutConfig;
+
+  beforeEach(() => {
+    localStorage.clear();
+    shortcuts = loadShortcuts();
+  });
+
+  it('reports another action sharing the key', () => {
+    const conflicts = findKeyConflicts(shortcuts, 'onShowSearchBar', 'ctrl+f');
+    expect(conflicts.map((c) => c.actionKey)).toContain('onSearchSelection');
+  });
+
+  it('excludes the action itself', () => {
+    const conflicts = findKeyConflicts(shortcuts, 'onShowSearchBar', 'ctrl+f');
+    expect(conflicts.map((c) => c.actionKey)).not.toContain('onShowSearchBar');
+  });
+
+  it('detects cross-platform aliases (opt vs alt)', () => {
+    // onProofreadSelection binds alt+p.
+    const conflicts = findKeyConflicts(shortcuts, 'onToggleSideBar', 'opt+p');
+    expect(conflicts.map((c) => c.actionKey)).toContain('onProofreadSelection');
+  });
+
+  it('returns empty when the key is unique', () => {
+    expect(findKeyConflicts(shortcuts, 'onToggleSideBar', 's')).toEqual([]);
+  });
+
+  it('returns empty when the key is unbound', () => {
+    expect(findKeyConflicts(shortcuts, 'onToggleSideBar', 'x')).toEqual([]);
+  });
+
+  it('reports a conflict for a key the action itself does not own', () => {
+    // shift+j is bound to both onToggleScrollMode and onGoNext.
+    expect(findKeyConflicts(shortcuts, 'onGoNext', 'shift+j').map((c) => c.actionKey)).toContain(
+      'onToggleScrollMode',
+    );
   });
 });

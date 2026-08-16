@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from '@/hooks/useTranslation';
 import { isMacPlatform } from '@/services/environment';
@@ -11,7 +12,11 @@ import {
   resetShortcuts,
 } from '@/helpers/shortcuts';
 import { filterPlatformKeys, formatKeyForDisplay } from '@/utils/shortcutKeys';
-import { buildShortcutFromKeyEvent, findConflictingActions } from '@/utils/shortcutRecorder';
+import {
+  buildShortcutFromKeyEvent,
+  findConflictingActions,
+  findKeyConflicts,
+} from '@/utils/shortcutRecorder';
 import { BoxedList, SettingsRow, Tips } from './primitives';
 import { SettingsPanelPanelProp } from './SettingsDialog';
 
@@ -69,6 +74,9 @@ const KeyboardShortcutsPanel: React.FC<SettingsPanelPanelProp> = ({ onRegisterRe
     event.preventDefault();
 
     if (event.key === 'Escape') {
+      // Esc 注销当前绑定（面板显示为未绑定），Backspace 行为相同；仅退出
+      // 录制不改动则靠 input 失焦（onBlur）。
+      applyKeys(actionKey, []);
       stopRecording();
       return;
     }
@@ -142,14 +150,30 @@ const KeyboardShortcutsPanel: React.FC<SettingsPanelPanelProp> = ({ onRegisterRe
                         <span className='text-base-content/50 text-sm'>{_('No shortcut')}</span>
                       ) : (
                         <div className='flex shrink-0 gap-1'>
-                          {keys.map((key) => (
-                            <kbd
-                              key={key}
-                              className='border-base-300/40 bg-base-300/75 text-neutral-content inline-flex items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-medium shadow-sm'
-                            >
-                              {formatKeyForDisplay(key, isMac)}
-                            </kbd>
-                          ))}
+                          {keys.map((key) => {
+                            const conflicts = findKeyConflicts(shortcuts, actionKey, key);
+                            const hasConflict = conflicts.length > 0;
+                            return (
+                              <kbd
+                                key={key}
+                                className={clsx(
+                                  'inline-flex items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-medium shadow-sm',
+                                  hasConflict
+                                    ? 'border-red-500/50 bg-red-500/10 text-red-500'
+                                    : 'border-base-300/40 bg-base-300/75 text-neutral-content',
+                                )}
+                                title={
+                                  hasConflict
+                                    ? _('Shared with {{action}}', {
+                                        action: conflicts[0]!.description,
+                                      })
+                                    : undefined
+                                }
+                              >
+                                {formatKeyForDisplay(key, isMac)}
+                              </kbd>
+                            );
+                          })}
                         </div>
                       )}
                       <button
