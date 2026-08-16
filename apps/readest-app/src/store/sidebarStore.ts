@@ -28,6 +28,9 @@ interface SidebarState {
   isSideBarVisible: boolean;
   isSideBarPinned: boolean;
   isSearchBarVisible: boolean;
+  // 每次 requestSearchBarFocus 递增，SearchBar 借此把焦点拉回输入框
+  //（打开搜索栏默认不聚焦，再次 ctrl+f 时才聚焦）。
+  searchBarFocusToken: number;
   // Per-book navigation states
   searchNavStates: Record<string, SearchNavState>;
   booknotesNavStates: Record<string, BooknotesNavState>;
@@ -41,6 +44,8 @@ interface SidebarState {
   setSideBarVisible: (visible: boolean) => void;
   setSideBarPin: (pinned: boolean) => void;
   setSearchBarVisible: (visible: boolean) => void;
+  requestSearchBarFocus: () => void;
+  resetSearchBarFocus: () => void;
   // Search actions (per bookKey)
   getSearchNavState: (bookKey: string) => SearchNavState;
   setSearchTerm: (bookKey: string, term: string) => void;
@@ -84,6 +89,7 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
   isSideBarVisible: false,
   isSideBarPinned: false,
   isSearchBarVisible: false,
+  searchBarFocusToken: 0,
   // Per-book navigation states
   searchNavStates: {},
   booknotesNavStates: {},
@@ -97,6 +103,9 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
   setSideBarVisible: (visible: boolean) => set({ isSideBarVisible: visible }),
   setSideBarPin: (pinned: boolean) => set({ isSideBarPinned: pinned }),
   setSearchBarVisible: (visible: boolean) => set({ isSearchBarVisible: visible }),
+  requestSearchBarFocus: () =>
+    set((state) => ({ searchBarFocusToken: state.searchBarFocusToken + 1 })),
+  resetSearchBarFocus: () => set({ searchBarFocusToken: 0 }),
   // Search actions
   getSearchStatus: (bookKey: string) => {
     return get().searchStatuses[bookKey] || null;

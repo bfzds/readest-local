@@ -10,6 +10,14 @@ const shortcutState = {
   > | null,
 };
 
+const sidebarMocks = vi.hoisted(() => ({
+  isSearchBarVisible: false,
+}));
+
+const envMocks = vi.hoisted(() => ({
+  isTauriAppPlatform: false,
+}));
+
 const mockView = {
   book: { dir: 'ltr' },
   prev: vi.fn(),
@@ -45,10 +53,13 @@ vi.mock('@/store/readerStore', () => ({
 }));
 
 vi.mock('@/store/sidebarStore', () => ({
-  useSidebarStore: () => ({
-    toggleSideBar: vi.fn(),
-    setSideBarBookKey: vi.fn(),
-  }),
+  useSidebarStore: Object.assign(
+    () => ({
+      toggleSideBar: vi.fn(),
+      setSideBarBookKey: vi.fn(),
+    }),
+    { getState: () => ({ isSearchBarVisible: sidebarMocks.isSearchBarVisible }) },
+  ),
 }));
 
 vi.mock('@/store/settingsStore', () => ({
@@ -88,7 +99,7 @@ vi.mock('@/hooks/useShortcuts', () => ({
 }));
 
 vi.mock('@/services/environment', () => ({
-  isTauriAppPlatform: () => false,
+  isTauriAppPlatform: () => envMocks.isTauriAppPlatform,
 }));
 
 vi.mock('@/utils/window', () => ({
@@ -115,6 +126,8 @@ const Harness = () => {
 describe('useBookShortcuts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sidebarMocks.isSearchBarVisible = false;
+    envMocks.isTauriAppPlatform = false;
     shortcutState.actions = null;
     currentViewSettings.readingRulerEnabled = true;
     currentViewSettings.writingMode = 'horizontal-tb';
@@ -179,5 +192,30 @@ describe('useBookShortcuts', () => {
     shortcutState.actions?.['onStartRSVP']?.();
 
     expect(dispatchSpy).toHaveBeenCalledWith('rsvp-start', { bookKey: 'book-1' });
+  });
+
+  it('closes the search bar instead of the window when Ctrl+W fires while the search bar is visible', async () => {
+    const { tauriHandleClose } = await import('@/utils/window');
+    sidebarMocks.isSearchBarVisible = true;
+    const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
+
+    render(<Harness />);
+    await shortcutState.actions?.['onCloseWindow']?.();
+
+    expect(dispatchSpy).toHaveBeenCalledWith('close-search-bar', {});
+    expect(tauriHandleClose).not.toHaveBeenCalled();
+  });
+
+  it('closes the window when Ctrl+W fires while the search bar is hidden', async () => {
+    const { tauriHandleClose } = await import('@/utils/window');
+    envMocks.isTauriAppPlatform = true;
+    sidebarMocks.isSearchBarVisible = false;
+    const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
+
+    render(<Harness />);
+    await shortcutState.actions?.['onCloseWindow']?.();
+
+    expect(dispatchSpy).not.toHaveBeenCalledWith('close-search-bar', {});
+    expect(tauriHandleClose).toHaveBeenCalled();
   });
 });

@@ -52,7 +52,8 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
   const { getView, getProgress, getViewSettings } = useReaderStore();
   const { setSearchTerm, setSearchResults, setSearchProgress, setSearchError, setSearchTruncated } =
     useSidebarStore();
-  const { getSearchNavState, getSearchStatus, setSearchStatus } = useSidebarStore();
+  const { getSearchNavState, getSearchStatus, setSearchStatus, searchBarFocusToken } =
+    useSidebarStore();
   const viewSettings = getViewSettings(bookKey);
   const searchNavState = getSearchNavState(bookKey);
 
@@ -143,13 +144,20 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
       inputRef.current.onfocus = () => {
         inputFocusedRef.current = true;
       };
-      inputRef.current.focus();
     }
     if (isVisible && searchTerm) {
       handleSearchTermChange(searchTerm);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isVisible]);
+
+  // 打开搜索栏默认不聚焦（焦点留在正文可继续翻页）；仅当再次 ctrl+f 触发
+  // requestSearchBarFocus（token 递增）时才把焦点拉回输入框。
+  useEffect(() => {
+    if (searchBarFocusToken > 0 && isVisible && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [searchBarFocusToken, isVisible]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -368,17 +376,10 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
           spellCheck={false}
           onChange={handleInputChange}
           onKeyDown={(e) => {
-            // F toggle 的关闭半边:搜索框聚焦时 window 级 useShortcuts 会跳过
-            // 输入框内的按键(避免干扰输入),这里在搜索框为空时兜底 —— 刚打开的
-            // 空搜索框按 F 关闭;有内容时 F 保留为输入,关闭走 Esc/侧键。
-            if (
-              e.key === 'f' &&
-              !e.ctrlKey &&
-              !e.metaKey &&
-              !e.altKey &&
-              !e.shiftKey &&
-              !searchTerm
-            ) {
+            // 聚焦时 window 级 useShortcuts 跳过输入框按键，这里兜底：
+            // Ctrl/Cmd+W 关闭搜索栏而非整个窗口（未聚焦时由 closeWindow
+            // 拦截 dispatch close-search-bar）。
+            if (e.key === 'w' && (e.ctrlKey || e.metaKey)) {
               e.preventDefault();
               onHideSearchBar();
             }

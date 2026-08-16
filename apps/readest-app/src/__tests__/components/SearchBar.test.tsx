@@ -1,4 +1,4 @@
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import SearchBar from '@/app/reader/components/sidebar/SearchBar';
@@ -11,6 +11,10 @@ const mocks = vi.hoisted(() => ({
   // Stable like the real context value; a fresh object per render would
   // re-fire the [appService, isVisible] effect and double the search.
   appService: { deleteDir: vi.fn().mockResolvedValue(undefined) },
+}));
+
+const sidebarMocks = vi.hoisted(() => ({
+  searchBarFocusToken: 0,
 }));
 
 // Reader search runs on the shared per-book search.db service; the view only
@@ -55,6 +59,7 @@ vi.mock('@/store/sidebarStore', () => ({
     setSearchStatus: vi.fn(),
     getSearchStatus: () => 'searching',
     getSearchNavState: () => ({ searchTerm: 'alice', searchError: null }),
+    searchBarFocusToken: sidebarMocks.searchBarFocusToken,
   }),
 }));
 
@@ -77,6 +82,7 @@ describe('SearchBar', () => {
   });
 
   afterEach(() => {
+    sidebarMocks.searchBarFocusToken = 0;
     cleanup();
     vi.useRealTimers();
   });
@@ -109,5 +115,34 @@ describe('SearchBar', () => {
 
     expect(mocks.searchLibraryBooks).toHaveBeenCalledTimes(1);
     expect(mocks.searchLibraryBooks.mock.calls[0]![3].sectionIndex).toBe(4);
+  });
+
+  it('does not focus the input when the search bar opens', () => {
+    sidebarMocks.searchBarFocusToken = 0;
+    const { container } = render(
+      <SearchBar isVisible bookKey='book-1' onHideSearchBar={vi.fn()} />,
+    );
+    const input = container.querySelector('input');
+    expect(input).not.toBe(document.activeElement);
+  });
+
+  it('focuses the input when a focus is requested', () => {
+    const { container, rerender } = render(
+      <SearchBar isVisible bookKey='book-1' onHideSearchBar={vi.fn()} />,
+    );
+    sidebarMocks.searchBarFocusToken = 1;
+    rerender(<SearchBar isVisible bookKey='book-1' onHideSearchBar={vi.fn()} />);
+    const input = container.querySelector('input');
+    expect(document.activeElement).toBe(input);
+  });
+
+  it('closes the search bar with Ctrl+W while the input is focused', () => {
+    const onHideSearchBar = vi.fn();
+    const { container } = render(
+      <SearchBar isVisible bookKey='book-1' onHideSearchBar={onHideSearchBar} />,
+    );
+    const input = container.querySelector('input')!;
+    fireEvent.keyDown(input, { key: 'w', ctrlKey: true });
+    expect(onHideSearchBar).toHaveBeenCalledTimes(1);
   });
 });

@@ -135,7 +135,8 @@ describe('findConflictingActions', () => {
   });
 
   it('checks every key in the new list', () => {
-    const conflicts = findConflictingActions(shortcuts, 'onToggleSideBar', ['s', 'f']);
+    // 's' is the action's own key (excluded); 'ctrl+f' is bound elsewhere.
+    const conflicts = findConflictingActions(shortcuts, 'onToggleSideBar', ['s', 'ctrl+f']);
     expect(conflicts.map((c) => c.actionKey)).toContain('onShowSearchBar');
   });
 

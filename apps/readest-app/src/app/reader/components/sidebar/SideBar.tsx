@@ -33,7 +33,8 @@ const SideBar = ({}) => {
   const { updateAppTheme, safeAreaInsets, systemUIVisible, statusBarHeight } = useThemeStore();
   const { sideBarBookKey, setSideBarBookKey, getSearchNavState, setSearchTerm, clearSearch } =
     useSidebarStore();
-  const { isSearchBarVisible, setSearchBarVisible } = useSidebarStore();
+  const { isSearchBarVisible, setSearchBarVisible, requestSearchBarFocus, resetSearchBarFocus } =
+    useSidebarStore();
   const searchNavState = sideBarBookKey ? getSearchNavState(sideBarBookKey) : null;
   const { searchTerm = '', searchResults = null } = searchNavState || {};
   const getBookData = useBookDataStore((s) => s.getBookData);
@@ -60,6 +61,8 @@ const SideBar = ({}) => {
     setSideBarVisible(true);
     setSideBarBookKey(bookKey);
     setSearchBarVisible(true);
+    // 搜索选中文本打开的搜索栏同样默认不聚焦；再次 ctrl+f 才聚焦。
+    resetSearchBarFocus();
     if (term !== undefined && term !== null) {
       setSearchTerm(bookKey, term);
     }
@@ -114,28 +117,22 @@ const SideBar = ({}) => {
     setSideBarVisible(false);
   };
 
-  // F / Ctrl+F toggles the search bar: open it, or dismiss it (clearing the
-  // search) when it's already showing. Single owner of onShowSearchBar — the
-  // useBookShortcuts instance stopped registering it so a bare F doesn't
-  // double-fire the toggle. Dismissing returns to the reader (closes the
-  // sidebar unless it's pinned), not to the sidebar's TOC tab.
+  // Ctrl+F 管理搜索栏：未开 → 打开（不聚焦，焦点留在正文可继续翻页）；
+  // 已开 → 请求聚焦输入框。关闭不再走这里，交 Esc / Ctrl+W
+  // （handleHideSearchBar / close-search-bar 事件）。
   const handleShowSearchBar = useCallback(() => {
     if (isSearchBarVisible) {
-      // 与 handleHideSearchBar 同理：关闭前归还焦点，否则焦点留在隐藏 input
-      // 内，useShortcuts 判定为输入态而跳过 F/翻页/全屏。
-      blurActiveElement();
-      setSearchBarVisible(false);
-      if (sideBarBookKey) clearSearch(sideBarBookKey);
-      getView(sideBarBookKey)?.clearSearch();
-      if (!isSideBarPinned) setSideBarVisible(false);
+      requestSearchBarFocus();
     } else {
       setTimeout(() => {
         setSideBarVisible(true);
         setSearchBarVisible(true);
+        // 打开即清零聚焦请求，避免上次聚焦残留导致本次打开就聚焦。
+        resetSearchBarFocus();
       }, 100);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSearchBarVisible, sideBarBookKey, clearSearch, isSideBarPinned]);
+  }, [isSearchBarVisible, requestSearchBarFocus, resetSearchBarFocus]);
 
   const handleHideSearchBar = useCallback(() => {
     // visibility:hidden 不触发 blur，焦点留在隐藏 input 内会使 useShortcuts
@@ -159,6 +156,17 @@ const SideBar = ({}) => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sideBarBookKey, isSideBarPinned]);
+
+  // Ctrl+W 在未聚焦时由 useBookShortcuts 的 closeWindow 转交此处关闭搜索栏
+  //（聚焦时 SearchBar 输入框直接拦截）。
+  useEffect(() => {
+    const onCloseSearchBar = () => handleHideSearchBar();
+    eventDispatcher.on('close-search-bar', onCloseSearchBar);
+    return () => {
+      eventDispatcher.off('close-search-bar', onCloseSearchBar);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handleHideSearchBar]);
 
   useShortcuts({ onShowSearchBar: handleShowSearchBar, onEscape: handleHideSideBar }, [
     handleHideSideBar,

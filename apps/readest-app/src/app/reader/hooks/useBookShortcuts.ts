@@ -216,6 +216,12 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
   };
 
   const closeWindow = async () => {
+    // 搜索栏打开时 Ctrl+W 关闭搜索栏而非整个窗口：聚焦态由 SearchBar 输入框
+    // onKeyDown 拦截，未聚焦态（焦点在正文）在这里拦截并转交 SideBar 关闭。
+    if (useSidebarStore.getState().isSearchBarVisible) {
+      eventDispatcher.dispatch('close-search-bar', {});
+      return;
+    }
     if (isTauriAppPlatform()) {
       await tauriHandleClose();
     }
