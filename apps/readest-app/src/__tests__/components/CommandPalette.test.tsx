@@ -6,12 +6,14 @@ vi.mock('@/hooks/useTranslation', () => ({
   useTranslation: () => (key: string) => key,
 }));
 
+const { mockClose } = vi.hoisted(() => ({ mockClose: vi.fn() }));
+
 vi.mock('@/components/command-palette/CommandPaletteProvider', () => ({
   useCommandPalette: () => ({
     isOpen: true,
-    close: vi.fn(),
-    query: '',
+    close: mockClose,
     setQuery: vi.fn(),
+    query: '',
     results: [],
     groupedResults: { settings: [], actions: [], navigation: [] },
     recentItems: [],
@@ -47,10 +49,21 @@ describe('CommandPalette', () => {
     const input = screen.getByRole('textbox');
     input.focus();
     expect(document.activeElement).toBe(input);
-    input.blur();
+    // fireEvent.blur simulates clicking elsewhere while the window keeps
+    // focus (native blur() flips jsdom's document.hasFocus() to false, which
+    // would wrongly skip the refocus guard)
+    fireEvent.blur(input);
     await new Promise((r) => requestAnimationFrame(r));
     // focus is pulled back into the palette so arrow keys never fall through
     // to the page (e.g. after clicking empty dialog space)
     expect(document.activeElement).toBe(input);
+  });
+
+  it('closes the palette with Ctrl+W instead of the window', () => {
+    mockClose.mockClear();
+    render(<CommandPalette />);
+    const dialog = screen.getByRole('dialog');
+    fireEvent.keyDown(dialog, { key: 'w', ctrlKey: true });
+    expect(mockClose).toHaveBeenCalledTimes(1);
   });
 });

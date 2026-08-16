@@ -93,6 +93,14 @@ const CommandPalette: React.FC = () => {
           e.preventDefault();
           close();
           break;
+        case 'w':
+          // Ctrl/Cmd+W closes the palette (like Esc) instead of the whole
+          // window — the palette traps global shortcuts while open.
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            close();
+          }
+          break;
         case 'Tab':
           // trap focus within the palette
           e.preventDefault();
