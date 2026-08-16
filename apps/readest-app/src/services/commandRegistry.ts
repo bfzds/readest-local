@@ -9,6 +9,7 @@ import { TbSunMoon } from 'react-icons/tb';
 import { MdRefresh } from 'react-icons/md';
 import { IconType } from 'react-icons';
 import { stubTranslation as _ } from '@/utils/misc';
+import { loadShortcuts } from '@/helpers/shortcuts';
 
 export type CommandCategory = 'settings' | 'actions' | 'navigation';
 
@@ -685,6 +686,24 @@ export const buildCommandRegistry = (options: CommandRegistryOptions): CommandIt
   // add custom panel items
   for (const def of customPanelItems) {
     items.push(createSettingsItem(def, 'Custom'));
+  }
+
+  // add keyboard shortcuts panel items — one per shortcut action so the
+  // palette can deep-link straight to the matching row in the Keyboard panel
+  for (const [actionKey, entry] of Object.entries(loadShortcuts())) {
+    if (!entry.section) continue;
+    items.push(
+      createSettingsItem(
+        {
+          id: `settings.keyboard.${actionKey}`,
+          labelKey: entry.description,
+          keywords: ['keyboard', 'shortcut', 'shortcuts', 'hotkey', '快捷键', actionKey],
+          section: entry.section,
+        },
+        'Keyboard',
+        'Keyboard Shortcuts',
+      ),
+    );
   }
 
   // add action items

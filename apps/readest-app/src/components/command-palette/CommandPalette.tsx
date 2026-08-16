@@ -67,6 +67,10 @@ const CommandPalette: React.FC = () => {
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      // The palette traps its own keyboard navigation. Without this, once the
+      // input loses focus (e.g. after clicking a result) arrow keys and Enter
+      // bubble to the window-level shortcut handler and move the page below.
+      e.stopPropagation();
       switch (e.key) {
         case 'ArrowDown':
           e.preventDefault();

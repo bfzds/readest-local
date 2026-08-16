@@ -22,6 +22,7 @@ vi.mock('react-icons/pi', () => ({
   PiSpeakerHigh: () => null,
   PiSun: () => null,
   PiMoon: () => null,
+  PiKeyboard: () => null,
 }));
 vi.mock('react-icons/tb', () => ({
   TbSunMoon: () => null,
@@ -180,6 +181,17 @@ describe('buildCommandRegistry', () => {
       expect(item.keywords.length).toBeGreaterThan(0);
     }
   });
+
+  it('should register each shortcut action as a keyboard settings item', () => {
+    const items = buildCommandRegistry(createMockOptions());
+    const sidebarItem = items.find((i) => i.id === 'settings.keyboard.onToggleSideBar');
+    expect(sidebarItem).toBeDefined();
+    expect(sidebarItem!.panel).toBe('Keyboard');
+    expect(sidebarItem!.labelKey).toBe('Toggle Sidebar');
+    // every non-empty-section action is registered
+    const keyboardItems = items.filter((i) => i.id.startsWith('settings.keyboard.'));
+    expect(keyboardItems.length).toBeGreaterThan(20);
+  });
 });
 
 describe('searchCommands', () => {
@@ -242,6 +254,11 @@ describe('searchCommands', () => {
     const results = searchCommands('Behavior', items);
     // Control panel items have panelLabel 'Behavior'
     expect(results.length).toBeGreaterThan(0);
+  });
+
+  it('should find the keyboard shortcuts settings item', () => {
+    const results = searchCommands('shortcut', items);
+    expect(results.some((r) => r.item.id.startsWith('settings.keyboard.'))).toBe(true);
   });
 });
 
