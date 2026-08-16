@@ -157,8 +157,9 @@ const SideBar = ({}) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sideBarBookKey, isSideBarPinned]);
 
-  // Ctrl+W 在未聚焦时由 useBookShortcuts 的 closeWindow 转交此处关闭搜索栏
-  //（聚焦时 SearchBar 输入框直接拦截）。
+  // Ctrl+W / 聚焦时 Ctrl+F 关闭搜索栏由 useBookShortcuts 的捕获阶段拦截
+  // dispatch close-search-bar（SearchBar 输入框 onKeyDown 与 closeWindow 仅为
+  // 兜底），此处统一关闭搜索栏并归还焦点。
   useEffect(() => {
     const onCloseSearchBar = () => handleHideSearchBar();
     eventDispatcher.on('close-search-bar', onCloseSearchBar);

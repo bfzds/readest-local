@@ -225,11 +225,13 @@ describe('useBookShortcuts', () => {
     expect(tauriHandleClose).toHaveBeenCalled();
   });
 
-  it('capture handler focuses search input on Ctrl+F when the search bar is visible but unfocused', () => {
+  it('capture handler lets unfocused Ctrl+F fall through (focus/search handled downstream)', () => {
     sidebarMocks.isSearchBarVisible = true;
+    const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
     render(<Harness />);
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true }));
-    expect(sidebarMocks.requestSearchBarFocus).toHaveBeenCalledTimes(1);
+    expect(sidebarMocks.requestSearchBarFocus).not.toHaveBeenCalled();
+    expect(dispatchSpy).not.toHaveBeenCalledWith('close-search-bar', {});
   });
 
   it('capture handler closes the search bar on Ctrl+F when the input is focused', () => {

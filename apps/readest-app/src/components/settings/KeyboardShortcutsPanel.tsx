@@ -24,7 +24,7 @@ const KeyboardShortcutsPanel: React.FC<SettingsPanelPanelProp> = ({ onRegisterRe
   const _ = useTranslation();
   const isMac = isMacPlatform();
   const [shortcuts, setShortcuts] = useState<ShortcutConfig>(loadShortcuts);
-  const [recordingKey, setRecordingKey] = useState<string | null>(null);
+  const [recordingKey, setRecordingKey] = useState<keyof ShortcutConfig | null>(null);
   const [conflictDescription, setConflictDescription] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -52,7 +52,7 @@ const KeyboardShortcutsPanel: React.FC<SettingsPanelPanelProp> = ({ onRegisterRe
     saveShortcuts(next); // dispatches shortcutUpdate, which refreshes state
   };
 
-  const startRecording = (actionKey: string) => {
+  const startRecording = (actionKey: keyof ShortcutConfig) => {
     setRecordingKey(actionKey);
     setConflictDescription(null);
     // focus after render so autoFocus on the fresh input wins
@@ -64,40 +64,47 @@ const KeyboardShortcutsPanel: React.FC<SettingsPanelPanelProp> = ({ onRegisterRe
     setConflictDescription(null);
   };
 
-  const handleRecordKeyDown = (
-    event: React.KeyboardEvent<HTMLInputElement>,
-    actionKey: keyof ShortcutConfig,
-  ) => {
-    // Keep this keypress out of the global shortcut handlers (both the
-    // useShortcuts window listener and any browser default like Space scroll).
-    event.stopPropagation();
-    event.preventDefault();
+  // 录制按键必须挂 input 的原生 keydown listener：SettingsDialog 的 Dialog
+  // 组件在 dialog 元素上有原生 Esc 监听（dialogRef.addEventListener），它在
+  // 事件冒泡到 dialog 时先于 React 合成 onKeyDown（#root 处理）触发，录制时
+  // 按 Esc 会先关掉设置对话框而非注销绑定。原生 listener 在 target（input）
+  // 最早触发，stopPropagation 可阻止冒泡到 dialog。
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input || !recordingKey) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      event.stopPropagation();
+      event.preventDefault();
 
-    if (event.key === 'Escape') {
-      // Esc 注销当前绑定（面板显示为未绑定），Backspace 行为相同；仅退出
-      // 录制不改动则靠 input 失焦（onBlur）。
-      applyKeys(actionKey, []);
+      if (event.key === 'Escape') {
+        // Esc 注销当前绑定（面板显示为未绑定），Backspace 行为相同；仅退出
+        // 录制不改动则靠 input 失焦（onBlur）。
+        applyKeys(recordingKey, []);
+        stopRecording();
+        return;
+      }
+      if (event.key === 'Backspace') {
+        applyKeys(recordingKey, []);
+        stopRecording();
+        return;
+      }
+
+      const shortcut = buildShortcutFromKeyEvent(event, isMac);
+      if (!shortcut) return; // modifier-only press, keep waiting
+
+      const conflicts = findConflictingActions(shortcuts, recordingKey, [shortcut]);
+      if (conflicts.length > 0 && conflicts[0]) {
+        setConflictDescription(conflicts[0].description);
+        return; // stay in recording mode so the user can pick another key
+      }
+
+      applyKeys(recordingKey, [shortcut]);
       stopRecording();
-      return;
-    }
-    if (event.key === 'Backspace') {
-      applyKeys(actionKey, []);
-      stopRecording();
-      return;
-    }
-
-    const shortcut = buildShortcutFromKeyEvent(event.nativeEvent, isMac);
-    if (!shortcut) return; // modifier-only press, keep waiting
-
-    const conflicts = findConflictingActions(shortcuts, actionKey, [shortcut]);
-    if (conflicts.length > 0 && conflicts[0]) {
-      setConflictDescription(conflicts[0].description);
-      return; // stay in recording mode so the user can pick another key
-    }
-
-    applyKeys(actionKey, [shortcut]);
-    stopRecording();
-  };
+    };
+    input.addEventListener('keydown', handleKeyDown);
+    return () => input.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recordingKey]);
 
   const platformKeys = (keys: string[]) => filterPlatformKeys(keys, isMac);
 
@@ -141,7 +148,6 @@ const KeyboardShortcutsPanel: React.FC<SettingsPanelPanelProp> = ({ onRegisterRe
                       autoFocus
                       placeholder={_('Press new shortcut')}
                       className='input input-bordered input-sm w-44 text-sm'
-                      onKeyDown={(event) => handleRecordKeyDown(event, actionKey)}
                       onBlur={stopRecording}
                     />
                   ) : (
@@ -165,7 +171,7 @@ const KeyboardShortcutsPanel: React.FC<SettingsPanelPanelProp> = ({ onRegisterRe
                                 title={
                                   hasConflict
                                     ? _('Shared with {{action}}', {
-                                        action: conflicts[0]!.description,
+                                        action: _(conflicts[0]!.description),
                                       })
                                     : undefined
                                 }

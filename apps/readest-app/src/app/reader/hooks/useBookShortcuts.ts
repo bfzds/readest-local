@@ -386,25 +386,22 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
   // 搜索栏可见时在捕获阶段拦截 Ctrl+F / Ctrl+W。WebView2 把它们当浏览器加速
   // 键（Ctrl+W 直接关窗口、Ctrl+F 弹原生查找），冒泡阶段的 React onKeyDown
   // preventDefault 拦不住；捕获阶段 preventDefault + stopPropagation 才有效。
-  // 由此实现搜索栏的 ctrl+f 三态（打开不聚焦 → 聚焦 → 关闭）与 ctrl+w 关闭。
+  // 只拦"已聚焦"的 Ctrl+F（三态第三态：关闭搜索栏）与 Ctrl+W（关闭搜索栏）；
+  // 未聚焦的 Ctrl+F 放行，让 useShortcuts/Annotator 决定是聚焦还是搜索选中。
   useEffect(() => {
     const onSearchKeyCapture = (e: KeyboardEvent) => {
       if (!useSidebarStore.getState().isSearchBarVisible) return;
-      const isCombo = (e.key === 'f' || e.key === 'w') && (e.ctrlKey || e.metaKey);
-      if (!isCombo) return;
-      e.preventDefault();
-      e.stopPropagation();
+      const isF = e.key === 'f' && (e.ctrlKey || e.metaKey);
+      const isW = e.key === 'w' && (e.ctrlKey || e.metaKey);
+      if (!isF && !isW) return;
       const active = document.activeElement as HTMLElement | null;
       const inputFocused =
         !!active &&
         (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
-      if (e.key === 'w' || inputFocused) {
-        // Ctrl+W 或聚焦时 Ctrl+F：关闭搜索栏（三态第三态 / 防关窗）。
-        eventDispatcher.dispatch('close-search-bar', {});
-      } else {
-        // 未聚焦 Ctrl+F：聚焦输入框（三态第二态）。
-        useSidebarStore.getState().requestSearchBarFocus();
-      }
+      if (isF && !inputFocused) return; // 未聚焦 Ctrl+F 放行：有选中→搜选中，无选中→聚焦
+      e.preventDefault();
+      e.stopPropagation();
+      eventDispatcher.dispatch('close-search-bar', {});
     };
     window.addEventListener('keydown', onSearchKeyCapture, true);
     return () => window.removeEventListener('keydown', onSearchKeyCapture, true);
