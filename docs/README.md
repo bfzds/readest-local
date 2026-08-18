@@ -21,3 +21,7 @@
 
 - `reports/` 内报告互相引用时用 `reports/<file>.md` 前缀（相对 docs/ 根）。
 - 其他目录引用报告同理用 `reports/...`；`offline-audit/` 内容自包含，不经 reports。
+
+## Git 设定
+
+- `git-setup.md` — 提交/推送时忽略子模块（`packages/tauri`、`packages/simplecc-wasm`）的设定与说明。
