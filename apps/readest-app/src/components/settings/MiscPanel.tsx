@@ -19,7 +19,7 @@ const MiscPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
   const { envConfig } = useEnv();
   // The app targets desktop only; Android input-focus handling is disabled.
   const isAndroidApp = false;
-  const { settings } = useSettingsStore();
+  const { settings, setSettings, saveSettings } = useSettingsStore();
   const { getView, getViewSettings, setViewSettings } = useReaderStore();
   const viewSettings = getViewSettings(bookKey) || settings.globalViewSettings;
 
@@ -136,6 +136,28 @@ const MiscPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
     }
   };
 
+  // 全局 TXT 章节识别规则（方向③）：导入时优先应用，帮助目录识别不完善的 TXT。
+  const [txtChapterDraft, setTxtChapterDraft] = useState(
+    settings.txtChapterPatterns?.join('\n') ?? '',
+  );
+  const [txtChapterSaved, setTxtChapterSaved] = useState(true);
+
+  const handleTxtChapterChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setTxtChapterDraft(e.target.value);
+    setTxtChapterSaved(false);
+  };
+
+  const applyTxtChapterRules = () => {
+    const patterns = txtChapterDraft
+      .split(/[\n,]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    settings.txtChapterPatterns = patterns;
+    setSettings(settings);
+    saveSettings(envConfig, settings);
+    setTxtChapterSaved(true);
+  };
+
   const renderCSSEditor = (
     type: CSSType,
     title: string,
@@ -194,6 +216,36 @@ const MiscPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
         inputFocusInAndroid && 'h-[50%] overflow-y-auto pb-[200px]',
       )}
     >
+      <BoxedList
+        title={_('TXT Chapter Pattern')}
+        data-setting-id='settings.custom.txtChapterPattern'
+      >
+        <div className='relative p-1'>
+          <textarea
+            className='textarea textarea-ghost h-28 w-full border-0 p-3 text-base !outline-none placeholder:text-base-content/70 sm:text-sm'
+            placeholder={_('One custom chapter regex per line, e.g. 第[0-9]+话')}
+            spellCheck='false'
+            value={txtChapterDraft}
+            onChange={handleTxtChapterChange}
+          />
+          <button
+            className={clsx(
+              'hover:bg-base-300 bg-base-200 absolute bottom-2 end-4 inline-flex h-8 items-center rounded-md px-3 text-xs font-medium transition-colors duration-150',
+              'focus-visible:ring-base-content/15 focus-visible:outline-none focus-visible:ring-2',
+              txtChapterSaved ? 'hidden' : '',
+            )}
+            onClick={applyTxtChapterRules}
+          >
+            {_('Apply')}
+          </button>
+        </div>
+        <p className='px-4 py-2 text-sm text-base-content/70'>
+          {_(
+            'Used when importing TXT files to recognize chapter headings. Leave empty to use built-in rules.',
+          )}
+        </p>
+      </BoxedList>
+
       {renderCSSEditor(
         'book',
         _('Custom Content CSS'),

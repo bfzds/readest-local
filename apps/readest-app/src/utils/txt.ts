@@ -4,6 +4,89 @@ import { detectLanguage } from './lang';
 import { configureZip } from './zip';
 import { parsePixivNovelFilename, parsePixivNovelMetaHeader } from './pixivNovel';
 
+// ---------------------------------------------------------------------------
+// 章节标题规则表（方向②：规则数据化，便于扩展新语言 / 新格式）。
+// 每种语言是一组 chapter 正则（按顺序构成 fallback 链，第一条"切得合格"即胜出）。
+// 没有专门规则的语言回退到 '*'（通用英文规则），行为与旧"非 zh 走英文"一致。
+// 'source' 为完整 RegExp source（含行首锚点与捕获组），'flags' 为标志位。
+// ---------------------------------------------------------------------------
+type ChapterRule = { source: string; flags: string };
+
+const ZH_NUMBER = '第[ 　零〇一二三四五六七八九十0-9][ 　零〇一二三四五六七八九十百千万0-9]*';
+const ZH_CHAPTER_UNIT = String.raw`[章节回讲篇话](?:[：:、 　\(\)0-9]*[^\n-]{0,36})`;
+const ZH_VOLUME_UNIT = String.raw`[卷本册部封](?:[：:、 　\(\)][：:、 　\(\)0-9]*[^\n-]{0,36})?`;
+
+const EN_NUMBER = String.raw`(?:\d+|(?:[IVXLCDM]{2,}|V|X|L|C|D|M)\b)`;
+const EN_DOT_NUMBER = String.raw`\.\d{1,4}`;
+const EN_TITLE = String.raw`[^\n]{0,50}`;
+const EN_NORMAL = ['Chapter', 'Part', 'Section', 'Book', 'Volume', 'Act']
+  .map((k) => String.raw`${k}\s*(?:${EN_NUMBER}|${EN_DOT_NUMBER})(?:[:.\-–—]?\s*${EN_TITLE})?`)
+  .join('|');
+const EN_PREFACE = ['Prologue', 'Epilogue', 'Introduction', 'Foreword', 'Preface', 'Afterword']
+  .map((k) => String.raw`${k}(?:[:.\-–—]?\s*${EN_TITLE})?`)
+  .join('|');
+
+const EN_RULES: ChapterRule[] = [
+  {
+    source: String.raw`(?:^|\n)(${EN_NORMAL}|${EN_PREFACE})(?=\s|$)`,
+    flags: 'gi',
+  },
+  {
+    // 裸编号标题：1.1The Elements / 1Building Data（单数字要求标题紧跟，避开脚注）
+    source: String.raw`(?:^|\n)(\d+\.\d+(?:\.\d+)* ?[A-Z][^\n]{0,80}|\d+[A-Z][^\n]{0,80})`,
+    flags: 'g',
+  },
+];
+
+const CHAPTER_RULES: Record<string, ChapterRule[]> = {
+  zh: [
+    {
+      // 第N章/节/回/讲/篇/话 + 第N卷/本/册/部/封 + 前言类 + 英文式 chapter N。
+      // 卷/册等单位要求标题由分隔符或行尾引入，避免"第一本书"被误当标题（#4658）。
+      source:
+        String.raw`(?:^|\n)\s*(` +
+        [
+          String.raw`${ZH_NUMBER}(?:${ZH_CHAPTER_UNIT}|${ZH_VOLUME_UNIT})(?!\S)`,
+          String.raw`(?:楔子|前言|简介|引言|序言|序章|总论|概论|后记|番外篇|番外|外传)(?:[：: 　][^\n-]{0,36})?(?!\S)`,
+          String.raw`chapter[\s.]*[0-9]+(?:[：:. 　]+[^\n-]{0,50})?(?!\S)`,
+        ].join('|') +
+        ')',
+      flags: 'gui',
+    },
+    {
+      // 第二级：中文序数词开头行，或纯数字编号行。
+      source:
+        String.raw`(?:^|\n)\s*(` +
+        '(' +
+        [
+          String.raw`[一二三四五六七八九十][零〇一二三四五六七八九十百千万]?[：:、 　][^\n-]{0,36}(?=\n|$)`,
+          String.raw`[0-9]+[^\n]{0,16}(?=\n|$)`,
+        ].join('|') +
+        ')' +
+        ')',
+      flags: 'gu',
+    },
+  ],
+  ja: [
+    {
+      // 第X話/章/巻/編/節 + 序章/前/后言
+      source: String.raw`(?:^|\n)\s*(第[０-９0-9一二三四五六七八九十百千]+(?:話|章|巻|編|節)(?:[：:、 　][^\n-]{0,40})?(?!\S)|(?:序章|プロローグ|エピローグ|あとがき))`,
+      flags: 'u',
+    },
+    EN_RULES[1]!,
+  ],
+  ko: [
+    {
+      // 제X장/권/편/막 + 서장/프롤로그/에필로그
+      source: String.raw`(?:^|\n)\s*(제\s*[0-9一二三四五六七八九十百]+(?:장|권|편|막)(?:[：:、 　][^\n-]{0,40})?(?!\S)|(?:서장|프롤로그|에필로그))`,
+      flags: 'u',
+    },
+    EN_RULES[1]!,
+  ],
+  en: EN_RULES,
+  '*': EN_RULES,
+};
+
 interface Metadata {
   bookTitle: string;
   author: string;
@@ -97,11 +180,17 @@ interface Txt2EpubOptions {
   language?: string;
   /** Original import path; keeps Pixiv directory structure when available. */
   sourcePath?: string;
+  /**
+   * 用户自定义章节标题正则（方向③）。每项匹配"标题行内容"（不含行首空白），
+   * 会自动包装行首锚点并置于内置规则之前、优先匹配。非法正则被安全忽略。
+   */
+  chapterPatterns?: string[];
 }
 
 interface ExtractChapterOptions {
   linesBetweenSegments: number;
   fallbackParagraphsPerChapter: number;
+  chapterPatterns?: string[];
 }
 
 export interface ConversionResult {
@@ -176,6 +265,7 @@ export class TxtToEpubConverter {
     let chapters = this.extractChapters(txtContent, metadata, {
       linesBetweenSegments: 8,
       fallbackParagraphsPerChapter,
+      chapterPatterns: options.chapterPatterns,
     });
 
     if (chapters.length === 0) {
@@ -186,10 +276,12 @@ export class TxtToEpubConverter {
       const probeChapterCount = this.probeChapterCount(txtContent, metadata, {
         linesBetweenSegments: 7,
         fallbackParagraphsPerChapter,
+        chapterPatterns: options.chapterPatterns,
       });
       chapters = this.extractChapters(txtContent, metadata, {
         linesBetweenSegments: probeChapterCount > 1 ? 7 : 6,
         fallbackParagraphsPerChapter,
+        chapterPatterns: options.chapterPatterns,
       });
     }
 
@@ -237,6 +329,7 @@ export class TxtToEpubConverter {
       {
         linesBetweenSegments: 8,
         fallbackParagraphsPerChapter,
+        chapterPatterns: options.chapterPatterns,
       },
     );
 
@@ -252,11 +345,13 @@ export class TxtToEpubConverter {
         {
           linesBetweenSegments: 7,
           fallbackParagraphsPerChapter,
+          chapterPatterns: options.chapterPatterns,
         },
       );
       chapters = await this.extractChaptersFromFileBySegments(txtFile, runtimeEncoding, metadata, {
         linesBetweenSegments: probeChapterCount > 1 ? 7 : 6,
         fallbackParagraphsPerChapter,
+        chapterPatterns: options.chapterPatterns,
       });
     }
 
@@ -588,11 +683,12 @@ export class TxtToEpubConverter {
     const trimmedSegment = sanitizedSegment.trim();
     if (!trimmedSegment) return [];
 
-    const chapterRegexps = this.createChapterRegexps(language);
+    const chapterRegexps = this.createChapterRegexps(language, option.chapterPatterns);
+    const maxLength = this.computeMaxLength(trimmedSegment);
     let matches: string[] = [];
     for (const chapterRegex of chapterRegexps) {
       const tryMatches = trimmedSegment.split(chapterRegex);
-      if (this.isGoodMatches(tryMatches)) {
+      if (this.isGoodMatches(tryMatches, maxLength)) {
         matches = this.joinAroundUndefined(tryMatches);
         break;
       }
@@ -668,11 +764,12 @@ export class TxtToEpubConverter {
     const trimmedSegment = sanitizedSegment.trim();
     if (!trimmedSegment) return 0;
 
-    const chapterRegexps = this.createChapterRegexps(language);
+    const chapterRegexps = this.createChapterRegexps(language, option.chapterPatterns);
+    const maxLength = this.computeMaxLength(trimmedSegment);
     let matches: string[] = [];
     for (const chapterRegex of chapterRegexps) {
       const tryMatches = trimmedSegment.split(chapterRegex);
-      if (this.isGoodMatches(tryMatches)) {
+      if (this.isGoodMatches(tryMatches, maxLength)) {
         matches = this.joinAroundUndefined(tryMatches);
         break;
       }
@@ -731,85 +828,34 @@ export class TxtToEpubConverter {
     return !hasLongParts;
   }
 
-  private createChapterRegexps(language: string): RegExp[] {
+  /**
+   * 章节匹配质量判定的超长阈值（方向①）：常规按空行分段的小段保持 10 万字符下限；
+   * 整本未分段的超大 segment 单章可能超长（如合集里 11 万字的一章），阈值随段规模
+   * 等比放大，避免"一本书里恰有一章超长"导致整条正则被误弃而退回纯数字兜底。
+   */
+  private computeMaxLength(segment: string): number {
+    return Math.max(100000, Math.floor(segment.length / 10));
+  }
+
+  private createChapterRegexps(language: string, extraPatterns?: string[]): RegExp[] {
     const chapterRegexps: RegExp[] = [];
 
-    if (language === 'zh') {
-      // 第N + unit, expressed as two explicit tiers that share the 第N prefix and
-      // the trailing boundary. They stay in ONE alternation (and so one split
-      // pass) on purpose: a segment often mixes chapter and volume headings (a
-      // volume wraps chapters), and the regexps array is a fallback chain — the
-      // first regex that splits "well enough" wins — so separate entries would
-      // recognize one tier and silently drop the other.
-      const cjkNumber = '第[ 　零〇一二三四五六七八九十0-9][ 　零〇一二三四五六七八九十百千万0-9]*';
-      // Tier 1 — chapter units. Real headings; a title may attach directly
-      // (第一章天地初开) or after a separator.
-      const chapterUnit = String.raw`[章节回讲篇话](?:[：:、 　\(\)0-9]*[^\n-]{0,36})`;
-      // Tier 2 — volume/measure-word units. These double as 量词 in prose
-      // (第一封信 "the first letter", 第四本书 "the fourth book"), so a title only
-      // counts when introduced by a separator (：:、, space, parens) or the line
-      // ends — never a bare noun directly after the unit. See issue #4658.
-      const volumeUnit = String.raw`[卷本册部封](?:[：:、 　\(\)][：:、 　\(\)0-9]*[^\n-]{0,36})?`;
-      const numberedHeading = String.raw`${cjkNumber}(?:${chapterUnit}|${volumeUnit})(?!\S)`;
-      const prefaceHeading = String.raw`(?:楔子|前言|简介|引言|序言|序章|总论|概论|后记|番外篇|番外|外传)(?:[：: 　][^\n-]{0,36})?(?!\S)`;
-      const englishHeading = String.raw`chapter[\s.]*[0-9]+(?:[：:. 　]+[^\n-]{0,50})?(?!\S)`;
-      chapterRegexps.push(
-        new RegExp(
-          String.raw`(?:^|\n)\s*(` +
-            [numberedHeading, prefaceHeading, englishHeading].join('|') +
-            ')',
-          'gui',
-        ),
-      );
-      chapterRegexps.push(
-        new RegExp(
-          String.raw`(?:^|\n)\s*` +
-            '(' +
-            [
-              String.raw`[一二三四五六七八九十][零〇一二三四五六七八九十百千万]?[：:、 　][^\n-]{0,36}(?=\n|$)`,
-              String.raw`[0-9]+[^\n]{0,16}(?=\n|$)`,
-            ].join('|') +
-            ')',
-          'gu',
-        ),
-      );
-      return chapterRegexps;
+    // ③ 用户自定义章节正则（方向③）：每项匹配"标题行内容"，自动补行首锚点，
+    // 置于最前优先匹配；new RegExp 抛错（非法规则）时安全忽略，不影响内置规则。
+    for (const pattern of extraPatterns ?? []) {
+      if (!pattern) continue;
+      try {
+        chapterRegexps.push(new RegExp(String.raw`(?:^|\n)\s*(${pattern})`, 'u'));
+      } catch {
+        // 非法用户规则忽略
+      }
     }
 
-    const chapterKeywords = ['Chapter', 'Part', 'Section', 'Book', 'Volume', 'Act'];
-    const prefaceKeywords = [
-      'Prologue',
-      'Epilogue',
-      'Introduction',
-      'Foreword',
-      'Preface',
-      'Afterword',
-    ];
-
-    const numberPattern = String.raw`(?:\d+|(?:[IVXLCDM]{2,}|V|X|L|C|D|M)\b)`;
-    const dotNumberPattern = String.raw`\.\d{1,4}`;
-    const titlePattern = String.raw`[^\n]{0,50}`;
-
-    const normalChapterPattern = chapterKeywords
-      .map(
-        (k) =>
-          String.raw`${k}\s*(?:${numberPattern}|${dotNumberPattern})(?:[:.\-–—]?\s*${titlePattern})?`,
-      )
-      .join('|');
-
-    const prefacePattern = prefaceKeywords
-      .map((k) => String.raw`${k}(?:[:.\-–—]?\s*${titlePattern})?`)
-      .join('|');
-
-    const combinedPattern = String.raw`(?:^|\n)(${normalChapterPattern}|${prefacePattern})(?=\s|$)`;
-    chapterRegexps.push(new RegExp(combinedPattern, 'gi'));
-
-    // Second-tier: bare numbered headings like "1.1The Elements" or "1Building Data"
-    // Dotted numbers (1.1, 1.2.3) allow an optional space before the title.
-    // Single bare digits (1, 2) require the title to start immediately (no space)
-    // to avoid matching footnotes like "1 The Lisp...".
-    const numberedHeadingPattern = String.raw`(?:^|\n)(\d+\.\d+(?:\.\d+)* ?[A-Z][^\n]{0,80}|\d+[A-Z][^\n]{0,80})`;
-    chapterRegexps.push(new RegExp(numberedHeadingPattern, 'g'));
+    // ② 语言规则表（方向②）：zh/ja/ko/en 各有专门规则，其余语言回退到通用规则。
+    const rules = CHAPTER_RULES[language] ?? CHAPTER_RULES['*'] ?? [];
+    for (const { source, flags } of rules) {
+      chapterRegexps.push(new RegExp(source, flags));
+    }
 
     return chapterRegexps;
   }

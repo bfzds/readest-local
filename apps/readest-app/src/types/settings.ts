@@ -385,6 +385,13 @@ export interface SystemSettings {
    */
   autoImportFlattenFolders?: string[];
 
+  /**
+   * 全局默认 TXT 章节识别的用户自定义正则（方向③）。非空时，导入的 TXT
+   * 会优先用这些规则识别章节目录（透传至 TxtToEpubConverter.chapterPatterns，
+   * 见设置 → Custom → TXT Chapter Pattern）。留空则完全用内置规则。
+   */
+  txtChapterPatterns?: string[];
+
   keepLogin: boolean;
   alwaysOnTop: boolean;
   openBookInNewWindow: boolean;

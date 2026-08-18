@@ -210,4 +210,24 @@ describe('ingestFile', () => {
     expect(existing.sourceTitle).toBe('异世界魔物娘收容');
     expect(existing.author).toBe('kof_boss');
   });
+
+  test('injects global txtChapterPatterns into importBook chapterPatterns (方向③)', async () => {
+    const { appService, settings, importBook } = makeDeps();
+    settings.txtChapterPatterns = ['第[0-9]+话', '^\d+、'];
+    await ingestFile({ file: 'novel.txt', books: [] }, { appService, settings });
+    expect(importBook).toHaveBeenCalledWith(
+      'novel.txt',
+      [],
+      expect.objectContaining({ chapterPatterns: ['第[0-9]+话', '^\d+、'] }),
+    );
+    // 未配置时不注入 chapterPatterns
+    importBook.mockClear();
+    const empty = makeDeps();
+    await ingestFile({ file: 'novel.txt', books: [] }, empty);
+    expect(empty.importBook).toHaveBeenCalledWith(
+      'novel.txt',
+      [],
+      expect.not.objectContaining({ chapterPatterns: expect.anything() }),
+    );
+  });
 });

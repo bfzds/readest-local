@@ -80,6 +80,11 @@ export interface ImportBookOptions {
   inPlace?: boolean;
   /** Pre-built lookup index for O(1) dedup during batch imports. */
   lookupIndex?: BookLookupIndex;
+  /**
+   * 用户自定义章节标题正则（方向③）。仅对 TXT 导入生效，透传至
+   * TxtToEpubConverter，帮助目录识别不完善的多本合集/自制 TXT。
+   */
+  chapterPatterns?: string[];
 }
 
 export interface Book {

@@ -446,7 +446,11 @@ export async function importBook(
         }
         if (isTxt && fileobj) {
           const txt2epub = new TxtToEpubConverter();
-          ({ file: fileobj } = await txt2epub.convert({ file: fileobj, sourcePath }));
+          ({ file: fileobj } = await txt2epub.convert({
+            file: fileobj,
+            sourcePath,
+            chapterPatterns: options.chapterPatterns,
+          }));
         }
       }
       if (fileobj && fileobj.size === 0) {

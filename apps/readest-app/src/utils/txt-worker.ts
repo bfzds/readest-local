@@ -6,6 +6,8 @@ interface ConvertTxtToEpubOptions {
   file: File;
   author?: string;
   language?: string;
+  /** 用户自定义章节标题正则（方向③），透传至 TxtToEpubConverter。 */
+  chapterPatterns?: string[];
   timeoutMs?: number;
 }
 
@@ -22,7 +24,7 @@ const convertTxtToEpubInWorker = async (options: ConvertTxtToEpubOptions) => {
     throw new Error('Worker is not supported in current environment');
   }
 
-  const { file, author, language, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
+  const { file, author, language, chapterPatterns, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
 
   return await new Promise<Awaited<ReturnType<TxtToEpubConverter['convert']>>>(
     (resolve, reject) => {
@@ -85,6 +87,7 @@ const convertTxtToEpubInWorker = async (options: ConvertTxtToEpubOptions) => {
           file,
           author,
           language,
+          chapterPatterns,
         },
       };
       worker.postMessage(request);

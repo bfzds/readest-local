@@ -209,6 +209,10 @@ export async function ingestFile(
     lookupIndex: opts.lookupIndex,
     transient: opts.transient,
     inPlace,
+    // 全局 TXT 章节识别规则（方向③）：非空时优先应用，帮助目录识别不完善的 TXT。
+    ...(settings.txtChapterPatterns?.length
+      ? { chapterPatterns: settings.txtChapterPatterns }
+      : {}),
   });
   if (!book) return null;
 

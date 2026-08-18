@@ -9,11 +9,11 @@ const workerContext: DedicatedWorkerGlobalScope = self as unknown as DedicatedWo
 workerContext.onmessage = async (event: MessageEvent<TxtConverterWorkerRequest>) => {
   if (event.data.type !== 'convert') return;
 
-  const { file, author, language } = event.data.payload;
+  const { file, author, language, chapterPatterns } = event.data.payload;
 
   try {
     const converter = new TxtToEpubConverter();
-    const result = await converter.convert({ file, author, language });
+    const result = await converter.convert({ file, author, language, chapterPatterns });
     const epubBuffer = await result.file.arrayBuffer();
     const response: TxtConverterWorkerResponse = {
       type: 'success',
