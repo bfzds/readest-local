@@ -213,12 +213,12 @@ describe('ingestFile', () => {
 
   test('injects global txtChapterPatterns into importBook chapterPatterns (方向③)', async () => {
     const { appService, settings, importBook } = makeDeps();
-    settings.txtChapterPatterns = ['第[0-9]+话', '^\d+、'];
+    settings.txtChapterPatterns = ['第[0-9]+话', '^\\d+、'];
     await ingestFile({ file: 'novel.txt', books: [] }, { appService, settings });
     expect(importBook).toHaveBeenCalledWith(
       'novel.txt',
       [],
-      expect.objectContaining({ chapterPatterns: ['第[0-9]+话', '^\d+、'] }),
+      expect.objectContaining({ chapterPatterns: ['第[0-9]+话', '^\\d+、'] }),
     );
     // 未配置时不注入 chapterPatterns
     importBook.mockClear();

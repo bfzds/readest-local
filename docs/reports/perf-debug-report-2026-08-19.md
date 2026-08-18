@@ -29,26 +29,23 @@
 - **test-first**：新失败单测「prunes page events beyond the per-book TTL cap (SF12)」先写并运行确认失败（方法不存在）→ 实现 → 转绿。
 - **回归**：statisticsDb.test.ts 16 用例 + src/__tests__/statistics + src/__tests__/app/reader 共 34 文件 271 用例全通过；tsgo 0 错。
 - **无可单测载体说明**：无；本项有明显的单测载体。
-## 4. 已分析未修（记录，供后续立项）
+## 4. 已修与待立项记录
 
-### SF10 MDict trackedUrls 无界累积（P2，内存）
+### SF10 MDict trackedUrls 无界累积（P2，内存）✅ 已修（提交 9bd34c0）
 
 - **位置**：`src/services/dictionaries/providers/mdictProvider.ts` resolveImageResources(:103 push)、wireMdxAnchors(:364)、resolveCssUrls，accumulate 到 provider 级数组 trackedUrls(:410)，仅 dispose()(:661-670) 统一 revoke。
 - **根因**：每次 lookup 为卡片内每张 img 的路径新建 blob URL 并 push 进 trackedUrls，provider 卸载前不回收；同一资源反复查询会反复新建 URL，旧卡片 DOM 移除后其 blob URL 仍滞留数组。
-- **方案建议**（未实施，属本轮范围外）：
-  1. 图片 blob URL 按路径 key 缓存 + 引用计数，卡片销毁/替换时 revoke 对应的引用（收益大，难度高）；
-  2. 参考 sound 锚点已有的 `data-mdd-resolved` 缓存模式：同一路径只建一次 URL，卡片重建时复用并 revoke 上一轮（收益中，难度中）；
-  3. 每次 lookup 记录本轮新建 URL，下次 lookup 前 revoke 上一轮（收益中，难度低，但失去跨卡片复用）。
-- 因内存类问题难以单测，须按 §D.5 采样方法（长会话反复查词，观察内存/URL 数）做前后对比并声明原因。
+- **已实施（提交 9bd34c0）**：按方案 3 落地——新增 `revokeUrls` 与 `lastRoundUrls`，每次 lookup 前 revoke 上一轮新建的 blob URL（上一张卡片 DOM 已销毁），本轮 URL 同时登记 `trackedUrls` 供 dispose() 兜底；失败/中止路径亦回收本轮 URL。新增单测「revokes previous round blob URLs on a subsequent lookup (SF10)」。
+- **残留（收益大但未做）**：方案 1/2 的跨卡片 URL 复用缓存未实施——反复查同一词仍会重新建 URL（复用可省内存但损耗少量收益）；内存类问题难以单测，如需进一步减内存，可用 §D.5 采样法（长会话反复查词观察 URL 数）验证方案 1/2 收益后再立项。
 
-### 新5 AdwaitaSelect「键盘导航不可见」（P2，a11y）
+### 新5 AdwaitaSelect「键盘导航不可见」（P2，a11y）✅ 已修（本轮）
 
 - **位置**：`src/components/settings/primitives/AdwaitaSelect.tsx`。
-- **复核**：组件已有完整键盘导航（ArrowUp/Down、Home/End、Enter 选、Esc/Tab 关、disabled 跳过）、`data-selected` 视觉、listbox focus、scrollIntoView 定位；有键盘驾驶单测（方向键/Enter/Esc/disabled）。
-- **剩余缺口**：为 a11y 细节——键盘移动时选中高亮只更新内部 selectedIndex，未同步 `aria-activedescendant` / 焦点环，读屏与视觉无当前位置反馈。非性能项，暂列低优先级。
+- **复核实况**：组件原有完整键盘导航（ArrowUp/Down、Home/End、Enter 选、Esc/Tab 关、disabled 跳过）、`data-selected` 视觉、listbox focus、scrollIntoView 定位；缺口为键盘移动时仅更新内部 selectedIndex，未同步 `aria-activedescendant` / 焦点环。
+- **已修**：`<ul>` 增加 `aria-activedescendant`（指向键盘活动项）、每个 option 稳定 `id`、活动项加 `data-active` + 1px base-content 焦点环（e-ink 兼容）；新增单测验证初始指向已选项、方向键后指向新选项与 `data-active` 切换。
 
 ## 5. 环境/流程备注
 
 - 本会话文件策略为 danger-full-access、审批 never：前端单测需 esbuild spawn（受限模式拦截 EPERM），已在全访问模式下实测通过。
-- biome 2 warnings 位于他人未提交的 ingest-service.test.ts（`'^\\d+、'` 中 \\d 是无效字符串转义 = d，实为 txt 章节正则的潜在真实 bug），与本轮改动无关，按 §D.2.2 不越界修改、仅在报告中声明；建议该工作所有者改为 `'^\\\\d+、'`。
-- 跨设备统计同步（applyRemoteEvents/getEventsForPush/getCursor/setCursor）经 grep 证实无生产调用方（仅测试引用），在本地离线分支属死代码，SF12 清理对其无影响。
+- ingest-service.test.ts 的 `'^\d+、'` 无效转义（\d 变字面 d）为本轮修正：生产 `txt.ts` 的规则用 `String.raw`/双反斜杠本就正确，问题只在测试数据示例失真，已将两处改为 `'^\\d+、'`（运行时为 `^\d+、`）。全量 5632 用例通过。
+- 跨设备统计同步（applyRemoteEvents/getEventsForPush/getCursor/setCursor）经 grep 复核**确认无生产调用方**（仅测试引用），本地离线分支属死代码；但属 KOReader 兼容的架构级同步协议基础设施，删除需连带 4 方法 + `applyRemoteLock`/`CursorKey` 类型 + `readest_stat_sync_state` 表 + 多处测试，改动面大且非性能项，**本轮决定保留**，建议后续单独立项评估。

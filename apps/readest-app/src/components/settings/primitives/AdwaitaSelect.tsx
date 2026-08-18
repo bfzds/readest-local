@@ -133,21 +133,33 @@ const SelectMenu: React.FC<SelectMenuProps> = ({
       className={clsx('dropdown-content no-triangle z-20 mt-2', menuClassName)}
       onCancel={() => setIsDropdownOpen?.(false)}
     >
-      <ul ref={listRef} role='listbox' tabIndex={0} className='menu rounded-box p-0'>
-        {options.map((opt) => {
+      <ul
+        ref={listRef}
+        role='listbox'
+        tabIndex={0}
+        aria-activedescendant={
+          options[selectedIndex] ? `adwaita-select-option-${selectedIndex}` : undefined
+        }
+        className='menu rounded-box p-0'
+      >
+        {options.map((opt, i) => {
           const isSelected = opt.value === value;
           const isDisabled = disabled || opt.disabled;
+          const isActive = i === selectedIndex;
           return (
             <li key={opt.value}>
               <div
+                id={`adwaita-select-option-${i}`}
                 role='option'
                 aria-selected={isSelected}
                 data-selected={isSelected}
+                data-active={isActive}
                 tabIndex={-1}
                 onClick={() => handleSelect(opt)}
                 className={clsx(
                   'text-base-content flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm',
                   isSelected ? 'bg-base-300/85' : 'hover:bg-base-300',
+                  isActive && 'outline outline-1 outline-offset-1 outline-base-content',
                   isDisabled && 'cursor-not-allowed opacity-50',
                 )}
               >

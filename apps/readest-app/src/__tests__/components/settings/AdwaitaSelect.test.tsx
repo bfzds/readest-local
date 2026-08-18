@@ -71,6 +71,29 @@ describe('AdwaitaSelect', () => {
     expect(onChange).toHaveBeenCalledWith('c');
   });
 
+  it('exposes keyboard position via aria-activedescendant and data-active (SF a11y)', () => {
+    renderSelect();
+    fireEvent.click(screen.getByRole('button', { name: 'Test Select' }));
+
+    const listbox = screen.getByRole('listbox');
+    listbox.focus();
+
+    // Initial active item is the current selection (Alpha).
+    const initial = listbox.getAttribute('aria-activedescendant');
+    expect(initial).toBeTruthy();
+    const initialEl = screen.getByRole('option', { name: 'Alpha' });
+    expect(initialEl.id).toBe(initial);
+    expect(initialEl.getAttribute('data-active')).toBe('true');
+
+    // Arrow down moves the active descendant to Beta.
+    fireEvent.keyDown(listbox, { key: 'ArrowDown' });
+    const moved = listbox.getAttribute('aria-activedescendant');
+    const beta = screen.getByRole('option', { name: 'Beta' });
+    expect(beta.id).toBe(moved);
+    expect(beta.getAttribute('data-active')).toBe('true');
+    expect(initialEl.getAttribute('data-active')).toBe('false');
+  });
+
   it('skips disabled options when navigating', () => {
     const onChange = renderSelect({
       options: [
