@@ -398,6 +398,22 @@ function wireMdxAnchors(
   }
 }
 
+/**
+ * Revoke every blob URL in `urls` and clear the array in place. Revolving an
+ * already-revoked URL is a safe no-op, so callers may hand the same array to
+ * dispose() again as a safety net.
+ */
+const revokeUrls = (urls: string[]): void => {
+  for (const url of urls) {
+    try {
+      URL.revokeObjectURL(url);
+    } catch {
+      // ignore — already revoked or ephemeral environment without object URLs
+    }
+  }
+  urls.length = 0;
+};
+
 export const createMdictProvider = ({
   dict,
   fs,
@@ -407,7 +423,15 @@ export const createMdictProvider = ({
   let mdds: MDDInstance[] = [];
   let initPromise: Promise<void> | null = null;
   let initError: Error | null = null;
+  // Global blob-URL registry: init-time loose-CSS URLs live here for the whole
+  // provider lifetime (dispose() revokes them). SF10: per-lookup URLs are ALSO
+  // tracked here as a dispose() safety net, but reclaimed per round via
+  // lastRoundUrls so a frequently-used dictionary does not accrue blob URLs
+  // unboundedly until the provider is disposed.
   const trackedUrls: string[] = [];
+  // Blob URLs created by the previous lookup round; revoked at the top of the
+  // next lookup (the previous card is gone).
+  let lastRoundUrls: string[] = [];
   // Loose .css files imported alongside the .mdx/.mdd. Read once at init,
   // injected into every card's shadow root at lookup time.
   let looseStylesheets: string[] = [];
@@ -528,6 +552,13 @@ export const createMdictProvider = ({
       if (ctx.signal.aborted) return { ok: false, reason: 'error', message: 'aborted' };
       if (!mdx) return { ok: false, reason: 'error', message: 'MDX not initialized' };
 
+      // SF10: reclaim blob URLs created by the previous lookup round — the
+      // previous card's DOM is gone, so those URLs are unreachable. `roundUrls`
+      // accumulates this lookup's URLs; on success they are promoted to
+      // `lastRoundUrls` for the next round and to `trackedUrls` for dispose().
+      revokeUrls(lastRoundUrls);
+      const roundUrls: string[] = [];
+
       try {
         // Follow MDict `@@@LINK=<target>` content-level redirects: the
         // looked-up entry's "definition" is sometimes just the literal
@@ -587,23 +618,23 @@ export const createMdictProvider = ({
         body.setAttribute('part', 'dict-content');
         body.innerHTML = result.definition;
 
-        await resolveImageResources(body, mdds, ctx.signal, trackedUrls);
+        await resolveImageResources(body, mdds, ctx.signal, roundUrls);
         const rawMddStylesheets = await resolveMddStylesheets(body, mdds, ctx.signal);
         if (ctx.signal.aborted) return { ok: false, reason: 'error', message: 'aborted' };
         // Rewrite any `url(...)` refs inside MDD-resident stylesheets so
         // their relative paths (e.g. `url(sound.png)`) point at blob URLs
         // backed by the MDD instead of failing against the document base.
         const mddStylesheets = await Promise.all(
-          rawMddStylesheets.map((css) => resolveCssUrls(css, mdds, ctx.signal, trackedUrls)),
+          rawMddStylesheets.map((css) => resolveCssUrls(css, mdds, ctx.signal, roundUrls)),
         );
         if (ctx.signal.aborted) return { ok: false, reason: 'error', message: 'aborted' };
-        wireMdxAnchors(body, mdds, trackedUrls, ctx.onNavigate);
+        wireMdxAnchors(body, mdds, roundUrls, ctx.onNavigate);
         // Some MDicts (notably Vocabulary.com-derived ones) wire audio
         // playback through inline `onclick="v0r.v(this,'KEY')"` handlers
         // that depend on the dict's own `j.js` script. We never run
         // MDX-supplied JS inside the shadow root (XSS surface), so parse
         // the audio key ourselves and bind a CSP-safe replacement.
-        await wireMdictAudioOnclick(body, mdds, trackedUrls);
+        await wireMdictAudioOnclick(body, mdds, roundUrls);
 
         // Attach a shadow root to a dedicated host so the dict's CSS (loose
         // .css files imported alongside + `<link>` references resolved from
@@ -649,8 +680,17 @@ export const createMdictProvider = ({
           if (dup) headword.remove();
         }
 
+        // Promote this round's URLs: they become the next round's reclaim
+        // target, and are also kept in `trackedUrls` so dispose() cleans them up
+        // as a safety net (revoking an already-revoked URL is a no-op).
+        lastRoundUrls = roundUrls;
+        trackedUrls.push(...roundUrls);
         return { ok: true, headword: result.keyText, sourceLabel: dict.name };
       } catch (err) {
+        // The lookup failed (or was aborted) part-way; reclaim any URLs this
+        // round already created so they don't linger unreachable.
+        revokeUrls(roundUrls);
+        lastRoundUrls = [];
         return {
           ok: false,
           reason: 'error',

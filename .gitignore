@@ -70,3 +70,7 @@ apps/readest-app/.claude/memory/
 
 fastlane/staging/
 fastlane/metadata-play/android/en-US/changelogs
+
+# local tooling caches (not part of the project)
+.dsh-vision-toolkit/
+.pnpm-store/

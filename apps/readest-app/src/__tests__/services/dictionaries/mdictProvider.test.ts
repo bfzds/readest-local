@@ -985,4 +985,58 @@ describe('mdictProvider', () => {
     expect(secondDelta).toBeLessThan(64 * 1024);
     expect(thirdDelta).toBe(secondDelta);
   });
+
+  it('revokes previous round blob URLs on a subsequent lookup (SF10)', async () => {
+    const jsmdict = await import('js-mdict');
+    const origMDXCreate = jsmdict.MDX.create.bind(jsmdict.MDX);
+    const origMDDCreate = jsmdict.MDD.create.bind(jsmdict.MDD);
+    // Every image path resolves, so each lookup round creates blob URLs.
+    jsmdict.MDD.create = async () =>
+      ({
+        locateBytes: async (key: string) => ({
+          keyText: key,
+          data: new Uint8Array([1, 2, 3, 4]),
+        }),
+      }) as unknown as Awaited<ReturnType<typeof origMDDCreate>>;
+    jsmdict.MDX.create = async () =>
+      ({
+        meta: { encrypt: 0 },
+        header: {},
+        lookup: async () => ({
+          keyText: 'w',
+          definition: '<img src=\"pic.png\"><img src=\"icon.png\">',
+        }),
+      }) as unknown as Awaited<ReturnType<typeof origMDXCreate>>;
+
+    try {
+      const revoked: string[] = [];
+      const origRevoke = globalThis.URL.revokeObjectURL;
+      globalThis.URL.revokeObjectURL = (u: string) => {
+        revoked.push(u);
+        origRevoke(u);
+      };
+
+      const provider = createMdictProvider({ dict: buildDict(true), fs: makeFs() });
+      const container1 = document.createElement('div');
+      await provider.lookup('word', {
+        signal: new AbortController().signal,
+        container: container1,
+      });
+      const round1Created = objectUrls.slice();
+      expect(round1Created.length).toBeGreaterThan(0);
+
+      const container2 = document.createElement('div');
+      await provider.lookup('word', {
+        signal: new AbortController().signal,
+        container: container2,
+      });
+
+      // Every URL created in round 1 must have been revoked by round 2.
+      expect(revoked).toEqual(expect.arrayContaining(round1Created));
+      globalThis.URL.revokeObjectURL = origRevoke;
+    } finally {
+      jsmdict.MDX.create = origMDXCreate;
+      jsmdict.MDD.create = origMDDCreate;
+    }
+  });
 });
