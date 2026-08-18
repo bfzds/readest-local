@@ -142,6 +142,28 @@ describe('StatisticsDb', () => {
     expect(await stats.getCursor('push')).toBe(1234);
   });
 
+  it('prunes page events beyond the per-book TTL cap (SF12)', async () => {
+    const db = await freshStatsDb();
+    const s = StatisticsDb.from(db);
+    const id = await s.upsertBook({ bookMd5: 'm-ttl', title: 'T', authors: 'A' });
+    // Insert more events than the retention cap.
+    const cap = StatisticsDb.MAX_PAGE_EVENTS_PER_BOOK;
+    for (let i = 0; i < cap + 100; i++) {
+      await s.insertPageEvent(id, {
+        page: 1,
+        startTime: 100000 + i,
+        duration: 1,
+        totalPages: 10,
+      });
+    }
+    await s.prunePageEvents(id);
+    const rows = await db.select<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM page_stat_data WHERE id_book = ?`,
+      [id],
+    );
+    expect(rows[0]!.c).toBe(cap);
+  });
+
   it('keeps one book row per md5 even when title/authors change (no duplicates)', async () => {
     const id1 = await stats.upsertBook({ bookMd5: 'm1', title: 'Old', authors: 'A' });
     const id2 = await stats.upsertBook({ bookMd5: 'm1', title: 'New', authors: 'B' });

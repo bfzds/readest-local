@@ -43,6 +43,14 @@ function bindLifecycle(): void {
  * leaves this class.
  */
 export class StatisticsDb {
+  /**
+   * Per-book cap on retained `page_stat_data` rows (SF12). Page events accrue
+   * one row per (page, start_time), so a frequently re-read book grows without
+   * bound. The only production consumer, getMedianPageDurationSecs, reads the
+   * 50 most recent rows, so pruning to this cap is safe.
+   */
+  static readonly MAX_PAGE_EVENTS_PER_BOOK = 10_000;
+
   // Serializes applyRemoteEvents so two concurrent pulls can't nest BEGINs.
   private applyRemoteLock: Promise<void> = Promise.resolve();
 
@@ -125,6 +133,22 @@ export class StatisticsDb {
        ON CONFLICT(id_book, page, start_time)
        DO UPDATE SET duration = max(duration, excluded.duration), total_pages = excluded.total_pages`,
       [idBook, e.page, e.startTime, e.duration, e.totalPages],
+    );
+  }
+
+  async prunePageEvents(idBook: number): Promise<void> {
+    const keep = StatisticsDb.MAX_PAGE_EVENTS_PER_BOOK;
+    // Skip the DELETE when the book hasn't outgrown the cap (a no-op scan on
+    // every flush costs the same as the guard, but avoids a modifying query
+    // and lets un-capped books stay untouched).
+    const countRows = await this.db.select<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM page_stat_data WHERE id_book = ?`,
+      [idBook],
+    );
+    if ((countRows[0]?.c ?? 0) <= keep) return;
+    await this.db.execute(
+      'DELETE FROM page_stat_data WHERE id_book = ? AND rowid NOT IN (SELECT rowid FROM page_stat_data WHERE id_book = ? ORDER BY start_time DESC LIMIT ?)',
+      [idBook, idBook, keep],
     );
   }
 

@@ -68,6 +68,9 @@ export default function ReadingStatsTracker({ bookKey }: { bookKey: string }) {
       const idBook = await db.upsertBook({ bookMd5, title, authors });
       for (const e of events) await db.insertPageEvent(idBook, e);
       await db.recomputeBookTotals(idBook);
+      // SF12: keep the per-book page-event log bounded (TTL by count).
+      // Runs on the low-frequency flush path (idle/hide/close), not per page-turn.
+      await db.prunePageEvents(idBook);
     } catch (err) {
       // The statistics DB can be closed mid-write on app/tab teardown
       // ("database ... not loaded", READEST-6). Best-effort: log and
