@@ -7,10 +7,16 @@ import { useTranslation } from '@/hooks/useTranslation';
 
 const TOCFloatingButton: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const _ = useTranslation();
-  const { sideBarBookKey, isSideBarVisible, setSideBarBookKey, setSideBarVisible } =
-    useSidebarStore();
+  const {
+    sideBarBookKey,
+    isSideBarVisible,
+    setSideBarBookKey,
+    setSideBarVisible,
+    setSearchBarVisible,
+    clearSearch,
+  } = useSidebarStore();
   const { getConfig, setConfig } = useBookDataStore();
-  const { setHoveredBookKey } = useReaderStore();
+  const { setHoveredBookKey, getView } = useReaderStore();
 
   const handleOpenTOC = useCallback(() => {
     setHoveredBookKey(bookKey);
@@ -18,9 +24,27 @@ const TOCFloatingButton: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     if (config?.viewSettings) {
       setConfig(bookKey, { viewSettings: { ...config.viewSettings, sideBarTab: 'toc' } });
     }
+    // Opening the TOC must take the sidebar out of any lingering in-book
+    // search state. Otherwise the stale search panel (which renders in place
+    // of the sidebar content whenever isSearchBarVisible && results) stays up
+    // and the TOC appears not to open. Mirror the tab-switch behaviour in
+    // Content.handleTabChange and the clear done by handleHideSearchBar.
+    setSearchBarVisible(false);
+    clearSearch(bookKey);
+    getView(bookKey)?.clearSearch();
     setSideBarBookKey(bookKey);
     setSideBarVisible(true);
-  }, [bookKey, getConfig, setConfig, setSideBarBookKey, setSideBarVisible, setHoveredBookKey]);
+  }, [
+    bookKey,
+    getConfig,
+    setConfig,
+    setSideBarBookKey,
+    setSideBarVisible,
+    setSearchBarVisible,
+    clearSearch,
+    getView,
+    setHoveredBookKey,
+  ]);
 
   if (sideBarBookKey === bookKey && isSideBarVisible) return null;
 

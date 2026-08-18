@@ -6,6 +6,8 @@ const sidebar = {
   isSideBarVisible: false,
   setSideBarBookKey: vi.fn(),
   setSideBarVisible: vi.fn(),
+  setSearchBarVisible: vi.fn(),
+  clearSearch: vi.fn(),
 };
 
 vi.mock('@/hooks/useTranslation', () => ({
@@ -15,7 +17,7 @@ vi.mock('@/store/sidebarStore', () => ({
   useSidebarStore: () => sidebar,
 }));
 vi.mock('@/store/readerStore', () => ({
-  useReaderStore: () => ({ setHoveredBookKey: vi.fn() }),
+  useReaderStore: () => ({ setHoveredBookKey: vi.fn(), getView: () => ({ clearSearch: vi.fn() }) }),
 }));
 vi.mock('@/store/bookDataStore', () => ({
   useBookDataStore: () => ({
@@ -34,6 +36,10 @@ describe('TOCFloatingButton', () => {
     fireEvent.click(screen.getByLabelText('Table of Contents'));
     expect(sidebar.setSideBarBookKey).toHaveBeenCalledWith('book-1');
     expect(sidebar.setSideBarVisible).toHaveBeenCalledWith(true);
+    // Opening the TOC must dismiss any lingering in-book search state so the
+    // TOC panel (not the stale search panel) is shown.
+    expect(sidebar.setSearchBarVisible).toHaveBeenCalledWith(false);
+    expect(sidebar.clearSearch).toHaveBeenCalledWith('book-1');
   });
 
   it('is hidden while the sidebar is open for the same book', () => {
