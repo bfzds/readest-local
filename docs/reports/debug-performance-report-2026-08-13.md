@@ -6,7 +6,7 @@
 - **范围**：桌面端本地小说阅读器（Tauri 2 + Next.js 16 + React 19 + foliate-js + Turso/SQLite），纯本地离线分支
 - **性质**：本次为**只读调研**，未修改任何代码文件
 
-> 既有基线：`docs/debug-report-2026-08-13.md`（上轮系统调试，4 个问题全部闭环）、`docs/performance-overhead-2026-08-11.md`（架构估算）。本报告在此基础上做**深度性能分析**并复核全部已知 bug 现状，新增多个此前未记录的缺陷。
+> 既有基线：`reports/debug-report-2026-08-13.md`（上轮系统调试，4 个问题全部闭环）、`reports/performance-overhead-2026-08-11.md`（架构估算）。本报告在此基础上做**深度性能分析**并复核全部已知 bug 现状，新增多个此前未记录的缺陷。
 
 ---
 

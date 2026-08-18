@@ -80,6 +80,8 @@ Project-related agent context lives under `.agents/`, which is a symlink to `.cl
 - `.agents/plans/` — active or archived implementation plans
 - `.agents/rules/` — project rules for test-first work, TypeScript, verification, and related workflows
 
+> On Windows checkouts without `core.symlinks=true`, `.agents/{memory,plans,rules}` are checked out as plain text files containing the relative target path (e.g. `../.claude/rules`) and the real content lives only under `.claude/`. Verify with `Get-Item .agents` before assuming the link exists; when the link is broken, use `.claude/` paths.
+
 ## Project Rules
 
 Rules are in `.agents/rules/`: test-first, typescript, verification.
