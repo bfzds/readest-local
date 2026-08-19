@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useTranslation } from '@/hooks/useTranslation';
+import { getCoverThumbnailUrl } from '@/utils/coverThumbnail';
 import {
   createLibrarySearchSession,
   resolveSearchResultCfi,
@@ -83,28 +84,45 @@ const Excerpt = ({ excerpt }: { excerpt: SearchExcerpt }) => (
 
 // Small cover thumbnail with a lettered placeholder underneath; the image
 // hides itself on error so the placeholder shows through.
-const ResultCover = ({ book }: { book: Book }) => (
-  <span
-    aria-hidden='true'
-    className='bg-base-200 eink-bordered relative flex h-10 w-7 shrink-0 items-center justify-center overflow-hidden rounded'
-  >
-    <span className='text-base-content/50 text-[10px] font-semibold'>
-      {(book.title ?? '').trim().charAt(0)}
+const ResultCover = ({ book }: { book: Book }) => {
+  const coverSrc = book.coverImageUrl;
+  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
+  // 复用书架的缩略图缓存：原图（常 2000px+）按 ≤512px 重采样，避免搜索
+  // 命中的每张封面都按源尺寸解码常驻。未命中首次缩略，失败（null）回退原 URL。
+  useEffect(() => {
+    if (!coverSrc) return;
+    let cancelled = false;
+    void getCoverThumbnailUrl.get(coverSrc).then((url: string | null) => {
+      if (!cancelled) setThumbUrl(url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [coverSrc, book.updatedAt]);
+  const displayedSrc = thumbUrl ?? coverSrc ?? '';
+  return (
+    <span
+      aria-hidden='true'
+      className='bg-base-200 eink-bordered relative flex h-10 w-7 shrink-0 items-center justify-center overflow-hidden rounded'
+    >
+      <span className='text-base-content/50 text-[10px] font-semibold'>
+        {(book.title ?? '').trim().charAt(0)}
+      </span>
+      {displayedSrc && (
+        /* eslint-disable-next-line @next/next/no-img-element */
+        <img
+          src={displayedSrc}
+          alt=''
+          loading='lazy'
+          className='absolute inset-0 h-full w-full object-cover'
+          onError={(event) => {
+            event.currentTarget.style.display = 'none';
+          }}
+        />
+      )}
     </span>
-    {book.coverImageUrl && (
-      /* eslint-disable-next-line @next/next/no-img-element */
-      <img
-        src={book.coverImageUrl}
-        alt=''
-        loading='lazy'
-        className='absolute inset-0 h-full w-full object-cover'
-        onError={(event) => {
-          event.currentTarget.style.display = 'none';
-        }}
-      />
-    )}
-  </span>
-);
+  );
+};
 
 const ResultGroupMatches = memo(
   ({
