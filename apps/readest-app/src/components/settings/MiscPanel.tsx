@@ -10,6 +10,7 @@ import { SettingsPanelPanelProp } from './SettingsDialog';
 import { saveViewSettings } from '@/helpers/settings';
 import { validateCSS, formatCSS } from '@/utils/css';
 import { getStyles } from '@/utils/style';
+import { parseChapterPatterns, validateChapterPattern } from '@/utils/txt';
 import { BoxedList } from './primitives';
 
 type CSSType = 'book' | 'reader';
@@ -141,18 +142,36 @@ const MiscPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
     settings.txtChapterPatterns?.join('\n') ?? '',
   );
   const [txtChapterSaved, setTxtChapterSaved] = useState(true);
+  const [txtChapterError, setTxtChapterError] = useState<string | null>(null);
 
   const handleTxtChapterChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setTxtChapterDraft(e.target.value);
     setTxtChapterSaved(false);
+    setTxtChapterError(null);
   };
 
   const applyTxtChapterRules = () => {
-    const patterns = txtChapterDraft
-      .split(/[\n,]/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    settings.txtChapterPatterns = patterns;
+    // 每行一条规则，逐条先验可编译、再查 ReDoS 病态；非法规则给出可见原因，
+    // 合法规则仍照常保存（不因个别坏行阻塞整体保存）。
+    const patterns = parseChapterPatterns(txtChapterDraft);
+    const valid: string[] = [];
+    const invalid: string[] = [];
+    for (const p of patterns) {
+      let reason: string | null = null;
+      try {
+        new RegExp(p);
+      } catch {
+        reason = '正则无法编译';
+      }
+      if (reason === null) {
+        const problems = validateChapterPattern(p);
+        if (problems.length > 0) reason = problems.join('；');
+      }
+      if (reason !== null) invalid.push(`「${p}」${reason}`);
+      else valid.push(p);
+    }
+    setTxtChapterError(invalid.length > 0 ? invalid.join('\n') : null);
+    settings.txtChapterPatterns = valid;
     setSettings(settings);
     saveSettings(envConfig, settings);
     setTxtChapterSaved(true);
@@ -244,6 +263,9 @@ const MiscPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
             'Used when importing TXT files to recognize chapter headings. Leave empty to use built-in rules.',
           )}
         </p>
+        {txtChapterError && (
+          <p className='whitespace-pre-line px-4 pb-2 text-xs text-error'>{txtChapterError}</p>
+        )}
       </BoxedList>
 
       {renderCSSEditor(

@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 
-import { TxtToEpubConverter } from '@/utils/txt';
+import { TxtToEpubConverter, parseChapterPatterns, validateChapterPattern } from '@/utils/txt';
 
 type Api = {
   createChapterRegexps(language: string, extraPatterns?: string[]): RegExp[];
@@ -117,5 +117,39 @@ describe('方向③ 用户自定义章节规则', () => {
   it('非法用户规则被安全忽略，不影响内置规则', () => {
     const rs = getApi().createChapterRegexps('zh', ['(unclosed']);
     expect(rs.length).toBe(2);
+  });
+});
+
+describe('parseChapterPatterns（逗号不切分）', () => {
+  it('每行一条规则，含逗号量词的正则不被拆分', () => {
+    expect(parseChapterPatterns('第[0-9]{1,3}章\n第[0-9]{2,4}节')).toEqual([
+      '第[0-9]{1,3}章',
+      '第[0-9]{2,4}节',
+    ]);
+  });
+
+  it('空行与首尾空白被清理', () => {
+    expect(parseChapterPatterns('  abc  \n\n  def  \n')).toEqual(['abc', 'def']);
+  });
+});
+
+describe('validateChapterPattern（ReDoS 守门）', () => {
+  it('正常章节正则通过校验', () => {
+    expect(validateChapterPattern('第[0-9]{1,3}章')).toEqual([]);
+    expect(validateChapterPattern('§\\d+[^\\n]*')).toEqual([]);
+    expect(validateChapterPattern('第[一二三四五六七八九十]+节')).toEqual([]);
+  });
+
+  it('嵌套量词（灾难性回溯）被拦截', () => {
+    expect(validateChapterPattern('(a+)+')).not.toEqual([]);
+    expect(validateChapterPattern('(\\d+|x)+')).not.toEqual([]);
+  });
+
+  it('过深分组嵌套被拦截', () => {
+    expect(validateChapterPattern('((((a+)+))+)+')).not.toEqual([]);
+  });
+
+  it('超长正则被拦截', () => {
+    expect(validateChapterPattern('a'.repeat(600))).not.toEqual([]);
   });
 });

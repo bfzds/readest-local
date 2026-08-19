@@ -87,6 +87,64 @@ const CHAPTER_RULES: Record<string, ChapterRule[]> = {
   '*': EN_RULES,
 };
 
+// ---------------------------------------------------------------------------
+// 方向③用户自定义章节正则：解析 + 安全校验。
+// ---------------------------------------------------------------------------
+// 每行一条规则。用户正则里 ',' 是高频合法字符（量词 {1,3}、字符类等），
+// 故只按换行切分，绝不把逗号当分隔符，避免 "第[0-9]{1,3}章" 被误拆。
+export const parseChapterPatterns = (input: string): string[] =>
+  input
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+// 用户输入进构造正则的路径，`new RegExp` 只捕语法错误、不防灾难性回溯
+// （catastrophic backtracking）：病态正则如 (a+)+ 在长文本上是指数回溯。
+// 这里做启发式守门（宁可放过不明显病态、也不误伤正常规则），超限的规则
+// 拒用并返回原因。返回空数组=可安全使用。
+const REDOS_PATTERN_LENGTH_LIMIT = 512;
+const REDOS_PATTERN_MAX_DEPTH = 4;
+
+export const validateChapterPattern = (pattern: string): string[] => {
+  const problems: string[] = [];
+  if (pattern.length > REDOS_PATTERN_LENGTH_LIMIT) {
+    problems.push(`超过长度上限 ${REDOS_PATTERN_LENGTH_LIMIT} 字符`);
+    return problems;
+  }
+  // 分组嵌套深度（跳过转义与字符类内的括号）。
+  let depth = 0;
+  let i = 0;
+  while (i < pattern.length) {
+    const c = pattern[i]!;
+    if (c === '\\') {
+      i += 2;
+      continue;
+    }
+    if (c === '[') {
+      while (i < pattern.length && pattern[i] !== ']') i++;
+      i++;
+      continue;
+    }
+    if (c === '(') {
+      depth++;
+      if (depth > REDOS_PATTERN_MAX_DEPTH) {
+        problems.push(`分组嵌套过深（>${REDOS_PATTERN_MAX_DEPTH} 层）`);
+        break;
+      }
+    } else if (c === ')') {
+      depth = Math.max(0, depth - 1);
+    }
+    i++;
+  }
+  if (problems.length > 0) return problems;
+  // 嵌套量词链：一对不含嵌套括号的组内含量词、且闭组后又跟量词，是灾难性
+  // 回溯的高发形态（(a+)+、(?:\\d+|x)* 等）。
+  if (/\([^()]*[+*?][^()]*\)[+*?]/.test(pattern)) {
+    problems.push('检测到可能灾难性回溯的嵌套量词');
+  }
+  return problems;
+};
+
 interface Metadata {
   bookTitle: string;
   author: string;
@@ -841,9 +899,11 @@ export class TxtToEpubConverter {
     const chapterRegexps: RegExp[] = [];
 
     // ③ 用户自定义章节正则（方向③）：每项匹配"标题行内容"，自动补行首锚点，
-    // 置于最前优先匹配；new RegExp 抛错（非法规则）时安全忽略，不影响内置规则。
+    // 置于最前优先匹配；new RegExp 抛错（非法规则）或 validateChapterPattern
+    // 判为 ReDoS 病态（灾难性回溯）时安全忽略，不影响内置规则。
     for (const pattern of extraPatterns ?? []) {
       if (!pattern) continue;
+      if (validateChapterPattern(pattern).length > 0) continue;
       try {
         chapterRegexps.push(new RegExp(String.raw`(?:^|\n)\s*(${pattern})`, 'u'));
       } catch {
