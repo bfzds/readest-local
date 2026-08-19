@@ -13,6 +13,11 @@ on:
     - cron: '26 4 * * 3'
   push:
     branches: [ "main" ]
+  # Manual trigger against the latest default-branch commit. Without this the
+  # only non-cron way to run is "Re-run", which reuses the ORIGINAL commit SHA
+  # (e.g. still contains the detached gstack gitlink) — so new fixes can't be
+  # validated until this is added.
+  workflow_dispatch:
 
 # Declare default permissions as read only.
 permissions: read-all
