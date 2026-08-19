@@ -9,13 +9,16 @@ from datetime import datetime
 
 TITLE = "布洛妮娅大冒险"
 CN = {'零':0,'一':1,'二':2,'两':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9}
+# 中文数字位值单位 → 进位倍数。未显式的单字（如"百"作"一百"）按缺省 1 处理。
+MULT = {'十':10, '百':100, '千':1000}
 
 def parse_chinese_num(s):
     total = 0; section = 0
     for ch in str(s):
-        if ch == '十':
+        if ch in MULT:
+            mult = MULT[ch]
             section = section or 1
-            total += section * 10
+            total += section * mult
             section = 0
         elif ch in CN:
             section = section * 10 + CN[ch]
