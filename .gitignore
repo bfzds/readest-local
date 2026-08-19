@@ -67,6 +67,9 @@ result*
 .claude/settings.local.json
 # developer's personal Claude memory (not part of the project)
 apps/readest-app/.claude/memory/
+# upstream-embedded gstack skill toolkit (nested repo without .gitmodules URL —
+# detach the gitlink so Scorecard's git ops don't fail; keep files local only)
+apps/readest-app/.claude/skills/gstack/
 
 fastlane/staging/
 fastlane/metadata-play/android/en-US/changelogs
