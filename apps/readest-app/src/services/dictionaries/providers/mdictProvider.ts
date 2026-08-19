@@ -620,14 +620,27 @@ export const createMdictProvider = ({
 
         await resolveImageResources(body, mdds, ctx.signal, roundUrls);
         const rawMddStylesheets = await resolveMddStylesheets(body, mdds, ctx.signal);
-        if (ctx.signal.aborted) return { ok: false, reason: 'error', message: 'aborted' };
+        if (ctx.signal.aborted) {
+          // 资源解析可能已把 blob URL 写入 roundUrls（并发 resolver 窗口）。
+          // 这里用 return 而非 throw 会绕过下方 catch 的 revokeUrls，须先回收，
+          // 否则本轮已创建、未入 trackedUrls 的 URL 永久泄漏（SF10 承诺路径）。
+          revokeUrls(roundUrls);
+          lastRoundUrls = [];
+          return { ok: false, reason: 'error', message: 'aborted' };
+        }
         // Rewrite any `url(...)` refs inside MDD-resident stylesheets so
         // their relative paths (e.g. `url(sound.png)`) point at blob URLs
         // backed by the MDD instead of failing against the document base.
         const mddStylesheets = await Promise.all(
           rawMddStylesheets.map((css) => resolveCssUrls(css, mdds, ctx.signal, roundUrls)),
         );
-        if (ctx.signal.aborted) return { ok: false, reason: 'error', message: 'aborted' };
+        if (ctx.signal.aborted) {
+          // resolveCssUrls 可能已把样式里的 url() 资源写入 roundUrls；返回会绕过
+          // catch 的回收，须先 revoke 本轮已建 URL（理由同资源解析后的中止点）。
+          revokeUrls(roundUrls);
+          lastRoundUrls = [];
+          return { ok: false, reason: 'error', message: 'aborted' };
+        }
         wireMdxAnchors(body, mdds, roundUrls, ctx.onNavigate);
         // Some MDicts (notably Vocabulary.com-derived ones) wire audio
         // playback through inline `onclick="v0r.v(this,'KEY')"` handlers
