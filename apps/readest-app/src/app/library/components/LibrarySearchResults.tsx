@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useTranslation } from '@/hooks/useTranslation';
 import {
@@ -180,17 +180,21 @@ const LibrarySearchResults = ({
   // Key on content identity only: opening a result bumps the book's progress
   // timestamp and its recency-sort position, and neither changes what a
   // rescan would find — index staleness is handled per book at search time.
-  const booksKey = books
-    .map((book) => book.hash)
-    .sort()
-    .join('|');
-  const configKey = [
-    config.mode,
-    config.matchCase,
-    config.matchDiacritics,
-    config.nearbyWords,
-  ].join(':');
-  const searchKey = `${booksKey}\0${configKey}\0${query}`;
+  // Memoized so group/phase setState re-renders during a search don't re-run the
+  // whole-library map+sort+join on every frame.
+  const searchKey = useMemo(() => {
+    const booksKey = books
+      .map((book) => book.hash)
+      .sort()
+      .join('|');
+    const configKey = [
+      config.mode,
+      config.matchCase,
+      config.matchDiacritics,
+      config.nearbyWords,
+    ].join(':');
+    return `${booksKey}\0${configKey}\0${query}`;
+  }, [books, config, query]);
   const activeSearchKeyRef = useRef(searchKey);
 
   useEffect(() => {

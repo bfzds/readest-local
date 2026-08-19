@@ -276,21 +276,22 @@ export const writeSearchIndexNodes = async (
   db: DatabaseService,
   nodes: SearchIndexNode[],
 ): Promise<void> => {
-  await db.execute('DELETE FROM search_nodes');
-  for (const node of nodes) {
-    await db.execute(
-      'INSERT INTO search_nodes (node_id, parent_id, ord, depth, label, section_start, section_end) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [
-        node.nodeId,
-        node.parentId,
-        node.ord,
-        node.depth,
-        node.label,
-        node.sectionStart,
-        node.sectionEnd,
-      ],
-    );
+  if (nodes.length === 0) {
+    await db.execute('DELETE FROM search_nodes');
+    return;
   }
+  // 与 writeSearchIndexSections（SF2）同款攒批：把逐条 INSERT（N 次 execute）
+  // 合并为一次 batch（2 条语句）。batch 只接受纯 SQL 字符串（无参数绑定），
+  // label 是书目录标题含任意字符，按 SQLite 字符串字面量规则翻倍转义单引号；
+  // 其余字段为数字/null，直接内联。
+  const inserts = nodes.map((n) => {
+    const parent = n.parentId === null ? 'NULL' : `${n.parentId}`;
+    return `(${n.nodeId}, ${parent}, ${n.ord}, ${n.depth}, ${sqlLiteral(n.label)}, ${n.sectionStart}, ${n.sectionEnd})`;
+  });
+  await db.batch([
+    `DELETE FROM search_nodes`,
+    `INSERT INTO search_nodes (node_id, parent_id, ord, depth, label, section_start, section_end) VALUES ${inserts.join(', ')}`,
+  ]);
 };
 
 const escapeLike = (value: string) => value.replace(/[\\%_]/g, (char) => `\\${char}`);

@@ -11,6 +11,7 @@ import {
   loadSearchIndexSections,
   readSearchIndexMeta,
   SEARCH_INDEX_VERSION,
+  writeSearchIndexNodes,
   writeSearchIndexSection,
   writeSearchIndexSections,
   type SearchIndexMeta,
@@ -187,6 +188,90 @@ describe('writeSearchIndexSections 批量写（SF2）', () => {
     const book = makeBook('hash-abc', 100);
     await beginSearchIndex(db, book, 1, 'nav-1');
     await expect(writeSearchIndexSections(db, [])).resolves.toBeUndefined();
+  });
+});
+
+describe('writeSearchIndexNodes 批量写', () => {
+  const readNodes = (db: NodeDatabaseService) =>
+    db.select<{
+      node_id: number;
+      parent_id: number | null;
+      ord: number;
+      depth: number;
+      label: string;
+      section_start: number;
+      section_end: number;
+    }>(
+      'SELECT node_id, parent_id, ord, depth, label, section_start, section_end FROM search_nodes ORDER BY node_id',
+    );
+
+  it('批量写入后回读一致（含单引号 label 转义）', async () => {
+    const db = await openDb();
+    const book = makeBook('hash-abc', 100);
+    await beginSearchIndex(db, book, 5, 'nav-1');
+    await writeSearchIndexNodes(db, [
+      {
+        nodeId: 0,
+        parentId: null,
+        ord: 0,
+        depth: 0,
+        label: "It's a chapter",
+        sectionStart: 0,
+        sectionEnd: 2,
+      },
+      { nodeId: 1, parentId: 0, ord: 0, depth: 1, label: 'A1', sectionStart: 0, sectionEnd: 0 },
+      { nodeId: 2, parentId: 0, ord: 1, depth: 1, label: 'A2', sectionStart: 1, sectionEnd: 1 },
+      { nodeId: 3, parentId: null, ord: 1, depth: 0, label: 'B', sectionStart: 2, sectionEnd: 4 },
+    ]);
+    const rows = await readNodes(db);
+    expect(rows).toEqual([
+      {
+        node_id: 0,
+        parent_id: null,
+        ord: 0,
+        depth: 0,
+        label: "It's a chapter",
+        section_start: 0,
+        section_end: 2,
+      },
+      { node_id: 1, parent_id: 0, ord: 0, depth: 1, label: 'A1', section_start: 0, section_end: 0 },
+      { node_id: 2, parent_id: 0, ord: 1, depth: 1, label: 'A2', section_start: 1, section_end: 1 },
+      {
+        node_id: 3,
+        parent_id: null,
+        ord: 1,
+        depth: 0,
+        label: 'B',
+        section_start: 2,
+        section_end: 4,
+      },
+    ]);
+  });
+
+  it('重写覆盖旧内容（先 DELETE）', async () => {
+    const db = await openDb();
+    const book = makeBook('hash-abc', 100);
+    await beginSearchIndex(db, book, 2, 'nav-1');
+    await writeSearchIndexNodes(db, [
+      { nodeId: 0, parentId: null, ord: 0, depth: 0, label: 'old', sectionStart: 0, sectionEnd: 1 },
+    ]);
+    await writeSearchIndexNodes(db, [
+      { nodeId: 0, parentId: null, ord: 0, depth: 0, label: 'new', sectionStart: 0, sectionEnd: 1 },
+      { nodeId: 1, parentId: 0, ord: 1, depth: 1, label: 'c', sectionStart: 1, sectionEnd: 1 },
+    ]);
+    const rows = await readNodes(db);
+    expect(rows).toEqual([
+      {
+        node_id: 0,
+        parent_id: null,
+        ord: 0,
+        depth: 0,
+        label: 'new',
+        section_start: 0,
+        section_end: 1,
+      },
+      { node_id: 1, parent_id: 0, ord: 1, depth: 1, label: 'c', section_start: 1, section_end: 1 },
+    ]);
   });
 });
 

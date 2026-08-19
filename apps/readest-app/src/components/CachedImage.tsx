@@ -25,6 +25,21 @@ interface CachedImageProps {
 const imageUrlCache = new Map<string, string>();
 const loadingPromises = new Map<string, Promise<string>>();
 
+// Cap the module-level cache so a long-lived session doesn't accrue an entry
+// per unique URL forever. These are {@link CachedImage} srcs (avatars, cover
+// previews) that are few and highly reused; evict earliest-inserted first
+// (Map preserves insertion order) past the limit.
+const IMAGE_URL_CACHE_LIMIT = 256;
+
+const setImageUrlCache = (key: string, url: string) => {
+  imageUrlCache.set(key, url);
+  while (imageUrlCache.size > IMAGE_URL_CACHE_LIMIT) {
+    const oldest = imageUrlCache.keys().next().value as string | undefined;
+    if (oldest === undefined) break;
+    imageUrlCache.delete(oldest);
+  }
+};
+
 // '\n' cannot appear in a URL, so the key never collides with a plain URL key.
 const toCacheKey = (src: string, cacheVersion?: string) =>
   cacheVersion ? `${src}\n${cacheVersion}` : src;
@@ -87,7 +102,7 @@ const CachedImageComponent = ({
         const url = await loadPromise;
 
         if (!cancelled) {
-          imageUrlCache.set(cacheKey, url);
+          setImageUrlCache(cacheKey, url);
           setCachedUrl(url);
           setLoading(false);
         }
