@@ -332,7 +332,7 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
         />
       </BoxedList>
 
-      <BoxedList title={_('Font Weight')} data-setting-id='settings.font.fontWeight'>
+      <BoxedList title={_('Font Weight')}>
         <NumberInput
           label={_('Font Weight')}
           value={fontWeight}
@@ -340,6 +340,7 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
           min={100}
           max={900}
           step={100}
+          data-setting-id='settings.font.fontWeight'
         />
       </BoxedList>
 

@@ -578,11 +578,12 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
         />
       </BoxedList>
 
-      <BoxedList title={_('Animation')} data-setting-id='settings.control.pagingAnimation'>
+      <BoxedList title={_('Animation')}>
         <SettingsSwitchRow
           label={_('Paging Animation')}
           checked={animated}
           onChange={() => setAnimated(!animated)}
+          data-setting-id='settings.control.pagingAnimation'
         />
         <SettingsRow label={_('Animation Style')} data-setting-id='settings.control.pageTurnStyle'>
           <AdwaitaSelect
@@ -642,13 +643,14 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
         />
       </BoxedList>
 
-      <BoxedList title={_('Security')} data-setting-id='settings.control.allowJavascript'>
+      <BoxedList title={_('Security')}>
         <SettingsSwitchRow
           label={_('Allow JavaScript')}
           description={_('Enable only if you trust the file.')}
           checked={allowScript}
           disabled={bookData?.book?.format !== 'EPUB'}
           onChange={() => setAllowScript(!allowScript)}
+          data-setting-id='settings.control.allowJavascript'
         />
       </BoxedList>
     </div>

@@ -131,7 +131,7 @@ const TTSPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset }
         data-setting-id='settings.tts.ttsHighlightStyle'
       />
 
-      <BoxedList title={_('Media Info')} data-setting-id='settings.tts.mediaMetadata'>
+      <BoxedList title={_('Media Info')}>
         <SettingsRow label={_('Player Style')} data-setting-id='settings.tts.playerStyle'>
           <AdwaitaSelect
             value={ttsPlayerStyle}
@@ -143,7 +143,7 @@ const TTSPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset }
             ]}
           />
         </SettingsRow>
-        <SettingsRow label={_('Update Frequency')}>
+        <SettingsRow label={_('Update Frequency')} data-setting-id='settings.tts.mediaMetadata'>
           <AdwaitaSelect
             value={ttsMediaMetadata}
             onChange={handleMediaMetadataChange}

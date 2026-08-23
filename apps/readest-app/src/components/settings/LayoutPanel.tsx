@@ -497,11 +497,12 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
       )}
 
       {viewSettings.vertical && (
-        <BoxedList title={_('Border Frame')} data-setting-id='settings.layout.borderFrame'>
+        <BoxedList title={_('Border Frame')}>
           <SettingsSwitchRow
             label={_('Double Border')}
             checked={doubleBorder}
             onChange={() => setDoubleBorder(!doubleBorder)}
+            data-setting-id='settings.layout.borderFrame'
           />
           <SettingsRow label={_('Border Color')}>
             <div className='flex gap-4'>
@@ -593,7 +594,7 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
         />
       </BoxedList>
 
-      <BoxedList title={_('Page')} data-setting-id='settings.layout.pageMargins'>
+      <BoxedList title={_('Page')}>
         <NumberInput
           label={_('Top Margin (px)')}
           value={showHeader && !isVertical ? marginTopPx : compactMarginTopPx}
@@ -605,6 +606,7 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
           }
           max={144}
           step={4}
+          data-setting-id='settings.layout.pageMargins'
         />
         <NumberInput
           label={_('Bottom Margin (px)')}
@@ -672,11 +674,12 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
         />
       </BoxedList>
 
-      <BoxedList title={_('Header & Footer')} data-setting-id='settings.layout.showHeader'>
+      <BoxedList title={_('Header & Footer')}>
         <SettingsSwitchRow
           label={_('Show Header')}
           checked={showHeader}
           onChange={() => setShowHeader(!showHeader)}
+          data-setting-id='settings.layout.showHeader'
         />
         <SettingsSwitchRow
           label={_('Show Footer')}

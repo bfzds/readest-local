@@ -170,8 +170,8 @@ const LangPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
 
   return (
     <div className={clsx('my-4 w-full space-y-6')}>
-      <BoxedList title={_('Language')} data-setting-id='settings.language.interfaceLanguage'>
-        <SettingsRow label={_('Language')}>
+      <BoxedList title={_('Language')}>
+        <SettingsRow label={_('Language')} data-setting-id='settings.language.interfaceLanguage'>
           <AdwaitaSelect
             value={getCurrentUILangOption().value}
             onChange={handleSelectUILang}
@@ -194,12 +194,13 @@ const LangPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
       </BoxedList>
 
       {(isCJKEnv() || view?.language.isCJK) && (
-        <BoxedList title={_('Punctuation')} data-setting-id='settings.language.quotationMarks'>
+        <BoxedList title={_('Punctuation')}>
           <SettingsSwitchRow
             label={_('Replace Quotation Marks')}
             description={_('Enabled only in vertical layout.')}
             checked={replaceQuotationMarks}
             onChange={() => setReplaceQuotationMarks(!replaceQuotationMarks)}
+            data-setting-id='settings.language.quotationMarks'
           />
         </BoxedList>
       )}

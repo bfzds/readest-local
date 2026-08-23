@@ -531,30 +531,6 @@ const languagePanelItems = [
     section: 'Language',
   },
   {
-    id: 'settings.language.translationEnabled',
-    labelKey: _('Enable Translation'),
-    keywords: ['translation', 'translate', 'enable', 'language'],
-    section: 'Translation',
-  },
-  {
-    id: 'settings.language.translationProvider',
-    labelKey: _('Translation Service'),
-    keywords: ['translation', 'provider', 'google', 'service'],
-    section: 'Translation',
-  },
-  {
-    id: 'settings.language.targetLanguage',
-    labelKey: _('Translate To'),
-    keywords: ['target', 'language', 'translation', 'destination'],
-    section: 'Translation',
-  },
-  {
-    id: 'settings.language.ttsTextTranslation',
-    labelKey: _('TTS Text'),
-    keywords: ['tts', 'text', 'translation', 'speech', 'read'],
-    section: 'Translation',
-  },
-  {
     id: 'settings.language.quotationMarks',
     labelKey: _('Replace Quotation Marks'),
     keywords: ['quotation', 'marks', 'quotes', 'punctuation', 'cjk'],
