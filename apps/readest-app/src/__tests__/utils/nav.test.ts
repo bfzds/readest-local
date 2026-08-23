@@ -360,9 +360,14 @@ describe('showReaderWindow', () => {
   });
 
   test('reuses an existing reader window via the open-book event instead of creating one', async () => {
+    // Reader window hidden (Plan A hide-while-reading): bring it back + focus.
     const existing = {
       show: vi.fn().mockResolvedValue(undefined),
       setFocus: vi.fn().mockResolvedValue(undefined),
+      unminimize: vi.fn().mockResolvedValue(undefined),
+      isVisible: vi.fn().mockResolvedValue(false),
+      isMinimized: vi.fn().mockResolvedValue(false),
+      isFocused: vi.fn().mockResolvedValue(false),
     };
     (WebviewWindow.getByLabel as unknown as ReturnType<typeof vi.fn>).mockReturnValue(existing);
     const appService = makeAppService();
@@ -378,9 +383,66 @@ describe('showReaderWindow', () => {
       cfi: 'epubcfi(/6/2!/4/2:1)',
       highlight: undefined,
     });
+    // Hidden reader window → show + unminimize + focus, no new window.
     expect(existing.show).toHaveBeenCalled();
+    expect(existing.unminimize).toHaveBeenCalled();
     expect(existing.setFocus).toHaveBeenCalled();
     expect(WebviewWindow).not.toHaveBeenCalled();
+  });
+
+  test('does not act when the reader window is already visible and focused', async () => {
+    const existing = {
+      show: vi.fn().mockResolvedValue(undefined),
+      setFocus: vi.fn().mockResolvedValue(undefined),
+      unminimize: vi.fn().mockResolvedValue(undefined),
+      isVisible: vi.fn().mockResolvedValue(true),
+      isMinimized: vi.fn().mockResolvedValue(false),
+      isFocused: vi.fn().mockResolvedValue(true),
+    };
+    (WebviewWindow.getByLabel as unknown as ReturnType<typeof vi.fn>).mockReturnValue(existing);
+
+    await showReaderWindow(makeAppService() as never, ['book1']);
+
+    expect(vi.mocked(emitTo)).toHaveBeenCalled();
+    expect(existing.show).not.toHaveBeenCalled();
+    expect(existing.unminimize).not.toHaveBeenCalled();
+    expect(existing.setFocus).not.toHaveBeenCalled();
+  });
+
+  test('restores and focuses a minimized reader window', async () => {
+    const existing = {
+      show: vi.fn().mockResolvedValue(undefined),
+      setFocus: vi.fn().mockResolvedValue(undefined),
+      unminimize: vi.fn().mockResolvedValue(undefined),
+      isVisible: vi.fn().mockResolvedValue(true),
+      isMinimized: vi.fn().mockResolvedValue(true),
+      isFocused: vi.fn().mockResolvedValue(false),
+    };
+    (WebviewWindow.getByLabel as unknown as ReturnType<typeof vi.fn>).mockReturnValue(existing);
+
+    await showReaderWindow(makeAppService() as never, ['book1']);
+
+    expect(existing.show).toHaveBeenCalled();
+    expect(existing.unminimize).toHaveBeenCalled();
+    expect(existing.setFocus).toHaveBeenCalled();
+  });
+
+  test('focuses a visible but unfocused reader window without re-showing', async () => {
+    const existing = {
+      show: vi.fn().mockResolvedValue(undefined),
+      setFocus: vi.fn().mockResolvedValue(undefined),
+      unminimize: vi.fn().mockResolvedValue(undefined),
+      isVisible: vi.fn().mockResolvedValue(true),
+      isMinimized: vi.fn().mockResolvedValue(false),
+      isFocused: vi.fn().mockResolvedValue(false),
+    };
+    (WebviewWindow.getByLabel as unknown as ReturnType<typeof vi.fn>).mockReturnValue(existing);
+
+    await showReaderWindow(makeAppService() as never, ['book1']);
+
+    expect(existing.setFocus).toHaveBeenCalled();
+    expect(existing.show).not.toHaveBeenCalled();
+    expect(existing.unminimize).not.toHaveBeenCalled();
   });
 });
 

@@ -67,8 +67,21 @@ export const showReaderWindow = async (
     await emitTo(READER_WINDOW_LABEL, 'open-book', { bookHash: bookIds[0], cfi, highlight }).catch(
       () => {},
     );
-    await existing.show();
-    await existing.setFocus();
+    // 点击书库书籍时的前台策略：阅读窗口已在前台（可见且聚焦）则不动，避免
+    // 无谓 setFocus 打断；不可见/最小化 → 恢复并置前；可见但未聚焦 → 仅置前。
+    // 各自 .catch 隔离失败域，与 page.tsx close-reader-window 的 NF1 模式一致。
+    const [visible, minimized, focused] = await Promise.all([
+      existing.isVisible().catch(() => false),
+      existing.isMinimized().catch(() => false),
+      existing.isFocused().catch(() => false),
+    ]);
+    if (!visible || minimized) {
+      await existing.show().catch(() => {});
+      await existing.unminimize().catch(() => {});
+      await existing.setFocus().catch(() => {});
+    } else if (!focused) {
+      await existing.setFocus().catch(() => {});
+    }
     return;
   }
   await createReaderWindow(appService, url);
