@@ -26,6 +26,22 @@ const runSimpleCC = (text: string, variant: ConvertChineseVariant, reverse = fal
   return reverse ? simplecc(text, convertReverseMap[variant]) : simplecc(text, variant);
 };
 
+// 选中文本搜书的变体判定。书内搜索索引按书原文变体存储（folded 不含简繁
+// 归一），搜索词须与原文变体一致才能命中。正文显示可能是 t2s 转换结果
+// （繁体原文 → 简体显示），此时选中的简体词需转回繁体原文去搜；但简体书
+// （原文即简体）反向转换会把简体误转成繁体——既在搜索栏显示错、又搜不中。
+// 因此仅当书语言为繁体系（zh-TW/HK/Hant）时才反向。
+export const toSelectionSearchTerm = (
+  text: string,
+  bookLanguage: string | undefined,
+  convertChineseVariant: ConvertChineseVariant,
+): string => {
+  const convert = convertChineseVariant && convertChineseVariant !== 'none';
+  const isHantBook = !!bookLanguage && /hant|tw|hk/i.test(bookLanguage);
+  if (!convert || !isHantBook) return text;
+  return runSimpleCC(text, convertChineseVariant, true);
+};
+
 export const simplifyChineseText = async (text: string): Promise<string> => {
   if (!text) return text;
   try {

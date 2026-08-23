@@ -2,6 +2,7 @@ import { describe, test, expect, beforeAll } from 'vitest';
 import init, { simplecc } from '@simplecc/simplecc_wasm';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
+import { toSelectionSearchTerm } from '@/utils/simplecc';
 
 describe.concurrent('suite', () => {
   beforeAll(async () => {
@@ -43,5 +44,22 @@ describe.concurrent('suite', () => {
     expect(
       simplecc('我們在寮國的伺服器的硬碟需要使用網際網路演算法軟體解決非同步的問題。', 'tw2sp'),
     ).toBe('我们在老挝的服务器的硬盘需要使用互联网算法软件解决异步的问题。');
+  });
+
+  test('简体书选中词不 reverse：搜索词保持正文所见（简体）', () => {
+    expect(toSelectionSearchTerm('发财了去植发', 'zh-CN', 't2s')).toBe('发财了去植发');
+  });
+
+  test('未知/通用 zh 不 reverse（简体书为主，不把简体误转繁体）', () => {
+    expect(toSelectionSearchTerm('发财了去植发', 'zh', 't2s')).toBe('发财了去植发');
+    expect(toSelectionSearchTerm('发财了去植发', undefined, 't2s')).toBe('发财了去植发');
+  });
+
+  test('繁体书 t2s 显示：reverse 回繁体原文以命中书内索引', () => {
+    expect(toSelectionSearchTerm('发财了去植发', 'zh-TW', 't2s')).toBe('發財了去植髮');
+  });
+
+  test('convertChineseVariant = none 不转换', () => {
+    expect(toSelectionSearchTerm('发财了去植发', 'zh-TW', 'none')).toBe('发财了去植发');
   });
 });

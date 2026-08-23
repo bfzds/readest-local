@@ -48,7 +48,7 @@ import {
   runOrDeferAction,
 } from '../../utils/deferredAction';
 import { Insets } from '@/types/misc';
-import { runSimpleCC } from '@/utils/simplecc';
+import { toSelectionSearchTerm } from '@/utils/simplecc';
 import { getWordCount, isSingleLookupTerm } from '@/utils/word';
 import { getIndexFromCfi } from '@/utils/cfi';
 import { writeTextToClipboard } from '@/utils/clipboard';
@@ -1280,12 +1280,19 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
   const handleSearch = () => {
     if (!selection || !selection.text) return;
     handleDismissPopupAndSelection();
-
-    let term = selection.text;
-    const convertChineseVariant = viewSettings.convertChineseVariant;
-    if (convertChineseVariant && convertChineseVariant !== 'none') {
-      term = runSimpleCC(term, convertChineseVariant, true);
-    }
+    // 把选中的显示词转成"书原文变体"再搜：仅繁体系书（zh-TW/HK/Hant，正文
+    // 可能经 t2s 显示成简体）才反向转回繁体；简体书保持正文所见，避免
+    // "选中简体→搜索栏变繁体"且搜不中。
+    const rawLang =
+      bookData.bookDoc?.metadata?.language ??
+      bookData.book?.metadata?.language ??
+      bookData.book?.primaryLanguage;
+    const bookLanguage = Array.isArray(rawLang) ? rawLang[0] : rawLang;
+    const term = toSelectionSearchTerm(
+      selection.text,
+      bookLanguage,
+      viewSettings.convertChineseVariant,
+    );
     eventDispatcher.dispatch('search-term', { term, bookKey });
   };
 

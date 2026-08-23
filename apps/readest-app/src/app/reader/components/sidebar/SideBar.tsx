@@ -143,10 +143,12 @@ const SideBar = ({}) => {
       if (sideBarBookKey) clearSearch(sideBarBookKey);
     }, 100);
     getView(sideBarBookKey)?.clearSearch();
-    // 收起搜索栏即回到阅读正文,侧边栏若不是固定则一并关闭,避免停在目录页。
-    if (!isSideBarPinned) setSideBarVisible(false);
+    // 关闭搜索栏即回到阅读正文：搜索栏是叠加在侧边栏上的临时层（Ctrl+F /
+    // 选词打开），关闭时一律收起侧边栏，避免停在目录页。固定侧边栏语义
+    // （保持目录/笔记本常驻）保留给无搜索态的 Esc（handleHideSideBar）。
+    setSideBarVisible(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sideBarBookKey, clearSearch, isSideBarPinned]);
+  }, [sideBarBookKey, clearSearch]);
 
   const handleHideSideBar = useCallback(() => {
     if (searchTermRef.current) {
