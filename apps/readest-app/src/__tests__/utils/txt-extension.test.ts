@@ -153,3 +153,21 @@ describe('validateChapterPattern（ReDoS 守门）', () => {
     expect(validateChapterPattern('a'.repeat(600))).not.toEqual([]);
   });
 });
+
+describe('zh 章节标题带【】包裹', () => {
+  it('【第X章、标题（视角）】可识别', () => {
+    expect(
+      anyRegexMatches(getApi().createChapterRegexps('zh'), '\n【第十章、下山（吕凡视角）】\n'),
+    ).toBe(true);
+  });
+
+  it('【序章】等前言类可识别', () => {
+    expect(anyRegexMatches(getApi().createChapterRegexps('zh'), '\n【序章】\n')).toBe(true);
+  });
+
+  it('裸标题保持可识别（不回归）', () => {
+    expect(anyRegexMatches(getApi().createChapterRegexps('zh'), '\n第五章、锦州城（一）\n')).toBe(
+      true,
+    );
+  });
+});
