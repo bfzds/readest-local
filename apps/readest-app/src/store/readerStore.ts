@@ -187,11 +187,23 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
     try {
       const appService = await envConfig.getAppService();
       const { settings } = useSettingsStore.getState();
-      const { getBookByHash, library } = useLibraryStore.getState();
-      const book = getBookByHash(id);
+      const { getBookByHash, library, setLibrary } = useLibraryStore.getState();
+      let book = getBookByHash(id);
+      if (!book) {
+        // 全新书首次打开竞态兜底：阅读窗口是独立 store，挂载时从磁盘加载书库，
+        // 可能早于主窗口 saveLibraryBooks 写盘完成，读到不含新书的旧清单
+        // （仅"从未导入过"的书会踩中——已导入/已删书永远在清单里）。
+        // 此时磁盘通常已写入，从头重读一次书库再查（罕见窗口才多一次读盘）。
+        console.warn(
+          `Book ${id} not in in-memory library (size=${library.length}); reloading from disk`,
+        );
+        const reloaded = await appService.loadLibraryBooks();
+        setLibrary(reloaded);
+        book = getBookByHash(id);
+      }
       if (!book) {
         console.error(
-          `Book ${id} not found in library (size=${library.length}); likely the in-memory entry was dropped by a library reload.`,
+          `Book ${id} not found in library after disk reload (size=${library.length});`,
         );
         throw new Error('Book not found');
       }

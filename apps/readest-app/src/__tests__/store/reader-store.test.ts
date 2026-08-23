@@ -73,6 +73,10 @@ import { useBookDataStore } from '@/store/bookDataStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { uniqueId } from '@/utils/misc';
 
+// recreateViewer 测试会替换 store 里的 initViewState 为假实现且不还原，这里
+// 在模块加载时捕获真实实现，供 R1 测试直接调用，避免测试顺序耦合。
+const realInitViewState = useReaderStore.getState().initViewState;
+
 /**
  * Helper to seed a minimal ViewState in the store for a given key.
  */
@@ -409,6 +413,59 @@ describe('readerStore', () => {
       // total=0 → progressPercentage 为 0，不进入 finished 分支
       const status = library.updateBookProgress.mock.calls[0]![2];
       expect(status).not.toBe('finished');
+    });
+  });
+
+  describe('R1: initViewState 全新书首次打开兜底重读', () => {
+    test('内存清单 miss 时从磁盘重读一次后可命中，不再抛 Book not found', async () => {
+      const id = 'hash-new';
+      const book = {
+        hash: id,
+        format: 'MD',
+        title: 'New Book',
+        author: '',
+        createdAt: 1,
+        updatedAt: 1,
+        primaryLanguage: 'en',
+      } as never;
+
+      const bookDoc = {
+        metadata: { title: 'New Book', language: 'en' },
+        rendition: { layout: 'reflowable' },
+      };
+
+      const { DocumentLoader } = await import('@/libs/document');
+      vi.mocked(DocumentLoader).mockImplementation(
+        class {
+          open = async () => ({ book: bookDoc });
+        } as never,
+      );
+
+      const loadLibraryBooks = vi.fn(async () => [book]);
+      const appService = {
+        loadLibraryBooks,
+        loadBookContent: vi.fn(async () => ({ file: {} })),
+        resolveNativeBookFilePath: vi.fn(async () => {
+          throw new Error('no native path (test)');
+        }),
+        loadBookConfig: vi.fn(async () => ({
+          viewSettings: { sortedTOC: false, convertChineseVariant: 't2s' },
+          booknotes: [],
+        })),
+      } as never;
+      const envConfig = { getAppService: async () => appService } as never;
+
+      const library = useLibraryStore.getState() as unknown as {
+        getBookByHash: ReturnType<typeof vi.fn>;
+        setLibrary: ReturnType<typeof vi.fn>;
+      };
+      // 复现竞态：首次读取到"旧清单"（无此书），兜底重读后再查命中。
+      library.getBookByHash.mockReset().mockReturnValueOnce(undefined).mockReturnValue(book);
+
+      await expect(realInitViewState(envConfig, id, 'main-key', true)).resolves.toBeUndefined();
+
+      expect(loadLibraryBooks).toHaveBeenCalled();
+      expect(library.getBookByHash).toHaveBeenCalledTimes(2);
     });
   });
 });
