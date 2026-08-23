@@ -60,6 +60,29 @@ describe('ingestFile', () => {
     });
   });
 
+  test('临时章节规则与全局规则合并，临时优先', async () => {
+    const { appService, settings, importBook } = makeDeps();
+    settings.txtChapterPatterns = ['全局1'];
+    await ingestFile(
+      { file: 'book.epub', books: [], chapterPatterns: ['临时1'] },
+      { appService, settings },
+    );
+    expect(importBook.mock.calls[0]![2]).toMatchObject({
+      chapterPatterns: ['临时1', '全局1'],
+    });
+  });
+
+  test('只有临时规则时也透传', async () => {
+    const { appService, settings, importBook } = makeDeps();
+    await ingestFile(
+      { file: 'book.epub', books: [], chapterPatterns: ['仅临时'] },
+      { appService, settings },
+    );
+    expect(importBook.mock.calls[0]![2]).toMatchObject({
+      chapterPatterns: ['仅临时'],
+    });
+  });
+
   test('applies groupId and groupName', async () => {
     const { appService, settings } = makeDeps();
     const book = await ingestFile(

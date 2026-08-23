@@ -99,6 +99,75 @@ export const parseChapterPatterns = (input: string): string[] =>
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
 
+// ---------------------------------------------------------------------------
+// 引导式章节识别："候选标题行"提取 + 勾选行 → 识别规则生成。
+// createChapterRegexps 会把生成的 pattern 再包行锚/捕获组并置于内置规则之前，
+// 所以这里返回的 pattern 只需匹配"标题行内容"。
+// ---------------------------------------------------------------------------
+const CHAPTER_CANDIDATE_TITLE_RX = /^[第卷回楔序【後记终扉]|章|回|更|卷|部|話/;
+
+const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const isNumChar = (ch: string): boolean =>
+  ch.length > 0 && /[0-9零〇一二三四五六七八九十百千万]/.test(ch);
+
+const NUM_WILDCARD = '[0-9零〇一二三四五六七八九十百千万]+';
+
+export const buildChapterPatternFromSamples = (samples: string[]): string | null => {
+  const trimmed = samples.map((s) => s.trim()).filter((s) => s.length > 0);
+  if (trimmed.length === 0) return null;
+
+  const first = trimmed[0]!;
+  let out = '';
+  let i = 0;
+  // 贪心对齐公共前缀：字符一致则保留（数字区段统一通配化，覆盖"第X章"里
+  // 递增的数字）；首个字符即非数字分歧 → 放弃对齐，退化为字面量 alternation。
+  while (i < first.length) {
+    const ch = first[i]!;
+    const allSame = trimmed.every((s) => s[i] === ch);
+    if (allSame) {
+      if (isNumChar(ch)) {
+        out += NUM_WILDCARD;
+        while (i < first.length && trimmed.every((s) => isNumChar(s[i] ?? ''))) i++;
+        continue;
+      }
+      out += escapeRegExp(ch);
+      i++;
+    } else if (trimmed.every((s) => isNumChar(s[i] ?? ''))) {
+      out += NUM_WILDCARD;
+      while (i < first.length && trimmed.every((s) => isNumChar(s[i] ?? ''))) i++;
+    } else {
+      break;
+    }
+  }
+
+  if (out.length >= 2) return `${out}[^\\n]*`;
+  if (trimmed.length <= 40) return trimmed.map((s) => escapeRegExp(s)).join('|');
+  return null;
+};
+
+export const extractTxtChapterCandidates = async (file: File, max = 40): Promise<string[]> => {
+  const buf = new Uint8Array(await file.arrayBuffer());
+  let text: string;
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(buf);
+  } catch {
+    text = new TextDecoder('gb18030').decode(buf);
+  }
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const s = line.trim();
+    if (!s || s.length > 40) continue;
+    if (!CHAPTER_CANDIDATE_TITLE_RX.test(s)) continue;
+    if (seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+    if (out.length >= max) break;
+  }
+  return out;
+};
+
 // 用户输入进构造正则的路径，`new RegExp` 只捕语法错误、不防灾难性回溯
 // （catastrophic backtracking）：病态正则如 (a+)+ 在长文本上是指数回溯。
 // 这里做启发式守门（宁可放过不明显病态、也不误伤正常规则），超限的规则

@@ -84,6 +84,7 @@ import FailedImportsDialog, { FailedImport } from './components/FailedImportsDia
 import ImportFromFolderDialog, {
   ImportFromFolderResult,
 } from './components/ImportFromFolderDialog';
+import TxtChapterGuideDialog from './components/TxtChapterGuideDialog';
 import NowPlayingBar from './components/NowPlayingBar';
 import { ttsSessionManager } from '@/services/tts';
 import useShortcuts from '@/hooks/useShortcuts';
@@ -152,6 +153,15 @@ const LAST_IMPORT_FOLDER_READ_IN_PLACE_KEY = 'readest:lastImportFolderReadInPlac
 const LibraryPageWithSearchParams = () => {
   const searchParams = useSearchParams();
   return <LibraryPageContent searchParams={searchParams} />;
+};
+
+// TXT 目录识别失败引导的待处理项：源文件（File）+ 分组信息，重切时按新规则
+// 重新导入该文件（仅本次，不写全局规则）。
+type TxtGuideItem = {
+  file: File;
+  filename: string;
+  groupId?: string;
+  groupName?: string;
 };
 
 const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchParams | null }) => {
@@ -225,6 +235,9 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     initialReadInPlace?: boolean;
     initialAutoImport?: boolean;
   } | null>(null);
+  // TXT 目录识别失败的引导队列（一次处理一个文件）。
+  const txtGuideQueueRef = useRef<TxtGuideItem[]>([]);
+  const [guideItem, setGuideItem] = useState<TxtGuideItem | null>(null);
   const [currentGroupPath, setCurrentGroupPath] = useState<string | undefined>(undefined);
   const [currentVirtualGroup, setCurrentVirtualGroup] = useState<{
     groupBy:
@@ -871,19 +884,12 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       const file = selectedFile.file || selectedFile.path;
       if (!file) return null;
       if (!appService) return null;
+      // `groupId` 三态（undefined=由 basePath 推导分组；''=根目录；字符串=指定分组）
+      // 在 try 外求值——catch 分支处理"目录识别失败引导"时也需要它。
+      let resolvedGroupId = groupId;
+      let resolvedGroupName = groupId !== undefined ? getGroupName(groupId) : undefined;
       try {
         const { path, basePath } = selectedFile;
-        // `groupId` is treated as a tri-state:
-        //   - undefined  → caller didn't specify; derive grouping from
-        //                  basePath (Import-from-Folder "keep" mode).
-        //   - '' (empty) → caller explicitly wants the library root.
-        //   - any string → caller explicitly wants that group.
-        // Distinguishing '' from undefined matters for re-imports of an
-        // already-known book: without it, a falsy check would silently
-        // keep the existingBook's stale groupId/groupName from a prior
-        // import instead of moving the book to the root.
-        let resolvedGroupId = groupId;
-        let resolvedGroupName = groupId !== undefined ? getGroupName(groupId) : undefined;
         if (resolvedGroupId === undefined && path && basePath) {
           resolvedGroupName = getFolderImportGroupName(path, basePath);
           resolvedGroupId = getGroupId(resolvedGroupName);
@@ -915,6 +921,22 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         const filename = typeof file === 'string' ? file : file.name;
         if (typeof file === 'string') failedPaths.push(file);
         const baseFilename = getFilename(filename);
+        // TXT 目录完全识别失败（内置规则一行未命中）且源是 File 时，改走引导
+        // 而非直接报错：用户勾选标题行 → 生成临时规则 → 带新规则重切该文件
+        // （见 TxtChapterGuideDialog）。
+        if (
+          typeof file === 'object' &&
+          error instanceof Error &&
+          error.message.includes('No chapters detected')
+        ) {
+          txtGuideQueueRef.current.push({
+            file,
+            filename: baseFilename,
+            groupId: resolvedGroupId,
+            groupName: resolvedGroupName,
+          });
+          return null;
+        }
         const errorMessage = error instanceof Error ? _(getImportErrorMessage(error.message)) : '';
         failedImports.push({ filename: baseFilename, errorMessage });
         console.error('Failed to import book:', filename, error);
@@ -1007,6 +1029,10 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       });
     }
 
+    // 有 TXT 目录识别失败的待引导文件 → 弹出引导（一次一个，完成/取消后再下一个）。
+    if (txtGuideQueueRef.current.length > 0) {
+      setGuideItem(txtGuideQueueRef.current.shift()!);
+    }
     setLoading(false);
     setImportProgress(null);
     return { failedPaths };
@@ -1888,6 +1914,61 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
               );
             }
             void runFolderImport(result);
+          }}
+        />
+      )}
+      {guideItem && (
+        <TxtChapterGuideDialog
+          file={guideItem.file}
+          filename={guideItem.filename}
+          onCancel={() => {
+            setGuideItem(null);
+            if (txtGuideQueueRef.current.length > 0) {
+              setGuideItem(txtGuideQueueRef.current.shift()!);
+            }
+          }}
+          onConfirm={(pattern) => {
+            const current = guideItem;
+            setGuideItem(null);
+            void (async () => {
+              if (!current) return;
+              const toastMsg = (message: string, type: 'success' | 'error' = 'success') =>
+                eventDispatcher.dispatch('toast', {
+                  message,
+                  timeout: type === 'success' ? 2000 : 5000,
+                  type,
+                });
+              try {
+                const app = await envConfig.getAppService();
+                const settings = useSettingsStore.getState().settings;
+                const book = await ingestFile(
+                  {
+                    file: current.file,
+                    books: useLibraryStore.getState().library,
+                    groupId: current.groupId,
+                    groupName: current.groupName,
+                    chapterPatterns: [pattern],
+                  },
+                  { appService: app, settings },
+                );
+                if (book) {
+                  await updateBooks(envConfig, [book], { skipSave: true });
+                  const finalLibrary = useLibraryStore.getState().library;
+                  await app.saveLibraryBooks(finalLibrary);
+                  toastMsg(`《${current.filename}》已按勾选目录导入`);
+                } else {
+                  toastMsg(`《${current.filename}》仍未识别出章节，已放弃`, 'error');
+                }
+              } catch (err) {
+                toastMsg(
+                  `《${current.filename}》导入失败：${err instanceof Error ? err.message : String(err)}`,
+                  'error',
+                );
+              }
+              if (txtGuideQueueRef.current.length > 0) {
+                setGuideItem(txtGuideQueueRef.current.shift()!);
+              }
+            })();
           }}
         />
       )}

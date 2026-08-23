@@ -1,7 +1,13 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 
-import { TxtToEpubConverter, parseChapterPatterns, validateChapterPattern } from '@/utils/txt';
+import {
+  TxtToEpubConverter,
+  parseChapterPatterns,
+  validateChapterPattern,
+  buildChapterPatternFromSamples,
+  extractTxtChapterCandidates,
+} from '@/utils/txt';
 
 type Api = {
   createChapterRegexps(language: string, extraPatterns?: string[]): RegExp[];
@@ -169,5 +175,65 @@ describe('zh 章节标题带【】包裹', () => {
     expect(anyRegexMatches(getApi().createChapterRegexps('zh'), '\n第五章、锦州城（一）\n')).toBe(
       true,
     );
+  });
+});
+
+describe('buildChapterPatternFromSamples（勾选行→规则）', () => {
+  const samples = ['第五章、锦州城（一）', '第六章、锦州城（二）'];
+
+  it('同前缀+数字分歧 → 生成数字通配规则，其它章也命中', () => {
+    const pattern = buildChapterPatternFromSamples(samples);
+    expect(pattern).toBeTruthy();
+    expect(
+      anyRegexMatches(getApi().createChapterRegexps('zh', [pattern!]), '\n第五章、锦州城（一）\n'),
+    ).toBe(true);
+    expect(
+      anyRegexMatches(
+        getApi().createChapterRegexps('zh', [pattern!]),
+        '\n第八十章、锦州城（九）\n',
+      ),
+    ).toBe(true);
+  });
+
+  it('无关正文行不命中', () => {
+    const pattern = buildChapterPatternFromSamples(samples)!;
+    expect(
+      anyRegexMatches(
+        getApi().createChapterRegexps('zh', [pattern]),
+        '\n这是正文段落文字，长度足够长。\n',
+      ),
+    ).toBe(false);
+  });
+
+  it('样本首字符即分歧 → 退化字面量 alternation，样本本身可命中', () => {
+    const pattern = buildChapterPatternFromSamples(['序章', '楔子']);
+    expect(pattern).toBeTruthy();
+    expect(anyRegexMatches(getApi().createChapterRegexps('zh', [pattern!]), '\n序章\n')).toBe(true);
+    expect(anyRegexMatches(getApi().createChapterRegexps('zh', [pattern!]), '\n楔子\n')).toBe(true);
+  });
+
+  it('空样本返回 null', () => {
+    expect(buildChapterPatternFromSamples([])).toBeNull();
+  });
+});
+
+describe('extractTxtChapterCandidates（候选标题行提取）', () => {
+  const makeTxt = (content: string) =>
+    new File([new TextEncoder().encode(content)], 'book.txt', { type: 'text/plain' });
+
+  it('只取短标题特征行，跳过正文长行', async () => {
+    const content = [
+      '　　' + '这是一段很长的正文内容，用于测试不会被当作标题候选提取出来。'.repeat(3),
+      '第五章、锦州城（一）',
+      '正文继续叙述……',
+      '【第十章、下山（吕凡视角）】',
+      '她生气了。"哼！"',
+      '序章',
+    ].join('\n');
+    const cands = await extractTxtChapterCandidates(makeTxt(content));
+    expect(cands).toContain('第五章、锦州城（一）');
+    expect(cands).toContain('【第十章、下山（吕凡视角）】');
+    expect(cands).toContain('序章');
+    expect(cands.some((c) => c.length > 40)).toBe(false);
   });
 });

@@ -40,6 +40,12 @@ export interface IngestFileOptions {
    * the file into Books/<hash>/. Defaults to false.
    */
   forceCopy?: boolean;
+  /**
+   * 临时章节识别规则（仅本次导入用，不写入全局设置）。与全局
+   * settings.txtChapterPatterns 合并，且临时规则优先于全局。供"目录识别
+   * 失败引导重切"场景使用。
+   */
+  chapterPatterns?: string[];
 }
 
 /**
@@ -209,9 +215,15 @@ export async function ingestFile(
     lookupIndex: opts.lookupIndex,
     transient: opts.transient,
     inPlace,
-    // 全局 TXT 章节识别规则（方向③）：非空时优先应用，帮助目录识别不完善的 TXT。
-    ...(settings.txtChapterPatterns?.length
-      ? { chapterPatterns: settings.txtChapterPatterns }
+    // 章节识别规则：本次临时规则（opts.chapterPatterns，目录识别失败引导重切
+    // 时带）优先，再叠加全局 settings.txtChapterPatterns。均非空才透传。
+    ...(opts.chapterPatterns?.length || settings.txtChapterPatterns?.length
+      ? {
+          chapterPatterns: [
+            ...(opts.chapterPatterns ?? []),
+            ...(settings.txtChapterPatterns ?? []),
+          ],
+        }
       : {}),
   });
   if (!book) return null;
