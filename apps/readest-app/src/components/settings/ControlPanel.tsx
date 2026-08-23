@@ -410,11 +410,12 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
 
   return (
     <div className='my-4 w-full space-y-6'>
-      <BoxedList title={_('Scroll')} data-setting-id='settings.control.scrolledMode'>
+      <BoxedList title={_('Scroll')} data-setting-id='settings.control.scroll'>
         <SettingsSwitchRow
           label={_('Scrolled Mode')}
           checked={isScrolledMode}
           onChange={() => setScrolledMode(!isScrolledMode)}
+          data-setting-id='settings.control.scrolledMode'
         />
         <SettingsSwitchRow
           label={_('Single Section Scroll')}
@@ -502,11 +503,12 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
         />
       </BoxedList>
 
-      <BoxedList title={_('Pagination')} data-setting-id='settings.control.clickToPaginate'>
+      <BoxedList title={_('Pagination')} data-setting-id='settings.control.pagination'>
         <SettingsSwitchRow
           label={_('Click to Paginate')}
           checked={!isDisableClick}
           onChange={() => setIsDisableClick(!isDisableClick)}
+          data-setting-id='settings.control.clickToPaginate'
         />
         <SettingsSwitchRow
           label={_('Swipe to Paginate')}
