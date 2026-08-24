@@ -472,6 +472,30 @@ describe('extractChaptersFromSegment — Chinese (zh)', () => {
     expect(titles.some((t) => t.includes('番外 第2章'))).toBe(true);
     expect(titles.some((t) => t.includes('番外 灰猫'))).toBe(true);
   });
+
+  it('tier-2 纯数字编号行：标题与正文正确配对，标题不重复（回归 e749562 双捕获组）', () => {
+    const text = [
+      '这是开头正文。',
+      '1 标题甲',
+      '这是甲章正文内容。',
+      '2 标题乙',
+      '这是乙章正文内容。',
+    ].join('\n');
+    const chapters = extractChapters(text, 'zh');
+    const titles = chapters.map((c) => c.title);
+    expect(titles.slice(1)).toEqual(['1 标题甲', '2 标题乙']);
+    expect(chapters[1]!.content).toContain('这是甲章正文内容');
+    expect(chapters[2]!.content).toContain('这是乙章正文内容');
+    // 标题行不得重复进正文（bug 时 content 被错配为重复的标题文本）
+    expect(chapters[1]!.content).not.toBe(`<h2>1 标题甲</h2><p>1 标题甲</p>`);
+  });
+
+  it('【】包裹标题：capture 不含尾随右括号】（回归 e90d3ea）', () => {
+    const chapters = extractChapters('前文内容\n【第五章 试炼】\n正文内容', 'zh');
+    const chapter = chapters.find((c) => c.title.includes('第五章'));
+    expect(chapter).toBeDefined();
+    expect(chapter!.title).not.toMatch(/】$/);
+  });
 });
 
 // ---------------------------------------------------------------------------

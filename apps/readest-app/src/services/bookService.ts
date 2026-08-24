@@ -35,7 +35,7 @@ import { DEFAULT_BOOK_SEARCH_CONFIG, DEFAULT_FIXED_LAYOUT_VIEW_SETTINGS } from '
 import { isContentURI, isValidURL, makeSafeFilename } from '@/utils/misc';
 import { deserializeConfig, serializeConfig, serializeRawConfig } from '@/utils/serializer';
 import { ClosableFile } from '@/utils/file';
-import { TxtToEpubConverter } from '@/utils/txt';
+import { convertTxtToEpubWithFallback } from '@/utils/txt-worker';
 import { parsePixivNovelFilename, type PixivNovelMetadata } from '@/utils/pixivNovel';
 import { svg2png } from '@/utils/svg';
 import { downscaleImageBlob } from '@/utils/image';
@@ -445,10 +445,11 @@ export async function importBook(
           fileobj = file;
         }
         if (isTxt && fileobj) {
-          const txt2epub = new TxtToEpubConverter();
-          ({ file: fileobj } = await txt2epub.convert({
+          // TXT→EPUB 转换走已有 worker 链路（120s 超时 + 失败回退主线程）。
+          // 此前主线程同步 convert 无超时：病态章节正则在引擎上灾难性回溯
+          // 会永久冻结 UI，只能杀进程。
+          ({ file: fileobj } = await convertTxtToEpubWithFallback({
             file: fileobj,
-            sourcePath,
             chapterPatterns: options.chapterPatterns,
           }));
         }

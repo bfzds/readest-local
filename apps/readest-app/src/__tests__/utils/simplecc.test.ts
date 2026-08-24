@@ -62,4 +62,18 @@ describe.concurrent('suite', () => {
   test('convertChineseVariant = none 不转换', () => {
     expect(toSelectionSearchTerm('发财了去植发', 'zh-TW', 'none')).toBe('发财了去植发');
   });
+
+  test('简体书 s2t 显示：reverse 回简体以命中简体原文索引', () => {
+    expect(toSelectionSearchTerm('發財了去植髮', 'zh-CN', 's2t')).toBe('发财了去植发');
+    expect(toSelectionSearchTerm('鼠標', 'zh-CN', 's2tw')).toBe('鼠标');
+  });
+
+  test('s2t/s2tw 显示 + 繁体书：正文已是繁体原文，不 reverse', () => {
+    expect(toSelectionSearchTerm('發財了去植髮', 'zh-TW', 's2t')).toBe('發財了去植髮');
+    expect(toSelectionSearchTerm('鼠標', 'zh-TW', 's2tw')).toBe('鼠標');
+  });
+
+  test('tw2s 显示 + 简体书：正文已是简体原文，不 reverse', () => {
+    expect(toSelectionSearchTerm('软体', 'zh-CN', 'tw2s')).toBe('软体');
+  });
 });

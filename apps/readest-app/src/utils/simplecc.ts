@@ -27,10 +27,11 @@ const runSimpleCC = (text: string, variant: ConvertChineseVariant, reverse = fal
 };
 
 // 选中文本搜书的变体判定。书内搜索索引按书原文变体存储（folded 不含简繁
-// 归一），搜索词须与原文变体一致才能命中。正文显示可能是 t2s 转换结果
-// （繁体原文 → 简体显示），此时选中的简体词需转回繁体原文去搜；但简体书
-// （原文即简体）反向转换会把简体误转成繁体——既在搜索栏显示错、又搜不中。
-// 因此仅当书语言为繁体系（zh-TW/HK/Hant）时才反向。
+// 归一），搜索词须与原文变体一致才能命中。判定按显示变体方向对称：
+// - 繁源（t2s/tw2s/hk2s/tw2sp）：正文为简→繁书，繁体系书选中简体词须转回繁体去搜；
+// - 简源（s2t/s2tw/s2hk/s2twp）：正文为繁→简书，简体系书选中繁体词须转回简体去搜。
+// 单向判定会漏掉 s2t 族显示（简书 + 简→繁显示）——正文显示繁体、书语言 zh-CN
+// 不匹配繁体系，繁体词不 reverse 就搜不中简体索引。
 export const toSelectionSearchTerm = (
   text: string,
   bookLanguage: string | undefined,
@@ -38,7 +39,9 @@ export const toSelectionSearchTerm = (
 ): string => {
   const convert = convertChineseVariant && convertChineseVariant !== 'none';
   const isHantBook = !!bookLanguage && /hant|tw|hk/i.test(bookLanguage);
-  if (!convert || !isHantBook) return text;
+  const isSimplifiedSource = /^s2/.test(convertChineseVariant);
+  const shouldReverse = isSimplifiedSource ? !isHantBook : isHantBook;
+  if (!convert || !shouldReverse) return text;
   return runSimpleCC(text, convertChineseVariant, true);
 };
 

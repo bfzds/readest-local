@@ -146,6 +146,21 @@ export class StatisticsDb {
       [idBook],
     );
     if ((countRows[0]?.c ?? 0) <= keep) return;
+    // 删行前先把将被删除的（最老）事件 duration 并入 retained_read_time。
+    // 否则下次 recompute 会把 total_read_time 重投影成"现存行之和"，历史累计
+    // 随裁剪回缩（SF12 后续修复）。
+    const archived = await this.db.select<{ sumDuration: number | null }>(
+      `SELECT SUM(duration) AS sumDuration
+         FROM (
+           SELECT duration FROM page_stat_data
+           WHERE id_book = ? ORDER BY start_time DESC LIMIT -1 OFFSET ?
+         )`,
+      [idBook, keep],
+    );
+    await this.db.execute(
+      `UPDATE book SET retained_read_time = retained_read_time + COALESCE(?, 0) WHERE id = ?`,
+      [archived[0]?.sumDuration ?? 0, idBook],
+    );
     await this.db.execute(
       'DELETE FROM page_stat_data WHERE id_book = ? AND rowid NOT IN (SELECT rowid FROM page_stat_data WHERE id_book = ? ORDER BY start_time DESC LIMIT ?)',
       [idBook, idBook, keep],
@@ -155,7 +170,7 @@ export class StatisticsDb {
   async recomputeBookTotals(idBook: number): Promise<void> {
     await this.db.execute(
       `UPDATE book SET
-         total_read_time  = COALESCE((SELECT SUM(duration) FROM page_stat_data WHERE id_book = ?), 0),
+         total_read_time  = COALESCE(retained_read_time, 0) + COALESCE((SELECT SUM(duration) FROM page_stat_data WHERE id_book = ?), 0),
          total_read_pages = COALESCE((SELECT COUNT(DISTINCT page) FROM page_stat_data WHERE id_book = ?), 0),
          last_open        = COALESCE((SELECT MAX(start_time + duration) FROM page_stat_data WHERE id_book = ?), last_open),
          pages            = COALESCE((SELECT total_pages FROM page_stat_data WHERE id_book = ? ORDER BY start_time DESC LIMIT 1), pages)

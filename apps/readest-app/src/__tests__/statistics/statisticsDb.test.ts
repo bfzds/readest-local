@@ -164,6 +164,28 @@ describe('StatisticsDb', () => {
     expect(rows[0]!.c).toBe(cap);
   });
 
+  it('prune 后 recompute 不使 total_read_time 回缩（被删事件并入 retained）', async () => {
+    const db = await freshStatsDb();
+    const s = StatisticsDb.from(db);
+    const id = await s.upsertBook({ bookMd5: 'm-ttl2', title: 'T', authors: 'A' });
+    const cap = StatisticsDb.MAX_PAGE_EVENTS_PER_BOOK;
+    const total = cap + 100;
+    for (let i = 0; i < total; i++) {
+      await s.insertPageEvent(id, { page: 1, startTime: 100000 + i, duration: 1, totalPages: 10 });
+    }
+    await s.recomputeBookTotals(id);
+    expect((await s.getBookByMd5('m-ttl2'))!.total_read_time).toBe(total);
+    await s.prunePageEvents(id);
+    const rows = await db.select<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM page_stat_data WHERE id_book = ?`,
+      [id],
+    );
+    expect(rows[0]!.c).toBe(cap);
+    // 跨 flush 再次重算：历史被删事件 duration 已并入 retained_read_time，总量不缩水
+    await s.recomputeBookTotals(id);
+    expect((await s.getBookByMd5('m-ttl2'))!.total_read_time).toBe(total);
+  });
+
   it('keeps one book row per md5 even when title/authors change (no duplicates)', async () => {
     const id1 = await stats.upsertBook({ bookMd5: 'm1', title: 'Old', authors: 'A' });
     const id2 = await stats.upsertBook({ bookMd5: 'm1', title: 'New', authors: 'B' });

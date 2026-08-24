@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useTranslation } from '@/hooks/useTranslation';
-import { getCoverThumbnailUrl } from '@/utils/coverThumbnail';
+import { getSearchCoverThumbnailUrl } from '@/utils/coverThumbnail';
 import {
   createLibrarySearchSession,
   resolveSearchResultCfi,
@@ -87,12 +87,13 @@ const Excerpt = ({ excerpt }: { excerpt: SearchExcerpt }) => (
 const ResultCover = ({ book }: { book: Book }) => {
   const coverSrc = book.coverImageUrl;
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
-  // 复用书架的缩略图缓存：原图（常 2000px+）按 ≤512px 重采样，避免搜索
-  // 命中的每张封面都按源尺寸解码常驻。未命中首次缩略，失败（null）回退原 URL。
+  // 用搜索侧独立的缩略图缓存：搜索大批量命中时驱逐只影响搜索结果自身，
+  // 不再 revoke 书架 BookCover 正在显示的 blob URL（避免封面退化文字占位）。
+  // 原图（常 2000px+）按 ≤512px 重采样，未命中首次缩略，失败（null）回退原 URL。
   useEffect(() => {
     if (!coverSrc) return;
     let cancelled = false;
-    void getCoverThumbnailUrl.get(coverSrc).then((url: string | null) => {
+    void getSearchCoverThumbnailUrl.get(coverSrc).then((url: string | null) => {
       if (!cancelled) setThumbUrl(url);
     });
     return () => {

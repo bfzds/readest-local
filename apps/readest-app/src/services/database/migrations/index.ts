@@ -143,6 +143,15 @@ const migrations: Record<SchemaType, MigrationEntry[]> = {
         );
       `,
     },
+    {
+      // SF12 后续修复：prune 到期事件后 recompute 会把 book.total_read_time
+      // 重投影为"现存行之和"→ 历史累计随裁剪回缩。新增列保存"已裁剪事件"的
+      // duration 累计，recompute 取 retained + 现存之和作为真实累计。
+      name: '2026082401_statistics_retained_read_time',
+      sql: `
+        ALTER TABLE book ADD COLUMN retained_read_time integer NOT NULL DEFAULT 0;
+      `,
+    },
   ],
   // Per-book search index/cache: one search.db in each book's directory
   // (beside cover.png), holding extracted section text so library full-text

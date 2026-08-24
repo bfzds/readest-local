@@ -151,6 +151,11 @@ describe('validateChapterPattern（ReDoS 守门）', () => {
     expect(validateChapterPattern('(\\d+|x)+')).not.toEqual([]);
   });
 
+  it('区间量词嵌套量词链（(a+){20}、(?:(?:\\d+\\d*){10}x）被拦截', () => {
+    expect(validateChapterPattern('(a+){20}')).not.toEqual([]);
+    expect(validateChapterPattern('(?:\\d+\\d*){10}x')).not.toEqual([]);
+  });
+
   it('过深分组嵌套被拦截', () => {
     expect(validateChapterPattern('((((a+)+))+)+')).not.toEqual([]);
   });
@@ -215,6 +220,17 @@ describe('buildChapterPatternFromSamples（勾选行→规则）', () => {
   it('空样本返回 null', () => {
     expect(buildChapterPatternFromSamples([])).toBeNull();
   });
+
+  it('单样本数字通配：尾部通配限长，不整句吞入超长尾随正文', () => {
+    const pattern = buildChapterPatternFromSamples(['1.']);
+    expect(pattern).toBeTruthy();
+    const re = getApi().createChapterRegexps('zh', [pattern!])[0]!;
+    const longLine = '1.' + 'x'.repeat(200);
+    const m = re.exec('\n' + longLine + '\n');
+    expect(m).not.toBeNull();
+    // 前缀 \n + 数字通配(1) + 点(1) + 尾段最多 60 = 63 上下；限长前会吞整行 200+
+    expect(m![0]!.length).toBeLessThanOrEqual(70);
+  });
 });
 
 describe('extractTxtChapterCandidates（候选标题行提取）', () => {
@@ -235,5 +251,27 @@ describe('extractTxtChapterCandidates（候选标题行提取）', () => {
     expect(cands).toContain('【第十章、下山（吕凡视角）】');
     expect(cands).toContain('序章');
     expect(cands.some((c) => c.length > 40)).toBe(false);
+  });
+
+  it('正文行含单字（本章说/更新说明）不误入候选：候选正则行首锚定', async () => {
+    const content = [
+      '第一章 试炼',
+      '本章说：感谢打赏。',
+      '更新说明：作者有话说',
+      '第二章 重逢',
+    ].join('\n');
+    const cands = await extractTxtChapterCandidates(makeTxt(content));
+    expect(cands).toContain('第一章 试炼');
+    expect(cands).toContain('第二章 重逢');
+    expect(cands.some((c) => c.includes('本章说') || c.includes('更新说明'))).toBe(false);
+  });
+
+  it('UTF-16 LE TXT（含 BOM）：按 BOM 探测正确编码，候选不空且非 mojibake', async () => {
+    const text = '第一章 试炼\n正文内容\n第二章 重逢';
+    const utf16le = new Uint8Array(Buffer.from('﻿' + text, 'utf16le'));
+    const file = new File([utf16le], 'book_utf16.txt', { type: 'text/plain' });
+    const cands = await extractTxtChapterCandidates(file);
+    expect(cands).toContain('第一章 试炼');
+    expect(cands).toContain('第二章 重逢');
   });
 });

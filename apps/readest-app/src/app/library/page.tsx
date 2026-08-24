@@ -925,17 +925,32 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         // 而非直接报错：用户勾选标题行 → 生成临时规则 → 带新规则重切该文件
         // （见 TxtChapterGuideDialog）。
         if (
-          typeof file === 'object' &&
+          (typeof file === 'object' || typeof file === 'string') &&
           error instanceof Error &&
           error.message.includes('No chapters detected')
         ) {
-          txtGuideQueueRef.current.push({
-            file,
-            filename: baseFilename,
-            groupId: resolvedGroupId,
-            groupName: resolvedGroupName,
-          });
-          return null;
+          // 桌面端三条导入路径（文件选择器/拖放/watched-folder）产出的全是
+          // 字符串路径而非 File 对象。先读回 File 再走引导，否则引导框永不
+          // 弹出、无法识别目录的 TXT 一律落到 failedImports 报错分支。
+          let resolvedFile: File | null = null;
+          if (typeof file === 'object') {
+            resolvedFile = file;
+          } else if (appService) {
+            try {
+              resolvedFile = await appService.openFile(file, 'None');
+            } catch {
+              resolvedFile = null;
+            }
+          }
+          if (resolvedFile) {
+            txtGuideQueueRef.current.push({
+              file: resolvedFile,
+              filename: baseFilename,
+              groupId: resolvedGroupId,
+              groupName: resolvedGroupName,
+            });
+            return null;
+          }
         }
         const errorMessage = error instanceof Error ? _(getImportErrorMessage(error.message)) : '';
         failedImports.push({ filename: baseFilename, errorMessage });

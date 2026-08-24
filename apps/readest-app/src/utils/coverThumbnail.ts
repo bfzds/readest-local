@@ -54,3 +54,12 @@ const createThumbnail = async (src: string): Promise<string | null> => {
 export const getCoverThumbnailUrl = createCoverThumbnailCache(createThumbnail, {}, (url) =>
   URL.revokeObjectURL(url),
 );
+
+// 搜索结果封面缩略：独立实例（容量更大）。全文搜索动辄命中 >128 本，若与书架
+// 共用同一缓存，驱逐最老条目时 revoke 的可能是书架正在显示的 blob URL → 封面
+// 退化为文字占位。独立实例让搜索侧驱逐只影响搜索结果自身（页面重渲后拉新）。
+export const getSearchCoverThumbnailUrl = createCoverThumbnailCache(
+  createThumbnail,
+  { capacity: 512 },
+  (url) => URL.revokeObjectURL(url),
+);

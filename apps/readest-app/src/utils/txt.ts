@@ -56,14 +56,15 @@ const CHAPTER_RULES: Record<string, ChapterRule[]> = {
     },
     {
       // 第二级：中文序数词开头行，或纯数字编号行（同样容忍【】前缀）。
+      // 注意必须只保留外层一个捕获组：String.split 会为每个捕获组各插入
+      // 一个元素，多余嵌套组会使 extractChaptersFromSegment 的 j += 2 配对
+      // 全面错位（标题重复进正文、正文行变标题）。
       source:
         String.raw`(?:^|\n)\s*(?:【)?(` +
-        '(' +
         [
           String.raw`[一二三四五六七八九十][零〇一二三四五六七八九十百千万]?[：:、 　][^\n-]{0,36}(?=\n|$)`,
           String.raw`[0-9]+[^\n]{0,16}(?=\n|$)`,
         ].join('|') +
-        ')' +
         ')',
       flags: 'gu',
     },
@@ -104,7 +105,11 @@ export const parseChapterPatterns = (input: string): string[] =>
 // createChapterRegexps 会把生成的 pattern 再包行锚/捕获组并置于内置规则之前，
 // 所以这里返回的 pattern 只需匹配"标题行内容"。
 // ---------------------------------------------------------------------------
-const CHAPTER_CANDIDATE_TITLE_RX = /^[第卷回楔序【後记终扉]|章|回|更|卷|部|話/;
+// 候选标题行特征：行首必须是标题引导字，且整行不跨行长（行长过滤由上方
+// s.length>40 处理）。曾用 `|章|回|更|卷|部|話` 的任意位置单字分支，会把
+// "本章说：感谢打赏""更新说明：作者有话说""下部预告"这类正文行误作标题——
+// 短正文行密集的书里 40 个候选名额会被正文占满。
+const CHAPTER_CANDIDATE_TITLE_RX = /^[第卷回楔序【後记终扉][^\n]{0,40}$/;
 
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -141,30 +146,75 @@ export const buildChapterPatternFromSamples = (samples: string[]): string | null
     }
   }
 
-  if (out.length >= 2) return `${out}[^\\n]*`;
+  // 尾段通配给长度上限：无界 [^\n]* 会把"数字+点"开头的超长正文行整句吞成
+  // 章节标题。60 足以覆盖典型章节标题长度，同时收窄误伤面。
+  if (out.length >= 2) return `${out}[^\\n]{0,60}`;
   if (trimmed.length <= 40) return trimmed.map((s) => escapeRegExp(s)).join('|');
   return null;
 };
 
-export const extractTxtChapterCandidates = async (file: File, max = 40): Promise<string[]> => {
-  const buf = new Uint8Array(await file.arrayBuffer());
-  let text: string;
-  try {
-    text = new TextDecoder('utf-8', { fatal: true }).decode(buf);
-  } catch {
-    text = new TextDecoder('gb18030').decode(buf);
+// 轻量编码探测（与类内 detectEncodingFromFile 同源思路，聚焦中文 TXT 常见
+// 编码）：utf-8 严格校验 → utf-16 BOM → 高字节比例判 GBK/GB18030。此前候选
+// 提取只试 utf-8→gb18030 两档，UTF-16 文件被当 gb18030 解出 mojibake、候选
+// 为空，导致引导功能对 UTF-16 TXT 失效。
+const detectTxtEncodingFromFile = async (file: File): Promise<string> => {
+  const headSampleSize = Math.min(file.size, ENCODING_HEAD_SAMPLE_BYTES);
+  const headSample = new Uint8Array(await file.slice(0, headSampleSize).arrayBuffer());
+  if (headSample.length >= 2 && headSample[0] === 0xff && headSample[1] === 0xfe) return 'utf-16le';
+  if (headSample.length >= 2 && headSample[0] === 0xfe && headSample[1] === 0xff) return 'utf-16be';
+  if (
+    headSample.length >= 3 &&
+    headSample[0] === 0xef &&
+    headSample[1] === 0xbb &&
+    headSample[2] === 0xbf
+  ) {
+    return 'utf-8';
   }
+  const sample = headSample.slice(0, Math.min(8192, headSample.length));
+  try {
+    new TextDecoder('utf-8', { fatal: true }).decode(sample);
+    return 'utf-8';
+  } catch {
+    let highByteCount = 0;
+    for (let i = 0; i < sample.length; i++) {
+      if (sample[i]! >= 0x80) highByteCount++;
+    }
+    return sample.length > 0 && highByteCount / sample.length > 0.05 ? 'gb18030' : 'utf-8';
+  }
+};
+
+export const extractTxtChapterCandidates = async (file: File, max = 40): Promise<string[]> => {
+  const encoding = await detectTxtEncodingFromFile(file);
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const line of text.split(/\r?\n/)) {
-    const s = line.trim();
-    if (!s || s.length > 40) continue;
-    if (!CHAPTER_CANDIDATE_TITLE_RX.test(s)) continue;
-    if (seen.has(s)) continue;
+  const consider = (rawLine: string): boolean => {
+    const s = rawLine.trim();
+    if (!s || s.length > 40) return false;
+    if (!CHAPTER_CANDIDATE_TITLE_RX.test(s)) return false;
+    if (seen.has(s)) return false;
     seen.add(s);
     out.push(s);
-    if (out.length >= max) break;
+    return out.length >= max;
+  };
+
+  const decoder = new TextDecoder(encoding);
+  let buffer = '';
+  try {
+    for await (const chunk of file.stream()) {
+      buffer += decoder.decode(chunk, { stream: true });
+      for (;;) {
+        const nl = buffer.search(/\r?\n/);
+        if (nl === -1) break;
+        const step = buffer[nl] === '\r' ? 2 : 1;
+        const line = buffer.slice(0, nl);
+        buffer = buffer.slice(nl + step);
+        if (consider(line)) return out;
+      }
+    }
+  } catch {
+    // 流读取/解码异常（少见）：放弃逐块解码，剩余缓冲仍可兜底处理，不阻断引导
   }
+  if (buffer) consider(buffer.slice(0, 400));
   return out;
 };
 
@@ -208,8 +258,9 @@ export const validateChapterPattern = (pattern: string): string[] => {
   }
   if (problems.length > 0) return problems;
   // 嵌套量词链：一对不含嵌套括号的组内含量词、且闭组后又跟量词，是灾难性
-  // 回溯的高发形态（(a+)+、(?:\\d+|x)* 等）。
-  if (/\([^()]*[+*?][^()]*\)[+*?]/.test(pattern)) {
+  // 回溯的高发形态（(a+)+、(?:\\d+|x)* 等）。量词含区间形态 {n,m}——只认
+  // 单字符量词会漏掉 (a+){20}、（?:\d+）{10} 这类炸弹，须一并拦截。
+  if (/\([^()]*[+*?][^()]*\)(?:[+*?]|\{\d+(?:,\d+)?\})/.test(pattern)) {
     problems.push('检测到可能灾难性回溯的嵌套量词');
   }
   return problems;
@@ -838,7 +889,7 @@ export class TxtToEpubConverter {
 
     const segmentChapters: Chapter[] = [];
     for (let j = 1; j < matches.length; j += 2) {
-      const title = matches[j]?.trim() || '';
+      const title = (matches[j]?.trim() || '').replace(/】+$/, '');
       const content = matches[j + 1]?.trim() || '';
 
       let isVolume = false;
