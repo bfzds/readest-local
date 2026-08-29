@@ -21,6 +21,7 @@ import LibraryFloatingButton from './LibraryFloatingButton';
 import ReaderNavFloatingButtons from './ReaderNavFloatingButtons';
 import TOCFloatingButton from './TOCFloatingButton';
 import SearchFloatingButton from './SearchFloatingButton';
+import FloatingSpeakButton from './FloatingSpeakButton';
 import FooterBar from './footerbar/FooterBar';
 import ProgressBar from './ProgressBar';
 import BookmarkPullDown from './BookmarkPullDown';
@@ -270,6 +271,7 @@ export const BookCellInner: React.FC<BookCellProps> = ({
         <LibraryFloatingButton onGoToLibrary={onGoToLibrary} />
       )}
       <SearchFloatingButton bookKey={bookKey} />
+      <FloatingSpeakButton bookKey={bookKey} />
       <TOCFloatingButton bookKey={bookKey} />
       <Annotator bookKey={bookKey} contentInsets={contentInsets} />
       <SearchResultsNav bookKey={bookKey} gridInsets={gridInsets} />

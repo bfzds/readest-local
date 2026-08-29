@@ -906,7 +906,6 @@ const FoliateViewer: React.FC<{
     viewSettings?.ttsPlayerStyle,
     // footerReservesBand inputs: the band must collapse/return live when the
     // user flips these settings.
-    viewSettings?.showStickyProgressBar,
     viewSettings?.showRemainingTime,
     viewSettings?.showRemainingPages,
     viewSettings?.showProgressInfo,

@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { FiSearch } from 'react-icons/fi';
+import { RiSearchLine } from 'react-icons/ri';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -35,7 +35,7 @@ const SearchFloatingButton: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       onClick={handleOpenSearch}
       className='absolute bottom-40 right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-base-100/90 text-base-content shadow-lg backdrop-blur-sm transition-transform active:scale-95 sm:bottom-32'
     >
-      <FiSearch size={20} />
+      <RiSearchLine size={20} />
     </button>
   );
 };

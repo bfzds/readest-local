@@ -120,10 +120,12 @@ const TTSMiniPlayer = ({
   // dismissed, or a 16px resting offset. Mirrors FooterBar's mobile/desktop
   // layout split (see forceMobileLayout there) to pick the right bar height.
   const viewSettings = getViewSettings(bookKey);
-  const barVisible = hoveredBookKey === bookKey;
   const safeAreaMargin = appService?.hasSafeAreaInset ? gridInsets.bottom * 0.33 : 0;
   const forceMobileLayout = false;
   const usesMobileBar = forceMobileLayout || window.innerWidth < 640 || window.innerHeight < 640;
+  // The desktop hover toolbar was removed, so only the mobile/narrow layout
+  // still has a bottom bar the card must stack above.
+  const barVisible = usesMobileBar && hoveredBookKey === bookKey;
 
   // Distance from the bottom edge (safe-area margin excluded) to the top of
   // the expanded action panel, so the card rides above it. Measured from the

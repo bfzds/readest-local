@@ -12,7 +12,6 @@ import type { FooterBarProps, NavigationHandlers, FooterBarChildProps } from './
 import { debounce } from '@/utils/debounce';
 import { RSVPControl } from '../rsvp';
 import MobileFooterBar from './MobileFooterBar';
-import DesktopFooterBar from './DesktopFooterBar';
 import { getFooterBarPosition } from './position';
 import TTSControl from '../tts/TTSControl';
 
@@ -158,9 +157,11 @@ const FooterBar: React.FC<FooterBarProps> = ({
   );
 
   const footerBarRef = useRef<HTMLDivElement>(null);
-  useSpatialNavigation(footerBarRef, isVisible);
-
   const forceMobileLayout = false;
+  // Desktop (wide) reading removed the hover toolbar: spatial nav and the
+  // toolbar container only exist for mobile/narrow layouts.
+  const isMobileView = forceMobileLayout || window.innerWidth < 640 || window.innerHeight < 640;
+  useSpatialNavigation(footerBarRef, isVisible && isMobileView);
 
   const commonProps: FooterBarChildProps = {
     bookKey,
@@ -198,6 +199,17 @@ const FooterBar: React.FC<FooterBarProps> = ({
 
   const isMobile = window.innerWidth < 640;
 
+  // Desktop (wide) reading dropped the hover toolbar; the TTS/RSVP overlays
+  // are self-positioned and stay. The mobile/narrow toolbar below is untouched.
+  if (!isMobileView) {
+    return (
+      <>
+        <TTSControl bookKey={bookKey} gridInsets={gridInsets} />
+        <RSVPControl bookKey={bookKey} gridInsets={gridInsets} />
+      </>
+    );
+  }
+
   return (
     <>
       {/* Hover trigger area */}
@@ -224,7 +236,6 @@ const FooterBar: React.FC<FooterBarProps> = ({
         onMouseLeave={() => window.innerWidth >= 640 && setHoveredBookKey('')}
       >
         <MobileFooterBar {...commonProps} />
-        <DesktopFooterBar {...commonProps} />
       </div>
       {isVisible && needHorizontalScroll && (
         <div className='bg-base-100 pointer-events-none absolute bottom-0 left-0 hidden h-3 w-full sm:block' />

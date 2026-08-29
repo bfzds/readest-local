@@ -20,14 +20,12 @@ export const footerInfoVisible = (viewSettings: ViewSettings): boolean =>
  * The band used to be reserved whenever Show Footer was on, which read as a
  * "solid bar" across the bottom of the screen: scrolled text clipped hard at
  * its edge, and it lingered even when the footer had nothing to show. Now:
- *   - the sticky progress bar (always-visible, display-only) keeps its band
  *   - scrolled mode keeps the band whenever the footer is on, so the section
  *     title in the bottom-left corner never overlaps the running text
  *   - paginated mode reserves it only while some info actually renders
  */
 export const footerReservesBand = (viewSettings: ViewSettings): boolean => {
   if (!viewSettings.showFooter) return false;
-  if (viewSettings.showStickyProgressBar) return true;
   if (viewSettings.scrolled) return true;
   return footerInfoVisible(viewSettings);
 };

@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Trans } from 'react-i18next';
 import type { Insets } from '@/types/misc';
 import { useEnv } from '@/context/EnvContext';
@@ -7,15 +7,9 @@ import { useReaderStore } from '@/store/readerStore';
 import { useBookProgress } from '@/store/readerProgressStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useBookDataStore } from '@/store/bookDataStore';
-import {
-  formatNumber,
-  formatProgress,
-  getChapterTickFractions,
-  getReferencePageInfo,
-} from '@/utils/progress';
+import { formatNumber, formatProgress, getReferencePageInfo } from '@/utils/progress';
 import { footerInfoVisible, footerReservesBand } from '../utils/footerBand';
 import StatusInfo from './StatusInfo.tsx';
-import StickyProgressBar from './StickyProgressBar.tsx';
 import { convertPagesToTimeRemainingMinutes } from '@/app/library/utils/libraryUtils.ts';
 import { useMedianPageDurationSecs } from '@/hooks/useMedianPageDurationSecs';
 
@@ -72,18 +66,6 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
   const progressInfo = referenceInfo
     ? `${referenceInfo.current}${isVertical ? ' · ' : ' / '}${referenceInfo.total}`
     : formatProgress(pageInfo?.current, pageInfo?.total, template, localize, lang);
-
-  // Sticky progress bar is horizontal-only; vertical mode keeps its side footer.
-  const stickyBarActive = viewSettings.showStickyProgressBar && !isVertical;
-  const tickFractions = useMemo(
-    () => (stickyBarActive ? getChapterTickFractions(view, bookData?.bookDoc?.toc) : []),
-    [stickyBarActive, view, bookData?.bookDoc?.toc],
-  );
-  // Same size-domain as the chapter ticks; falls back to the page fraction
-  // before the first relocate has populated progress.fraction.
-  const fillFraction =
-    progress?.fraction ??
-    (pageInfo && pageInfo.total > 0 ? (pageInfo.current + 1) / pageInfo.total : 0);
 
   const { page: current = 0, pages: total = 0 } = view?.renderer || {};
   const pagesLeft = bookData?.isFixedLayout
@@ -148,13 +130,12 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
   // sits in its own strip below the text instead of floating over it. The
   // pills still keep each segment visually distinct; the strip is a tap
   // target only where it sits on reserved margin space (paginated band,
-  // sticky-bar band, scrolled band, vertical side column).
-  const hasFooterContent = stickyBarActive || footerInfoVisible(viewSettings) || !!sectionLabel;
+  // scrolled band, vertical side column).
+  const hasFooterContent = footerInfoVisible(viewSettings) || !!sectionLabel;
   const stripTappable = hasFooterContent && (isVertical || footerReservesBand(viewSettings));
   const pillClass =
     viewSettings.scrolled &&
     !isVertical &&
-    !stickyBarActive &&
     'progress-pill eink-bordered pointer-events-auto cursor-pointer rounded-md bg-base-100/85 px-1.5';
   const showStatusInfo = hasTimeInfo || hasBatteryInfo;
 
@@ -212,22 +193,11 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
           dismissed && 'opacity-0',
           !isEink && 'transition-opacity duration-300',
           isVertical ? 'h-full' : 'w-full',
-          // Sticky bar grows on the left; the info widgets pack to the right
-          // with even gaps. Without it, keep the 3-zone left/center/right row.
-          stickyBarActive ? 'gap-x-3' : 'justify-between gap-x-2',
+          'justify-between gap-x-2',
         )}
         style={isVertical ? {} : { height: `${viewSettings.marginBottomPx}px` }}
       >
-        {stickyBarActive && (
-          <StickyProgressBar
-            className='h-3 flex-1'
-            fraction={fillFraction}
-            tickFractions={tickFractions}
-            rtl={viewSettings.rtl}
-            isEink={isEink}
-          />
-        )}
-        {!isVertical && !stickyBarActive && sectionLabel && (
+        {!isVertical && sectionLabel && (
           <div
             data-testid='progress-section-label'
             className={clsx(
@@ -254,10 +224,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
         )}
         {hasRemainingInfo && (
           <div
-            className={clsx(
-              'remaining-info text-start truncate',
-              !stickyBarActive && !pillClass && 'flex-1 min-w-0',
-            )}
+            className={clsx('remaining-info text-start truncate', !pillClass && 'flex-1 min-w-0')}
           >
             {viewSettings.showRemainingTime ? (
               <span className={clsx('time-left-label text-start', pillClass)}>{timeLeftStr}</span>
@@ -312,7 +279,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
         <div
           className={clsx(
             'progress-info items-center text-end tabular-nums truncate',
-            !stickyBarActive && !pillClass && 'flex-1 min-w-0',
+            !pillClass && 'flex-1 min-w-0',
           )}
         >
           {viewSettings.showProgressInfo && (

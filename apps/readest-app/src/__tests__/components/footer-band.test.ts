@@ -11,7 +11,6 @@ import type { ViewSettings } from '@/types/book';
 //   - scrolled mode never reserves the band; the info floats over the text
 //     in shrink-wrapped pills instead
 //   - paginated mode reserves it only while some widget is enabled
-//   - the sticky progress bar (always-visible, display-only) keeps its band
 // Turning Show Footer off (Settings -> Layout) unmounts the footer and
 // releases the band through the showFooter gate.
 const settings = (overrides: Partial<ViewSettings>): ViewSettings =>
@@ -100,18 +99,12 @@ describe('footerReservesBand', () => {
     ).toBe(true);
   });
 
-  it('keeps the band for the sticky progress bar, scrolled or not', () => {
-    expect(
-      footerReservesBand(
-        settings({ showFooter: true, scrolled: true, showStickyProgressBar: true }),
-      ),
-    ).toBe(true);
+  it('does not reserve the band in paginated mode when no footer widget renders', () => {
     expect(
       footerReservesBand(
         settings({
           showFooter: true,
           scrolled: false,
-          showStickyProgressBar: true,
           showRemainingTime: false,
           showRemainingPages: false,
           showProgressInfo: false,
@@ -119,6 +112,6 @@ describe('footerReservesBand', () => {
           showCurrentBatteryStatus: false,
         }),
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 });

@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { IoIosList } from 'react-icons/io';
+import { RiListUnordered } from 'react-icons/ri';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useBookDataStore } from '@/store/bookDataStore';
@@ -56,7 +56,7 @@ const TOCFloatingButton: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       onClick={handleOpenTOC}
       className='absolute bottom-24 right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-base-100/90 text-base-content shadow-lg backdrop-blur-sm transition-transform active:scale-95 sm:bottom-16'
     >
-      <IoIosList size={24} />
+      <RiListUnordered size={24} />
     </button>
   );
 };

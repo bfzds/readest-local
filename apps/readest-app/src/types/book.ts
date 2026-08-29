@@ -324,7 +324,6 @@ export interface ViewConfig {
   showRemainingTime: boolean;
   showRemainingPages: boolean;
   showProgressInfo: boolean;
-  showStickyProgressBar: boolean;
   showCurrentTime: boolean;
   use24HourClock: boolean;
   showCurrentBatteryStatus: boolean;

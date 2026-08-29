@@ -20,7 +20,7 @@ describe('LibraryFloatingButton', () => {
   it('sits above the search button on the same vertical line', () => {
     const { container } = render(<LibraryFloatingButton onGoToLibrary={vi.fn()} />);
     const button = container.querySelector('button');
-    expect(button?.className).toContain('bottom-56');
+    expect(button?.className).toContain('bottom-72');
     expect(button?.className).toContain('right-4');
     expect(button?.className).toContain('w-12');
   });

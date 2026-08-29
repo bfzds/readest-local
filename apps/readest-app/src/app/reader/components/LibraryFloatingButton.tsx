@@ -1,5 +1,5 @@
 import React from 'react';
-import { VscLibrary } from 'react-icons/vsc';
+import { RiBook2Line } from 'react-icons/ri';
 import { useTranslation } from '@/hooks/useTranslation';
 
 interface LibraryFloatingButtonProps {
@@ -15,9 +15,9 @@ const LibraryFloatingButton: React.FC<LibraryFloatingButtonProps> = ({ onGoToLib
       aria-label={_('Back to library')}
       title={_('Back to library')}
       onClick={onGoToLibrary}
-      className='absolute bottom-56 right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-base-100/90 text-base-content shadow-lg backdrop-blur-sm transition-transform active:scale-95 sm:bottom-48'
+      className='absolute bottom-72 right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-base-100/90 text-base-content shadow-lg backdrop-blur-sm transition-transform active:scale-95 sm:bottom-64'
     >
-      <VscLibrary size={20} className='fill-base-content' />
+      <RiBook2Line size={20} />
     </button>
   );
 };

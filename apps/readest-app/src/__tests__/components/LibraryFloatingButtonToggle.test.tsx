@@ -72,6 +72,7 @@ vi.mock('@/app/reader/components/ReaderNavFloatingButtons', () => ({
   default: () => null,
 }));
 vi.mock('@/app/reader/components/SearchFloatingButton', () => ({ default: () => null }));
+vi.mock('@/app/reader/components/FloatingSpeakButton', () => ({ default: () => null }));
 vi.mock('@/app/reader/components/TOCFloatingButton', () => ({ default: () => null }));
 vi.mock('@/app/reader/components/BookmarkPullDown', () => ({ default: () => null }));
 vi.mock('@/app/reader/components/annotator/Annotator', () => ({ default: () => null }));

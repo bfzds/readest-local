@@ -4,7 +4,6 @@ import { render, cleanup, screen } from '@testing-library/react';
 const defaultViewSettings = () => ({
   vertical: false,
   scrolled: false,
-  showStickyProgressBar: false,
   marginBottomPx: 20,
   showRemainingTime: false,
   showRemainingPages: false,

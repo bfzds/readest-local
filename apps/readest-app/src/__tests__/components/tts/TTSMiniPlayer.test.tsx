@@ -248,16 +248,24 @@ describe('TTSMiniPlayer', () => {
     expect(props.onExpand).toHaveBeenCalled();
   });
 
-  test('rides above the bottom bar while it is up for this book', () => {
+  test('rides above the bottom bar while it is up for this book (mobile layout)', () => {
+    // The desktop hover toolbar is gone; the bar above which the card stacks
+    // only exists in the mobile/narrow layout, so emulate a narrow window.
+    Object.defineProperty(window, 'innerWidth', { value: 500, configurable: true });
+    Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
     readerState.hoveredBookKey = 'b1';
     render(<TTSMiniPlayer {...makeProps()} />);
     const card = screen.getByRole('status');
-    // Desktop footer bar (52px) + 8px gap; the card stays interactive.
-    expect(card.style.bottom).toBe('60px');
+    // Mobile nav bar (64px) + 8px gap; the card stays interactive.
+    expect(card.style.bottom).toBe('72px');
     expect(card.className).not.toContain('pointer-events-none');
+    Object.defineProperty(window, 'innerWidth', { value: 1024, configurable: true });
+    Object.defineProperty(window, 'innerHeight', { value: 768, configurable: true });
   });
 
   test('rides above an expanded action panel while one is open', () => {
+    Object.defineProperty(window, 'innerWidth', { value: 500, configurable: true });
+    Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
     readerState.hoveredBookKey = 'b1';
     readerState.bottomBarTab = 'font';
     const cell = document.createElement('div');
@@ -275,6 +283,8 @@ describe('TTSMiniPlayer', () => {
       expect(screen.getByRole('status').style.bottom).toBe('208px');
     } finally {
       cell.remove();
+      Object.defineProperty(window, 'innerWidth', { value: 1024, configurable: true });
+      Object.defineProperty(window, 'innerHeight', { value: 768, configurable: true });
     }
   });
 

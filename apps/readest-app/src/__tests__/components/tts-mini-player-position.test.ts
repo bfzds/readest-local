@@ -90,22 +90,6 @@ describe('getTTSMiniPlayerBottomOffset', () => {
     ).toBe(16);
   });
 
-  it('keeps the footer offset for the sticky progress bar even without widgets', () => {
-    expect(
-      getTTSMiniPlayerBottomOffset(
-        settings({
-          showStickyProgressBar: true,
-          showRemainingTime: false,
-          showRemainingPages: false,
-          showProgressInfo: false,
-          showCurrentTime: false,
-          showCurrentBatteryStatus: false,
-        }),
-        { barVisible: false },
-      ),
-    ).toBe(DEFAULT_BOOK_LAYOUT.marginBottomPx);
-  });
-
   it('falls back to 16px in vertical writing mode (footer is a side column)', () => {
     expect(getTTSMiniPlayerBottomOffset(settings({ vertical: true }), { barVisible: false })).toBe(
       16,
