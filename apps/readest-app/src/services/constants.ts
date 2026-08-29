@@ -192,6 +192,7 @@ export const DEFAULT_SYSTEM_SETTINGS: Partial<SystemSettings> = {
   discordRichPresenceEnabled: false,
   libraryViewMode: 'grid',
   librarySortBy: LibrarySortByType.Updated,
+  libraryCustomGroups: [],
   librarySortAscending: false,
   librarySortByAuto: true,
   libraryThenSortBy: 'none',

@@ -19,6 +19,7 @@ import { debounce } from '@/utils/debounce';
 import { DEFAULT_NEARBY_WORDS } from '@/utils/searchConfig';
 import { clearLibrarySearchHistory, loadLibrarySearchHistory } from './utils/searchHistory';
 import type { LibrarySearchTarget } from '@/types/book';
+import { md5Fingerprint } from '@/utils/md5';
 import { navigateToLibrary, navigateToReader } from '@/utils/nav';
 import { getBookWithUpdatedMetadata, listFormater } from '@/utils/book';
 import { startReaderWindowWatchdog } from '@/utils/readerWindowWatchdog';
@@ -722,6 +723,12 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       const settings = await appService.loadSettings();
       setSettings(settings);
 
+      // Re-hydrate persisted (possibly still-empty) groups so they appear on
+      // the shelf even before any book is added to them.
+      for (const groupName of settings.libraryCustomGroups ?? []) {
+        useLibraryStore.getState().addPersistentGroup(groupName);
+      }
+
       // Re-grant fs_scope / asset_protocol_scope for every external
       // library folder the user registered in a previous session, so
       // in-place books under those roots are immediately readable
@@ -785,6 +792,15 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   useEffect(() => {
     const group = searchParams?.get('group') || '';
     const groupName = getGroupName(group);
+    if (groupName) {
+      console.log('[nav] group=', group, '->', groupName);
+    } else {
+      const match = useLibraryStore
+        .getState()
+        .library.filter((b) => !b.deletedAt && b.groupName && md5Fingerprint(b.groupName) === group)
+        .map((b) => b.groupName);
+      console.log('[nav] group=', group, 'MISS name=undefined; bookMatches=', match);
+    }
     setCurrentGroupPath(groupName);
   }, [libraryBooks, searchParams, getGroupName]);
 
@@ -1672,6 +1688,10 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     handleLibraryNavigation(group);
   };
 
+  const fromGroupName = currentVirtualGroup
+    ? (searchParams?.get('from') && getGroupName(searchParams.get('from') ?? '')) || ''
+    : '';
+
   if (!appService || !insets || checkOpenWithBooks || checkLastOpenBooks) {
     return <div className='full-height bg-base-200' />;
   }
@@ -1783,6 +1803,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
             <button
               onClick={() => handleNavigateToPath(undefined)}
               className='hover:bg-base-300 text-base-content/85 rounded px-2 py-1'
+              data-drop-target-group=''
             >
               {_('All')}
             </button>
@@ -1792,11 +1813,17 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
                 <React.Fragment key={index}>
                   <MdChevronRight size={iconSize} className='text-neutral-content' />
                   {isLast ? (
-                    <span className='truncate rounded px-2 py-1'>{crumb.name}</span>
+                    <span
+                      className='truncate rounded px-2 py-1'
+                      data-drop-target-group={crumb.path}
+                    >
+                      {crumb.name}
+                    </span>
                   ) : (
                     <button
                       onClick={() => handleNavigateToPath(crumb.path)}
                       className='hover:bg-base-300 text-base-content/85 truncate rounded px-2 py-1'
+                      data-drop-target-group={crumb.path}
                     >
                       {crumb.name}
                     </button>
@@ -1807,7 +1834,15 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           </div>
         </div>
       )}
-      {currentVirtualGroup && <GroupHeader groupName={currentVirtualGroup.groupName} />}
+      {currentVirtualGroup && (
+        <GroupHeader
+          groupName={
+            fromGroupName
+              ? `${fromGroupName} / ${currentVirtualGroup.groupName}`
+              : currentVirtualGroup.groupName
+          }
+        />
+      )}
       {showBookshelf &&
         (libraryBooks.some((book) => !book.deletedAt) ? (
           <div aria-label={_('Your Bookshelf')} className='flex min-h-0 flex-grow flex-col'>

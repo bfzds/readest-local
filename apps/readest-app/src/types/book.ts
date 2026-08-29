@@ -132,6 +132,9 @@ export interface Book {
   progress?: [number, number]; // Add progress field: [current, total], 1-based page number
   readingStatus?: ReadingStatus;
   readingStatusUpdatedAt?: number; // ms; bumped only when readingStatus changes
+  // Manual sort position on the shelf (undefined until the user drags the
+  // book to reorder it; the Manual sort dimension groups unset books last).
+  shelfIndex?: number;
   primaryLanguage?: string;
   // The book carries its own recorded narration (EPUB 3 Media Overlays), so the
   // library can badge it without opening the file. Derived from the file on

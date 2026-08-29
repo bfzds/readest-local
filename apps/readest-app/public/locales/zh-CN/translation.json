@@ -2013,5 +2013,11 @@
   "Used by {{action}}": "已被 {{action}} 使用",
   "Record Shortcuts": "录制快捷键",
   "Click Edit, then press the new key combination. Esc cancels, Backspace clears.": "点击编辑，然后按下新的组合键。Esc 取消，Backspace 清除。",
+  "Cannot move here: same or nested group": "不能移到这里：本身或子分组",
+  "Manual": "手动排序",
+  "Group created: {{name}}": "已创建分组：{{name}}",
+  "Delete Group": "删除分组",
+  "This will delete {{count}} book(s) in this group.": "将删除该分组中的 {{count}} 本书。",
+  "This is an empty group and will be removed.": "这是空分组，将被移除。",
   "Shared with {{action}}": "与 {{action}} 共用"
 }

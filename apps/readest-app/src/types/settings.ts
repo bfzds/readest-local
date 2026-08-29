@@ -19,6 +19,7 @@ export const LibrarySortByType = {
   Published: 'published',
   Progress: 'progress',
   TimeRemaining: 'timeRemaining',
+  Manual: 'manual',
 } as const;
 
 export type LibrarySortByType = (typeof LibrarySortByType)[keyof typeof LibrarySortByType];
@@ -426,6 +427,12 @@ export interface SystemSettings {
   /** Sort order of the secondary ("Then by") key, independent of `librarySortAscending` (#5119). */
   libraryThenSortAscending: boolean;
   libraryGroupBy: LibraryGroupByType;
+  /**
+   * Explicitly created but still-empty groups (full paths), persisted so they
+   * survive restarts before any book is added. Re-hydrated into the store on
+   * init. Absent = none.
+   */
+  libraryCustomGroups?: string[];
   /**
    * Per-folder-group "group by" memory. Keyed by the current folder group's
    * path (as returned by libraryStore.getGroupName); `''` is the top-level

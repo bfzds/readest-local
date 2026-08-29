@@ -122,5 +122,11 @@
   "Used by {{action}}": "Used by {{action}}",
   "Record Shortcuts": "Record Shortcuts",
   "Click Edit, then press the new key combination. Esc cancels, Backspace clears.": "Click Edit, then press the new key combination. Esc cancels, Backspace clears.",
+  "Cannot move here: same or nested group": "Cannot move here: same or nested group",
+  "Manual": "Manual",
+  "Group created: {{name}}": "Group created: {{name}}",
+  "Delete Group": "Delete Group",
+  "This will delete {{count}} book(s) in this group.": "This will delete {{count}} book(s) in this group.",
+  "This is an empty group and will be removed.": "This is an empty group and will be removed.",
   "Shared with {{action}}": "Shared with {{action}}"
 }

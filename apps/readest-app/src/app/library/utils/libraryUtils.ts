@@ -328,6 +328,14 @@ const compareBookByKey = (a: Book, b: Book, sortBy: string, uiLanguage: string):
     }
     case LibrarySortByType.Updated:
       return new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+    case LibrarySortByType.Manual: {
+      const aIndex = a.shelfIndex ?? Number.MAX_SAFE_INTEGER;
+      const bIndex = b.shelfIndex ?? Number.MAX_SAFE_INTEGER;
+      if (aIndex !== bIndex) return aIndex - bIndex;
+      const aTitle = formatTitle(a.title);
+      const bTitle = formatTitle(b.title);
+      return aTitle.localeCompare(bTitle, uiLanguage || navigator.language);
+    }
     case LibrarySortByType.Created:
       return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
     case LibrarySortByType.Format:
@@ -778,6 +786,16 @@ export const getGroupSortValue = (
       // Return the most recent updatedAt
       return Math.max(...books.map((b) => b.updatedAt));
 
+    case LibrarySortByType.Manual: {
+      // A group sorts by its earliest manually-placed book; groups with no
+      // manual index sort last.
+      const minIndex = Math.min(
+        ...books.map((b) => b.shelfIndex ?? Number.MAX_SAFE_INTEGER),
+        Number.MAX_SAFE_INTEGER,
+      );
+      return minIndex === Number.MAX_SAFE_INTEGER ? 0 : minIndex;
+    }
+
     case LibrarySortByType.Created:
       // Return the most recent createdAt
       return Math.max(...books.map((b) => b.createdAt));
@@ -984,4 +1002,90 @@ export const getBookContextMenuItemIds = (book: Book): BookContextMenuItemId[] =
   ids.push('showDetails', 'showInFinder');
   ids.push('delete');
   return ids;
+};
+
+/** A drag source on the library shelf: a single book or a whole group subtree. */
+export type GroupSource = { kind: 'book'; hash: string } | { kind: 'group'; groupName: string };
+
+/**
+ * Move a book — or an entire group subtree — into `targetGroupName`, rewriting
+ * `groupId`/`groupName` (and bumping `updatedAt`) for every affected book.
+ * `targetGroupName === undefined` moves to the top level ("All"): the book is
+ * ungrouped, or the group is kept intact as a top-level folder (not unpacked).
+ * Returns the same array reference when nothing changes (no-op / cycle) so
+ * callers can skip persistence and keep React memo comparisons intact.
+ */
+export const reassignToGroup = (
+  library: Book[],
+  source: GroupSource,
+  targetGroupName?: string,
+): { updated: Book[]; changed: boolean } => {
+  const rename = (book: Book, nextGroupName: string | undefined): Book => ({
+    ...book,
+    groupName: nextGroupName,
+    groupId: nextGroupName ? md5Fingerprint(nextGroupName) : undefined,
+    updatedAt: Date.now(),
+  });
+
+  if (source.kind === 'book') {
+    const book = library.find((b) => b.hash === source.hash);
+    if (!book || book.groupName === targetGroupName) {
+      return { updated: library, changed: false };
+    }
+    return {
+      updated: library.map((b) => (b.hash === source.hash ? rename(b, targetGroupName) : b)),
+      changed: true,
+    };
+  }
+
+  const src = source.groupName;
+  if (!targetGroupName) {
+    // Top level ("All"): hoist the dragged group to a top-level folder — the
+    // group itself is preserved, its members keep their relative structure.
+    if (!src.includes('/')) {
+      // Already a top-level group.
+      return { updated: library, changed: false };
+    }
+    const topName = src.slice(src.lastIndexOf('/') + 1);
+    const hasMembers = library.some(
+      (b) => b.groupName === src || b.groupName?.startsWith(src + '/'),
+    );
+    if (!hasMembers) return { updated: library, changed: false };
+    return {
+      updated: library.map((book) => {
+        if (book.groupName === src) return rename(book, topName);
+        if (book.groupName?.startsWith(src + '/')) {
+          // A/C/X -> C/X (drop the ancestor prefix).
+          return rename(book, topName + book.groupName.slice(src.length));
+        }
+        return book;
+      }),
+      changed: true,
+    };
+  }
+
+  const dst = targetGroupName;
+  // Moving a group into itself, into its own descendant (cycle), or into its
+  // own ancestor (a no-op rename) is rejected.
+  if (src === dst || dst.startsWith(src + '/') || src.startsWith(dst + '/')) {
+    return { updated: library, changed: false };
+  }
+  const hasMembers = library.some((b) => b.groupName === src || b.groupName?.startsWith(src + '/'));
+  if (!hasMembers) return { updated: library, changed: false };
+
+  return {
+    updated: library.map((book) => {
+      if (book.groupName === src) {
+        // Keep the dragged group as its own nested folder under the target
+        // (A dragged into B becomes B/A), rather than scattering its members.
+        return rename(book, `${dst}/${src}`);
+      }
+      if (book.groupName?.startsWith(src + '/')) {
+        // Preserve the relative path under the source, e.g. A/B/C -> B/A/B/C.
+        return rename(book, `${dst}/${src}${book.groupName.slice(src.length)}`);
+      }
+      return book;
+    }),
+    changed: true,
+  };
 };

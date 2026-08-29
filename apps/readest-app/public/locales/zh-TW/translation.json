@@ -1994,5 +1994,11 @@
   "Used by {{action}}": "已被 {{action}} 使用",
   "Record Shortcuts": "錄製快捷鍵",
   "Click Edit, then press the new key combination. Esc cancels, Backspace clears.": "點擊編輯，然後按下新的組合鍵。Esc 取消，Backspace 清除。",
+  "Cannot move here: same or nested group": "無法移至這裡：本身或子群組",
+  "Manual": "手動排序",
+  "Group created: {{name}}": "已建立群組：{{name}}",
+  "Delete Group": "刪除群組",
+  "This will delete {{count}} book(s) in this group.": "將刪除該群組中的 {{count}} 本書。",
+  "This is an empty group and will be removed.": "這是空群組，將被移除。",
   "Shared with {{action}}": "與 {{action}} 共用"
 }

@@ -14,6 +14,7 @@ interface LibraryState {
   currentBookshelf: Book[];
   selectedBooks: Set<string>; // hashes for books, ids for groups
   groups: Record<string, string>;
+  persistentGroupNames: string[];
   hashIndex: Map<string, number>; // hash -> array index for O(1) lookup
   visibleLibrary: Book[];
   setIsSyncing: (syncing: boolean) => void;
@@ -45,6 +46,8 @@ interface LibraryState {
   refreshGroups: () => void;
   rebuildHashIndex: () => void;
   addGroup: (name: string) => BookGroupType;
+  addPersistentGroup: (name: string) => BookGroupType;
+  removePersistentGroups: (paths: string[]) => void;
   getGroups: () => BookGroupType[];
   getGroupId: (path: string) => string | undefined;
   getGroupName: (id: string) => string | undefined;
@@ -68,6 +71,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   currentBookshelf: [],
   selectedBooks: new Set(),
   groups: {},
+  persistentGroupNames: [],
   hashIndex: new Map(),
   visibleLibrary: [],
   checkOpenWithBooks: isTauriAppPlatform(),
@@ -217,6 +221,16 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       }
     });
 
+    // Keep explicitly-created (possibly still-empty) groups alive no matter
+    // how often the map is rebuilt from books.
+    for (const name of get().persistentGroupNames ?? []) {
+      let prefix = '';
+      for (const segment of name.split('/')) {
+        prefix = prefix ? `${prefix}/${segment}` : segment;
+        groups[md5Fingerprint(prefix)] = prefix;
+      }
+    }
+
     set({ groups });
   },
 
@@ -229,9 +243,45 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const id = md5Fingerprint(trimmedName);
     const { groups } = get();
 
-    set({ groups: { ...groups, [id]: trimmedName } });
+    // Register every ancestor prefix too (e.g. "A/B" also registers "A"), so
+    // nested groups resolve through getGroupName even before any book carries
+    // that path. Mirrors what refreshGroups does for book-derived groups.
+    const nextGroups = { ...groups, [id]: trimmedName };
+    let slashIndex = trimmedName.indexOf('/');
+    while (slashIndex > 0) {
+      const prefix = trimmedName.slice(0, slashIndex);
+      const prefixId = md5Fingerprint(prefix);
+      if (!nextGroups[prefixId]) nextGroups[prefixId] = prefix;
+      slashIndex = trimmedName.indexOf('/', slashIndex + 1);
+    }
+
+    set({ groups: nextGroups });
 
     return { id, name: trimmedName };
+  },
+
+  addPersistentGroup: (name: string) => {
+    const result = get().addGroup(name);
+    const names = get().persistentGroupNames ?? [];
+    if (!names.includes(result.name)) {
+      set({ persistentGroupNames: [...names, result.name] });
+    }
+    return result;
+  },
+
+  removePersistentGroups: (paths: string[]) => {
+    const { persistentGroupNames, groups } = get();
+    const victim = paths.map((p) => p.trim()).filter(Boolean);
+    if (victim.length === 0) return;
+    const nextNames = (persistentGroupNames ?? []).filter(
+      (n) => !victim.includes(n) && !victim.some((p) => n.startsWith(p + '/')),
+    );
+    const nextGroups: Record<string, string> = {};
+    for (const [id, name] of Object.entries(groups)) {
+      const removed = victim.includes(name) || victim.some((p) => name.startsWith(p + '/'));
+      if (!removed) nextGroups[id] = name;
+    }
+    set({ persistentGroupNames: nextNames, groups: nextGroups });
   },
 
   getGroups: () => {
@@ -253,7 +303,16 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   getGroupName: (id: string) => {
-    return get().groups[id];
+    const direct = get().groups[id];
+    if (direct) return direct;
+    // Fallback: the persisted group map can miss a nested group (e.g. hash
+    // drift or a map built before that path was registered). Re-derive from a
+    // book that actually carries the same path, keyed by the same fingerprint.
+    const { library } = get();
+    const match = library.find(
+      (b) => !b.deletedAt && b.groupName && md5Fingerprint(b.groupName) === id,
+    );
+    return match?.groupName ?? undefined;
   },
 
   getParentPath: (path: string) => {

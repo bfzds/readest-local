@@ -414,6 +414,52 @@ foliate-fxl {
   display: block;
 }
 
+/* Shelf drag-and-drop target: the group cell under the cursor while dragging
+   a book or another group onto it (see Bookshelf pointer handlers). */
+.drag-over-group {
+  outline: 2px solid var(--p);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+
+/* Self-drawn drag ghost that follows the pointer during a shelf drag: a mini
+   cover + title preview of the dragged book/group. */
+.shelf-drag-ghost {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--base-100, #fff);
+  border: 1px solid var(--border-base-content, rgba(128, 128, 128, 0.35));
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+  opacity: 0.96;
+}
+
+.shelf-drag-ghost-cover {
+  flex-shrink: 0;
+  width: 44px;
+  aspect-ratio: 28 / 41;
+  overflow: hidden;
+  border-radius: 3px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+.shelf-drag-ghost-title {
+  min-width: 0;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--base-content, #1f2937);
+}
+
 .touch-target {
   position: relative;
 }
