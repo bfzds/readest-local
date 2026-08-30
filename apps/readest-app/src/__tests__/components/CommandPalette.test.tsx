@@ -1,15 +1,13 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import CommandPalette from '@/components/command-palette/CommandPalette';
 
 vi.mock('@/hooks/useTranslation', () => ({
   useTranslation: () => (key: string) => key,
 }));
 
-const { mockClose } = vi.hoisted(() => ({ mockClose: vi.fn() }));
-
-vi.mock('@/components/command-palette/CommandPaletteProvider', () => ({
-  useCommandPalette: () => ({
+const { mockClose, mockUseCommandPalette, paletteFactory } = vi.hoisted(() => {
+  const paletteFactory = () => ({
     isOpen: true,
     close: mockClose,
     setQuery: vi.fn(),
@@ -18,11 +16,26 @@ vi.mock('@/components/command-palette/CommandPaletteProvider', () => ({
     groupedResults: { settings: [], actions: [], navigation: [] },
     recentItems: [],
     executeCommand: vi.fn(),
-  }),
+  });
+  return { mockClose: vi.fn(), mockUseCommandPalette: vi.fn(paletteFactory), paletteFactory };
+});
+
+vi.mock('@/components/command-palette/CommandPaletteProvider', () => ({
+  useCommandPalette: mockUseCommandPalette,
 }));
 
 describe('CommandPalette', () => {
+  // jsdom 不实现 scrollIntoView；命令面板选中项滚动依赖它。
+  const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+  beforeAll(() => {
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+  });
+  afterAll(() => {
+    HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+  });
   afterEach(() => {
+    mockUseCommandPalette.mockClear();
+    mockUseCommandPalette.mockImplementation(paletteFactory as never);
     cleanup();
   });
 
@@ -65,5 +78,50 @@ describe('CommandPalette', () => {
     const dialog = screen.getByRole('dialog');
     fireEvent.keyDown(dialog, { key: 'w', ctrlKey: true });
     expect(mockClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('跨类交错命中时按真实扁平下标高亮并执行（C-9）', () => {
+    // rotated results: 扁平顺序 [a1, b1, a2] 与分类连续布局 (settings=[a1,a2]，actions=[b1])
+    // 不一致 —— 旧实现 settings 第二项会落到下标 1（b1）。
+    const executeCommand = vi.fn();
+    const a1 = { id: 'a1', labelKey: 'A1', category: 'settings' } as never;
+    const a2 = { id: 'a2', labelKey: 'A2', category: 'settings' } as never;
+    const b1 = { id: 'b1', labelKey: 'B1', category: 'actions' } as never;
+    const makeResult = (item: never) => ({
+      item,
+      score: 0,
+      positions: new Set<number>(),
+      highlightIndices: new Set<number>(),
+    });
+    mockUseCommandPalette.mockImplementation(() => ({
+      isOpen: true,
+      close: mockClose,
+      setQuery: vi.fn(),
+      query: 'x',
+      results: [makeResult(a1), makeResult(b1), makeResult(a2)],
+      groupedResults: {
+        settings: [makeResult(a1), makeResult(a2)],
+        actions: [makeResult(b1)],
+        navigation: [],
+      },
+      recentItems: [],
+      executeCommand,
+    }));
+
+    render(<CommandPalette />);
+    const dialog = screen.getByRole('dialog');
+    const optionOf = (text: string): HTMLElement =>
+      screen.getByText(text).closest<HTMLElement>('[role="option"]')!;
+    // 箭头导航到扁平下标 2：新旧实现 selectedIndex 相同，但展示层高亮必须落在
+    // a2（真实下标 2）。旧实现用"分类起始索引+类内偏移"会高亮成 b1（下标 1）。
+    fireEvent.keyDown(dialog, { key: 'ArrowDown' });
+    fireEvent.keyDown(dialog, { key: 'ArrowDown' });
+    const a2Option = optionOf('A2');
+    expect(a2Option.getAttribute('data-selected')).toBe('true');
+    expect(optionOf('B1').getAttribute('data-selected')).not.toBe('true');
+
+    // Enter 执行扁平下标 2 的命令 = a2，非交错后的 b1
+    fireEvent.keyDown(dialog, { key: 'Enter' });
+    expect(executeCommand).toHaveBeenCalledWith(a2);
   });
 });

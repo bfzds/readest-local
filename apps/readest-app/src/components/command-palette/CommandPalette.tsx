@@ -219,33 +219,41 @@ const CommandPalette: React.FC = () => {
 
           {query.trim() && flattenedResults.length > 0 && (
             <>
-              {orderedCategories.map((category) => {
-                const categoryResults = groupedResults[category];
-                if (categoryResults.length === 0) return null;
-
-                const startIndex = flattenedResults.findIndex((r) => r.item.category === category);
-
-                return (
-                  <div key={category} className='mb-1'>
-                    <div className='text-base-content/50 px-3 py-1.5 text-xs font-medium uppercase'>
-                      {getCategoryLabel(_, category)}
-                    </div>
-                    {categoryResults.map((result, catIndex) => {
-                      const globalIndex = startIndex + catIndex;
-                      return (
-                        <CommandResultItem
-                          key={result.item.id}
-                          result={result}
-                          isSelected={globalIndex === selectedIndex}
-                          onClick={() => handleItemClick(result)}
-                          onMouseEnter={() => setSelectedIndex(globalIndex)}
-                          _={_}
-                        />
-                      );
-                    })}
-                  </div>
+              {/* C-9：commandId → 全局索引。跨类交错命中时不再用"分类起始索引 +
+                   类内偏移"推导（会被交错顺序打乱），改由扁平结果的真实下标决定
+                   高亮与 Enter 执行一致性。 */}
+              {(() => {
+                const indexByCommandId = new Map(
+                  flattenedResults.map((r, i) => [r.item.id, i] as const),
                 );
-              })}
+                return orderedCategories.map((category) => {
+                  const categoryResults = groupedResults[category];
+                  if (categoryResults.length === 0) return null;
+
+                  return (
+                    <div key={category} className='mb-1'>
+                      <div className='text-base-content/50 px-3 py-1.5 text-xs font-medium uppercase'>
+                        {getCategoryLabel(_, category)}
+                      </div>
+                      {categoryResults.map((result) => {
+                        const globalIndex = indexByCommandId.get(result.item.id);
+                        return (
+                          <CommandResultItem
+                            key={result.item.id}
+                            result={result}
+                            isSelected={globalIndex != null && globalIndex === selectedIndex}
+                            onClick={() => handleItemClick(result)}
+                            onMouseEnter={() => {
+                              if (globalIndex != null) setSelectedIndex(globalIndex);
+                            }}
+                            _={_}
+                          />
+                        );
+                      })}
+                    </div>
+                  );
+                });
+              })()}
             </>
           )}
         </div>
