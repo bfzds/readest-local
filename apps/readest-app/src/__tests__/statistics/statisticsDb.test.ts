@@ -257,3 +257,63 @@ describe('StatisticsDb.open', () => {
     await stats.close();
   });
 });
+
+describe('prune retained pages (B-9)', () => {
+  let db: DatabaseService;
+  beforeEach(async () => {
+    db = await freshStatsDb();
+  });
+
+  it('total_read_pages 不回缩，同页出现在裁剪与保留区只计一次', async () => {
+    const stats = StatisticsDb.from(db);
+    await db.execute(
+      `INSERT INTO book (title, authors, md5, total_read_time, total_read_pages) VALUES (?,'','md5-b9',0,0)`,
+      ['B9'],
+    );
+    const row = await db.select<{ id: number }>(`SELECT id FROM book WHERE md5 = 'md5-b9'`);
+    const idBook = row[0]!.id;
+
+    // 共 12000 个事件：最老 2000 个含独有的页 999（绝不会出现在保留区），
+    // 其余古老事件页为 1..20；较新 10000 个为页 1..100 循环 —— 保证 prune 后
+    // 保留区覆盖 1..100，被删区净增仅为 {999}。
+    for (let t = 0; t < 12000; t++) {
+      const page = t < 2000 ? (t % 20 === 0 ? 999 : (t % 20) + 1) : (t % 100) + 1;
+      await db.execute(
+        `INSERT INTO page_stat_data (id_book, page, start_time, duration, total_pages) VALUES (?,?,?,1000,100)`,
+        [idBook, page, t * 1000],
+      );
+    }
+
+    await stats.prunePageEvents(idBook);
+    await stats.recomputeBookTotals(idBook);
+
+    const totals = await db.select<{ total_read_pages: number }>(
+      `SELECT total_read_pages FROM book WHERE id = ?`,
+      [idBook],
+    );
+    // 历史唯一页 = 保留区 1..100（100 页） + 被删区净增 999（1 页） = 101。
+    // 若只按现存行 COUNT(DISTINCT page) 会回缩成 100。
+    expect(totals[0]!.total_read_pages).toBe(101);
+  });
+
+  it('retained_pages 默认 0，未超限的库不累积', async () => {
+    const stats = StatisticsDb.from(db);
+    await db.execute(
+      `INSERT INTO book (title, authors, md5, total_read_time, total_read_pages) VALUES (?,'','md5-b9b',0,0)`,
+      ['B9b'],
+    );
+    const row = await db.select<{ id: number }>(`SELECT id FROM book WHERE md5 = 'md5-b9b'`);
+    const idBook = row[0]!.id;
+    await db.execute(
+      `INSERT INTO page_stat_data (id_book, page, start_time, duration, total_pages) VALUES (?,1,0,1000,10)`,
+      [idBook],
+    );
+    await stats.prunePageEvents(idBook);
+    await stats.recomputeBookTotals(idBook);
+    const totals = await db.select<{ total_read_pages: number; retained_pages: number }>(
+      `SELECT total_read_pages, retained_pages FROM book WHERE id = ?`,
+      [idBook],
+    );
+    expect(totals[0]).toMatchObject({ total_read_pages: 1, retained_pages: 0 });
+  });
+});

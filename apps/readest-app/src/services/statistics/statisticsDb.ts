@@ -161,6 +161,22 @@ export class StatisticsDb {
       `UPDATE book SET retained_read_time = retained_read_time + COALESCE(?, 0) WHERE id = ?`,
       [archived[0]?.sumDuration ?? 0, idBook],
     );
+    // B-9：被裁剪事件里的页面（去重后）也可能在保留区仍出现 —— 只累计
+    // "被删页集合 − 保留区还在的页" 的净新增页数，避免重复累计与回缩。
+    await this.db.execute(
+      `UPDATE book SET retained_pages = retained_pages + (
+         SELECT COUNT(DISTINCT deleted.page) FROM (
+           SELECT page FROM page_stat_data
+           WHERE id_book = ? ORDER BY start_time DESC LIMIT -1 OFFSET ?
+         ) deleted
+         WHERE deleted.page NOT IN (
+           SELECT page FROM page_stat_data
+           WHERE id_book = ? ORDER BY start_time DESC LIMIT ?
+         )
+       )
+       WHERE id = ?`,
+      [idBook, keep, idBook, keep, idBook],
+    );
     await this.db.execute(
       'DELETE FROM page_stat_data WHERE id_book = ? AND rowid NOT IN (SELECT rowid FROM page_stat_data WHERE id_book = ? ORDER BY start_time DESC LIMIT ?)',
       [idBook, idBook, keep],
@@ -171,7 +187,7 @@ export class StatisticsDb {
     await this.db.execute(
       `UPDATE book SET
          total_read_time  = COALESCE(retained_read_time, 0) + COALESCE((SELECT SUM(duration) FROM page_stat_data WHERE id_book = ?), 0),
-         total_read_pages = COALESCE((SELECT COUNT(DISTINCT page) FROM page_stat_data WHERE id_book = ?), 0),
+         total_read_pages = COALESCE(retained_pages, 0) + COALESCE((SELECT COUNT(DISTINCT page) FROM page_stat_data WHERE id_book = ?), 0),
          last_open        = COALESCE((SELECT MAX(start_time + duration) FROM page_stat_data WHERE id_book = ?), last_open),
          pages            = COALESCE((SELECT total_pages FROM page_stat_data WHERE id_book = ? ORDER BY start_time DESC LIMIT 1), pages)
        WHERE id = ?`,

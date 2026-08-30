@@ -152,6 +152,15 @@ const migrations: Record<SchemaType, MigrationEntry[]> = {
         ALTER TABLE book ADD COLUMN retained_read_time integer NOT NULL DEFAULT 0;
       `,
     },
+    {
+      // B-9：total_read_pages 同样会在 prune 后回缩 —— recompute 只对现存行
+      // 做 COUNT(DISTINCT page)，被裁剪事件里的页数丢失。retained_pages 保存
+      // "已裁剪页集合 - 保留区仍在的页"的历史唯一页累计。
+      name: '2026083001_statistics_retained_pages',
+      sql: `
+        ALTER TABLE book ADD COLUMN retained_pages integer NOT NULL DEFAULT 0;
+      `,
+    },
   ],
   // Per-book search index/cache: one search.db in each book's directory
   // (beside cover.png), holding extracted section text so library full-text
