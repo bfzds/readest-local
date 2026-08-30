@@ -340,6 +340,11 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
   const onLoad = (event: Event) => {
     const detail = (event as CustomEvent).detail;
     const { doc, index } = detail;
+    // C-6：同一 section 文档重复 load 不会重复挂监听 —— WeakSet 弱引用随
+    // doc GC 自动回收，section 重复 preload/重开时不累积 touch/pointer/
+    // selectionchange 处理器。
+    if (!doc || attachedSectionDocsRef.current.has(doc)) return;
+    attachedSectionDocsRef.current.add(doc);
 
     const handleTouchmove = (ev: TouchEvent) => {
       // Available on iOS, on Android not fired
@@ -572,6 +577,8 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
   }, [isSideBarVisible, handleDismissPopup]);
 
   const lastRelocateCfiRef = useRef<string | null>(null);
+  // C-6：记录已挂过监听器的 section 文档，防重复 load 累积监听。
+  const attachedSectionDocsRef = useRef(new WeakSet<Document>());
   const onRelocate = (event: Event) => {
     // A page turn or scroll moves the anchor out from under any open popup
     // (including the note popup), so dismiss instead of leaving it floating

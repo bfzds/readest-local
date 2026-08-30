@@ -297,6 +297,17 @@ const ReadingRuler: React.FC<ReadingRulerProps> = ({
     [envConfig, bookKey],
   );
 
+  // C-12：卸载即 flush 最后位置，避免 10s 节流内拖动后卸载丢位置。
+  useEffect(() => {
+    return () => {
+      const pos = currentPositionRef.current;
+      if (pos != null) {
+        saveViewSettings(envConfig, bookKey, 'readingRulerPosition', pos, false, false);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [envConfig, bookKey]);
+
   const setRulerPosition = useCallback(
     (nextPosition: number, animate = false) => {
       if (animationTimeoutRef.current) {

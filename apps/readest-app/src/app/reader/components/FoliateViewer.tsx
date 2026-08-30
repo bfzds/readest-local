@@ -610,6 +610,7 @@ const FoliateViewer: React.FC<{
 
     setTimeout(() => setLoading(true), 200);
 
+    let cleanupViewListeners: (() => void) | null = null;
     const openBook = async () => {
       const t0 = perfMark('view', 'start');
       console.log('Opening book', bookKey);
@@ -644,7 +645,8 @@ const FoliateViewer: React.FC<{
 
       const { book } = view;
 
-      book.transformTarget?.addEventListener('load', async (event: Event) => {
+      // P-7：具名 handler + cleanup，重复打开同书不再累积 transformTarget 监听。
+      const onTransformLoad = async (event: Event) => {
         const { detail } = event as CustomEvent<{
           isScript: boolean;
           type: string;
@@ -670,12 +672,19 @@ const FoliateViewer: React.FC<{
             }
           });
         }
-      });
+      };
       const viewWidth = window.innerWidth;
       const viewHeight = window.innerHeight;
       const width = viewWidth - insets.left - insets.right;
       const height = viewHeight - insets.top - insets.bottom;
-      book.transformTarget?.addEventListener('data', getDocTransformHandler({ width, height }));
+      const onTransformData = getDocTransformHandler({ width, height });
+      const transformTarget = book.transformTarget;
+      transformTarget?.addEventListener('load', onTransformLoad);
+      transformTarget?.addEventListener('data', onTransformData);
+      cleanupViewListeners = () => {
+        transformTarget?.removeEventListener('load', onTransformLoad);
+        transformTarget?.removeEventListener('data', onTransformData);
+      };
       view.renderer.setStyles?.(getStyles(viewSettings, undefined, getLoadedFonts()));
       applyTranslationStyle(viewSettings);
 
@@ -745,6 +754,9 @@ const FoliateViewer: React.FC<{
     };
 
     openBook();
+    return () => {
+      cleanupViewListeners?.();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
