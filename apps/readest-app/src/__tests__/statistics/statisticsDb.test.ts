@@ -273,11 +273,11 @@ describe('prune retained pages (B-9)', () => {
     const row = await db.select<{ id: number }>(`SELECT id FROM book WHERE md5 = 'md5-b9'`);
     const idBook = row[0]!.id;
 
-    // 共 12000 个事件：最老 2000 个含独有的页 999（绝不会出现在保留区），
-    // 其余古老事件页为 1..20；较新 10000 个为页 1..100 循环 —— 保证 prune 后
-    // 保留区覆盖 1..100，被删区净增仅为 {999}。
-    for (let t = 0; t < 12000; t++) {
-      const page = t < 2000 ? (t % 20 === 0 ? 999 : (t % 20) + 1) : (t % 100) + 1;
+    // 共 10005 个事件（略超 10000 cap）：最老的 105 个含独有的页 999（绝不
+    // 出现在保留区），其余古老事件页为 1..20；较新 9900 个为页 1..100 循环 —
+    // 保证 prune 后保留区覆盖 1..100，被删区净增仅为 {999}。
+    for (let t = 0; t < 10005; t++) {
+      const page = t < 105 ? (t === 0 ? 999 : (t % 20) + 1) : (t % 100) + 1;
       await db.execute(
         `INSERT INTO page_stat_data (id_book, page, start_time, duration, total_pages) VALUES (?,?,?,1000,100)`,
         [idBook, page, t * 1000],
