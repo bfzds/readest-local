@@ -138,5 +138,8 @@
   "Delete Group": "Delete Group",
   "This will delete {{count}} book(s) in this group.": "This will delete {{count}} book(s) in this group.",
   "This is an empty group and will be removed.": "This is an empty group and will be removed.",
-  "Shared with {{action}}": "Shared with {{action}}"
+  "Shared with {{action}}": "Shared with {{action}}",
+  "Allow JavaScript": "Allow JavaScript",
+  "Enable only if you trust the file.": "Enable only if you trust the file.",
+  "TXT Chapter Pattern": "TXT Chapter Pattern"
 }

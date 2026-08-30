@@ -198,6 +198,8 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         font: 'Font',
         layout: 'Layout',
         theme: 'Theme',
+        color: 'Theme',
+        library: 'Theme',
         control: 'Control',
         tts: 'TTS',
         language: 'Language',

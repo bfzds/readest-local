@@ -362,12 +362,10 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({
           </button>
           {!settings.metadataDescriptionCollapsed && (
             <div className='px-4 py-1'>
-              <p
-                className='text-neutral-content prose prose-sm max-w-full whitespace-pre-line text-sm'
-                dangerouslySetInnerHTML={{
-                  __html: metadata?.description || _('No description available'),
-                }}
-              ></p>
+              {/* C-14：描述来自 EPUB 等外部来源，禁止内联 HTML —— 纯文本渲染，React 自动转义 */}
+              <p className='text-neutral-content prose prose-sm max-w-full whitespace-pre-line text-sm'>
+                {metadata?.description || _('No description available')}
+              </p>
             </div>
           )}
         </div>
