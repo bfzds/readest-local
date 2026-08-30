@@ -966,7 +966,11 @@ export class TTSController extends EventTarget {
     await this.stop(true);
     this.#terminated = false;
     this.#currentSpeakAbortController = new AbortController();
-    const { signal } = this.#currentSpeakAbortController;
+    // C-5：绑定本会话自己的 controller。旧会话的迟到 finally 只能清理它本身；
+    // 若期间新会话已接管 #currentSpeakAbortController，绝不能误 abort 新会话，
+    // 否则快速 stop→再 speak 会静默无声。
+    const speakAbortController = this.#currentSpeakAbortController;
+    const { signal } = speakAbortController;
 
     this.#currentSpeakPromise = new Promise(async (resolve, reject) => {
       try {
@@ -1085,8 +1089,9 @@ export class TTSController extends EventTarget {
           reject(e);
         }
       } finally {
-        if (this.#currentSpeakAbortController) {
-          this.#currentSpeakAbortController.abort();
+        // 只清理仍属于本会话的 controller；新会话已接管则不动它。
+        if (this.#currentSpeakAbortController === speakAbortController) {
+          speakAbortController.abort();
           this.#currentSpeakAbortController = null;
         }
       }

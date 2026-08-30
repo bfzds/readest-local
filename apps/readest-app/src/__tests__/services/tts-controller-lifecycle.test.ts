@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { makeControllableSpeak } from '../helpers/failure-injection';
 import { TTSController } from '@/services/tts/TTSController';
 import { TTSClient, TTSMessageEvent } from '@/services/tts/TTSClient';
 import { FoliateView } from '@/types/view';
@@ -200,6 +201,45 @@ describe('TTSController lifecycle', () => {
     );
     await controller.speak('<speak>again</speak>');
     await flushMicrotasks();
+    expect(controller.terminated).toBe(false);
+  });
+
+  test('旧会话迟到 finally 不吞掉新会话（C-5）', async () => {
+    const controllable = makeControllableSpeak<TTSMessageEvent>();
+    (controller.ttsClient.speak as ReturnType<typeof vi.fn>).mockImplementation(
+      controllable.speak as never,
+    );
+    ttsNextReturns = ['<speak>next</speak>'];
+
+    // 第一次 speak 挂起（模拟慢引擎），不产出任何事件。
+    const p1 = controller.speak('<speak>one</speak>');
+    await flushMicrotasks();
+    const handle1 = controllable.handles[0]!;
+
+    // 第二次 speak 正常播放并结束。
+    const p2 = controller.speak('<speak>two</speak>');
+    await flushMicrotasks();
+    const handle2 = controllable.handles[1]!;
+    await handle2.emit({ code: 'boundary', message: 'chunk', mark: '0' });
+    await flushMicrotasks();
+    await handle2.end();
+    await flushMicrotasks();
+    await p2;
+
+    // 旧会话此刻才收尾（迟到 finally）—— 绝不能 abort 已接管的新会话。
+    await handle1.end();
+    await flushMicrotasks();
+    await p1;
+
+    // 第三次 speak 仍能发声，设备未因旧会话迟到清理而失效。
+    const p3 = controller.speak('<speak>three</speak>');
+    await flushMicrotasks();
+    const handle3 = controllable.handles[2]!;
+    await handle3.emit({ code: 'boundary', message: 'chunk', mark: '0' });
+    await flushMicrotasks();
+    await handle3.end();
+    await flushMicrotasks();
+    await p3;
     expect(controller.terminated).toBe(false);
   });
 });
