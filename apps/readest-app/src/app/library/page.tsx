@@ -250,6 +250,10 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   } | null>(null);
   const [pendingNavigationBookIds, setPendingNavigationBookIds] = useState<string[] | null>(null);
   const isInitiating = useRef(false);
+  // 每次 initLibrary effect 重跑自增：把上一轮尚未完成的 async 体标记为陈旧，
+  // 防止旧 promise 在组件（或导航配置）变化后继续 setState / 写库。
+  const libraryInitGeneration = useRef(0);
+  const pageMountedRef = useRef(true);
 
   const iconSize = useResponsiveSize(18);
   const viewSettings = settings.globalViewSettings;
@@ -634,32 +638,40 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
 
   const processOpenWithFiles = useCallback(
     async (appService: AppService, openWithFiles: string[], libraryBooks: Book[]) => {
+      const gen = libraryInitGeneration.current;
       const settings = await appService.loadSettings();
+      if (gen !== libraryInitGeneration.current) return false;
       const bookIds: string[] = [];
+      // 新书先进内存：按 hash 替换/追加，落盘时以最新数组为准，避免
+      // "先写盘、书却没进内存数组" 的入库缺失。
+      let library = libraryBooks;
       for (const file of openWithFiles) {
-        console.log('Open with book:', file);
+        if (gen !== libraryInitGeneration.current) return false;
         try {
           const temp = !settings.autoImportBooksOnOpen;
           const book = await ingestFile(
             {
               file,
-              books: libraryBooks,
+              books: library,
               transient: temp,
             },
             { appService, settings },
           );
           if (book) {
+            library = [...library.filter((b) => b.hash !== book.hash), book];
             bookIds.push(book.hash);
           }
         } catch (error) {
           console.log('Failed to import book:', file, error);
         }
       }
-      setLibrary(libraryBooks);
-      appService.saveLibraryBooks(libraryBooks);
-
-      console.log('Opening books:', bookIds);
+      if (gen !== libraryInitGeneration.current) return false;
       if (bookIds.length > 0) {
+        // 新书入内存（即使无新书也避免无谓重写盘）
+        if (library !== libraryBooks) {
+          setLibrary(library);
+        }
+        appService.saveLibraryBooks(library);
         setPendingNavigationBookIds(bookIds);
         return true;
       }
@@ -711,6 +723,8 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   useEffect(() => {
     if (isInitiating.current) return;
     isInitiating.current = true;
+    const generation = ++libraryInitGeneration.current;
+    pageMountedRef.current = true;
 
     // Reuse the in-store library only when it was actually loaded from disk.
     // Gating on `length > 0` was unsafe: a transient "Open with" entry made the
@@ -718,9 +732,12 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     // a later save persisted the partial library (wiping library.json).
     const hasCachedLibrary = libraryLoadedFromDisk;
     const loadingTimeout = hasCachedLibrary ? null : setTimeout(() => setLoading(true), 500);
+    const stale = () => generation !== libraryInitGeneration.current;
     const initLibrary = async () => {
       const appService = await envConfig.getAppService();
+      if (stale()) return;
       const settings = await appService.loadSettings();
+      if (stale()) return;
       setSettings(settings);
 
       // Re-hydrate persisted (possibly still-empty) groups so they appear on
@@ -742,20 +759,25 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       const externalRoots = settings.externalLibraryFolders ?? [];
       if (externalRoots.length > 0 && appService.allowPathsInScopes) {
         await appService.allowPathsInScopes(externalRoots, true);
+        if (stale()) return;
       }
 
       // Reuse the library from the store when we return from the reader
       const library = hasCachedLibrary ? libraryBooks : await appService.loadLibraryBooks();
+      if (stale()) return;
       let opened = false;
       if (checkOpenWithBooks) {
         opened = await handleOpenWithBooks(appService, library);
+        if (stale()) return;
       }
       setCheckOpenWithBooks(opened);
       if (!opened && checkLastOpenBooks && settings.openLastBooks) {
         opened = await handleOpenLastBooks(appService, settings.lastOpenBooks, library);
+        if (stale()) return;
       }
       setCheckLastOpenBooks(opened);
 
+      if (stale()) return;
       // Skip the redundant setLibrary on the cached path: the store already
       // contains the same array reference, and a no-op set would still
       // trigger refreshGroups (O(n) MD5) and a full Bookshelf re-render.
@@ -772,6 +794,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
 
     const handleOpenWithBooks = async (appService: AppService, library: Book[]) => {
       const openWithFiles = (await parseOpenWithFiles()) || [];
+      if (stale()) return false;
 
       if (openWithFiles.length > 0) {
         return await processOpenWithFiles(appService, openWithFiles, library);
@@ -781,6 +804,9 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
 
     initLibrary();
     return () => {
+      pageMountedRef.current = false;
+      // 使上一轮在途 async 的后续 setState 全部失效（卸载或 libraryInitKey 重进）。
+      libraryInitGeneration.current += 1;
       setCheckOpenWithBooks(false);
       setCheckLastOpenBooks(false);
       isInitiating.current = false;
@@ -1692,7 +1718,11 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     ? (searchParams?.get('from') && getGroupName(searchParams.get('from') ?? '')) || ''
     : '';
 
-  if (!appService || !insets || checkOpenWithBooks || checkLastOpenBooks) {
+  // 白屏占位只在「open-with/open-last 导航确实在途」时出现；一旦 pending
+  // 被消费（导航发生或失败），占位立即退出，避免误置标记把整页卡成空白。
+  const awaitingInitNavigation =
+    !!pendingNavigationBookIds && (checkOpenWithBooks || checkLastOpenBooks);
+  if (!appService || !insets || awaitingInitNavigation) {
     return <div className='full-height bg-base-200' />;
   }
 
