@@ -57,18 +57,17 @@ pub struct ParsedMobi {
 /// whole file synchronously and parsing a 50 MB AZW3 can take tens of
 /// milliseconds — long enough to want it off the Tauri main runtime.
 #[tauri::command]
-pub async fn parse_mobi_metadata(file_path: String) -> Result<ParsedMobi, String> {
-    tauri::async_runtime::spawn_blocking(move || parse_mobi_metadata_sync(&file_path))
+pub async fn parse_mobi_metadata(
+    app: tauri::AppHandle,
+    file_path: String,
+) -> Result<ParsedMobi, String> {
+    let path = crate::parser_common::validate_scoped_file(&app, &file_path)?;
+    tauri::async_runtime::spawn_blocking(move || parse_mobi_metadata_sync(&path))
         .await
         .map_err(|e| format!("join error: {e}"))?
 }
 
-fn parse_mobi_metadata_sync(file_path: &str) -> Result<ParsedMobi, String> {
-    let path = Path::new(file_path);
-    if !path.is_file() {
-        return Err(format!("file not found: {file_path}"));
-    }
-
+fn parse_mobi_metadata_sync(path: &Path) -> Result<ParsedMobi, String> {
     let partial_md5 = compute_partial_md5(path).map_err(|e| format!("partial_md5 failed: {e}"))?;
 
     let mobi = Mobi::from_path(path).map_err(|e| format!("parse mobi: {e}"))?;
@@ -93,17 +92,17 @@ fn parse_mobi_metadata_sync(file_path: &str) -> Result<ParsedMobi, String> {
 ///
 /// Returns `Err` only when the file has no embedded cover at all.
 #[tauri::command]
-pub async fn extract_mobi_cover_full(file_path: String) -> Result<RawCoverImage, String> {
-    tauri::async_runtime::spawn_blocking(move || extract_mobi_cover_full_sync(&file_path))
+pub async fn extract_mobi_cover_full(
+    app: tauri::AppHandle,
+    file_path: String,
+) -> Result<RawCoverImage, String> {
+    let path = crate::parser_common::validate_scoped_file(&app, &file_path)?;
+    tauri::async_runtime::spawn_blocking(move || extract_mobi_cover_full_sync(&path))
         .await
         .map_err(|e| format!("join error: {e}"))?
 }
 
-fn extract_mobi_cover_full_sync(file_path: &str) -> Result<RawCoverImage, String> {
-    let path = Path::new(file_path);
-    if !path.is_file() {
-        return Err(format!("file not found: {file_path}"));
-    }
+fn extract_mobi_cover_full_sync(path: &Path) -> Result<RawCoverImage, String> {
     let mobi = Mobi::from_path(path).map_err(|e| format!("parse mobi: {e}"))?;
     extract_cover(&mobi).ok_or_else(|| "no cover image in mobi".to_string())
 }

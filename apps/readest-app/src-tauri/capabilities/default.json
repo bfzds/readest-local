@@ -17,8 +17,6 @@
     "fs:allow-stat",
     "fs:allow-fstat",
     "fs:allow-lstat",
-    "fs:read-all",
-    "fs:write-all",
     {
       "identifier": "fs:scope-appconfig-recursive",
       "allow": [
@@ -123,7 +121,7 @@
             "start",
             "",
             {
-              "validator": "^.*Readest(.*)\\.exe$"
+              "validator": "^[^&|<>%!`\\n\\r\"]*\\.exe$"
             }
           ]
         },
@@ -133,7 +131,7 @@
           "args": [
             "+x",
             {
-              "validator": "^.*Readest(.*)\\.AppImage$"
+              "validator": "^[^&|<>%!`\\n\\r\"]*\\.AppImage$"
             }
           ]
         },
@@ -142,7 +140,7 @@
           "cmd": "setsid",
           "args": [
             {
-              "validator": "^.*Readest(.*)\\.AppImage$"
+              "validator": "^[^&|<>%!`\\n\\r\"]*\\.AppImage$"
             }
           ]
         }

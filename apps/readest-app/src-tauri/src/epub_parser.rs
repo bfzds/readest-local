@@ -82,23 +82,22 @@ pub struct ParsedEpubMetadata {
 }
 
 #[tauri::command]
-pub async fn parse_epub_metadata(file_path: String) -> Result<ParsedEpubMetadata, String> {
+pub async fn parse_epub_metadata(
+    app: tauri::AppHandle,
+    file_path: String,
+) -> Result<ParsedEpubMetadata, String> {
+    let path = crate::parser_common::validate_scoped_file(&app, &file_path)?;
     // The body is CPU+IO bound: zip central-directory parse, OPF parse,
     // cover decode/resize/encode. We must NOT run that on the Tauri
     // async runtime worker (the IPC dispatch thread), because then four
     // concurrent JS `invoke()`s queue up serially on a single worker.
     // Offload to the blocking pool, where they truly run in parallel.
-    tauri::async_runtime::spawn_blocking(move || parse_epub_metadata_sync(&file_path))
+    tauri::async_runtime::spawn_blocking(move || parse_epub_metadata_sync(&path))
         .await
         .map_err(|e| format!("join error: {e}"))?
 }
 
-fn parse_epub_metadata_sync(file_path: &str) -> Result<ParsedEpubMetadata, String> {
-    let path = Path::new(file_path);
-    if !path.exists() {
-        return Err(format!("file not found: {file_path}"));
-    }
-
+fn parse_epub_metadata_sync(path: &Path) -> Result<ParsedEpubMetadata, String> {
     let partial_md5 = compute_partial_md5(path).map_err(|e| format!("partial_md5 failed: {e}"))?;
 
     let file = File::open(path).map_err(|e| format!("open failed: {e}"))?;
@@ -154,17 +153,17 @@ fn parse_epub_metadata_sync(file_path: &str) -> Result<ParsedEpubMetadata, Strin
 /// Returns the raw image bytes plus the MIME guessed from the manifest path.
 /// If the EPUB has no cover this returns `Err`.
 #[tauri::command]
-pub async fn extract_epub_cover_full(file_path: String) -> Result<RawCoverImage, String> {
-    tauri::async_runtime::spawn_blocking(move || extract_epub_cover_full_sync(&file_path))
+pub async fn extract_epub_cover_full(
+    app: tauri::AppHandle,
+    file_path: String,
+) -> Result<RawCoverImage, String> {
+    let path = crate::parser_common::validate_scoped_file(&app, &file_path)?;
+    tauri::async_runtime::spawn_blocking(move || extract_epub_cover_full_sync(&path))
         .await
         .map_err(|e| format!("join error: {e}"))?
 }
 
-fn extract_epub_cover_full_sync(file_path: &str) -> Result<RawCoverImage, String> {
-    let path = Path::new(file_path);
-    if !path.exists() {
-        return Err(format!("file not found: {file_path}"));
-    }
+fn extract_epub_cover_full_sync(path: &Path) -> Result<RawCoverImage, String> {
     let file = File::open(path).map_err(|e| format!("open failed: {e}"))?;
     let mut zip = ZipArchive::new(file).map_err(|e| format!("zip open failed: {e}"))?;
     let opf_path = read_rootfile_path(&mut zip).map_err(|e| format!("container.xml: {e}"))?;
@@ -250,20 +249,19 @@ pub struct ParsedEpubFull {
 }
 
 #[tauri::command]
-pub async fn parse_epub_full(file_path: String) -> Result<ParsedEpubFull, String> {
+pub async fn parse_epub_full(
+    app: tauri::AppHandle,
+    file_path: String,
+) -> Result<ParsedEpubFull, String> {
+    let path = crate::parser_common::validate_scoped_file(&app, &file_path)?;
     // Same threading rationale as parse_epub_metadata — keep IPC dispatch off
     // the CPU-bound zip/parse work so concurrent opens stay parallel.
-    tauri::async_runtime::spawn_blocking(move || parse_epub_full_sync(&file_path))
+    tauri::async_runtime::spawn_blocking(move || parse_epub_full_sync(&path))
         .await
         .map_err(|e| format!("join error: {e}"))?
 }
 
-fn parse_epub_full_sync(file_path: &str) -> Result<ParsedEpubFull, String> {
-    let path = Path::new(file_path);
-    if !path.exists() {
-        return Err(format!("file not found: {file_path}"));
-    }
-
+fn parse_epub_full_sync(path: &Path) -> Result<ParsedEpubFull, String> {
     let partial_md5 = compute_partial_md5(path).map_err(|e| format!("partial_md5 failed: {e}"))?;
 
     let file = File::open(path).map_err(|e| format!("open failed: {e}"))?;

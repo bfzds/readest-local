@@ -18,6 +18,7 @@ dependencies = [
  "dispatch2",
  "futures",
  "futures-util",
+ "glob",
  "image",
  "log",
  "md-5",

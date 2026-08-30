@@ -288,6 +288,7 @@
   "Security": "安全",
   "Allow JavaScript": "允许 JavaScript",
   "Enable only if you trust the file.": "建议仅在您信任该文件时启用",
+  "Allows scripts in the book to run; these can access app data. Enable only for books you trust.": "允许的书籍脚本可访问应用数据；仅对您信任的书籍启用",
   "Sort TOC by Page": "按页码排序目录",
   "Search in {{count}} Book(s)..._other": "在 {{count}} 本书籍中搜索...",
   "No notes match your search": "未找到匹配的笔记",

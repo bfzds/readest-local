@@ -14,23 +14,27 @@ describe('Tauri Smoke Tests', () => {
     expect(execDir.length).toBeGreaterThan(0);
   });
 
-  it('should invoke get_environment_variable for HOME', async () => {
+  it('white-lists only env vars the app actually consumes (S-4)', async () => {
+    // 未白名单变量一律返回空字符串，杜绝任意 env 可读面。
     const home = (await invoke('get_environment_variable', { name: 'HOME' })) as string;
-    expect(typeof home).toBe('string');
-    expect(home.length).toBeGreaterThan(0);
-  });
-
-  it('should return empty string for non-existent env var', async () => {
-    const result = await invoke('get_environment_variable', {
-      name: '__TAURI_SMOKE_TEST_NONEXISTENT__',
-    });
-    expect(result).toBe('');
-  });
-
-  it('should invoke get_environment_variable for PATH', async () => {
+    expect(home).toBe('');
     const pathVar = (await invoke('get_environment_variable', { name: 'PATH' })) as string;
-    expect(typeof pathVar).toBe('string');
-    expect(pathVar).toContain('/');
+    expect(pathVar).toBe('');
+    const custom = (await invoke('get_environment_variable', {
+      name: '__TAURI_SMOKE_TEST_NONEXISTENT__',
+    })) as string;
+    expect(custom).toBe('');
+  });
+
+  it('returns values for allowlisted env vars (Gamescope detection)', async () => {
+    const desktop = (await invoke('get_environment_variable', {
+      name: 'XDG_CURRENT_DESKTOP',
+    })) as string;
+    expect(typeof desktop).toBe('string');
+    const gamescope = (await invoke('get_environment_variable', {
+      name: 'GAMESCOPE_WAYLAND_DISPLAY',
+    })) as string;
+    expect(typeof gamescope).toBe('string');
   });
 
   it('should get executable dir that contains the app name', async () => {

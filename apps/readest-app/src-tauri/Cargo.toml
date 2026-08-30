@@ -70,6 +70,7 @@ md-5 = "0.10"
 # the raw decoded bytes — or vice versa. Already in our transitive dep graph
 # percent-encoded paths already appear in the dependency graph, so this explicit entry costs nothing.
 percent-encoding = "2"
+glob = "0.3"
 
 # Cover thumbnail generation (Q2). We decode the cover image extracted
 # from the EPUB and, when its long edge exceeds the library-grid size,

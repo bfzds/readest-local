@@ -646,7 +646,13 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
       <BoxedList title={_('Security')}>
         <SettingsSwitchRow
           label={_('Allow JavaScript')}
-          description={_('Enable only if you trust the file.')}
+          description={
+            allowScript
+              ? _(
+                  'Allows scripts in the book to run; these can access app data. Enable only for books you trust.',
+                )
+              : _('Enable only if you trust the file.')
+          }
           checked={allowScript}
           disabled={bookData?.book?.format !== 'EPUB'}
           onChange={() => setAllowScript(!allowScript)}

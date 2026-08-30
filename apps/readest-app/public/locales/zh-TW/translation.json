@@ -283,6 +283,7 @@
   "Security": "安全",
   "Allow JavaScript": "允許 JavaScript",
   "Enable only if you trust the file.": "建議僅在您信任該檔案時啟用",
+  "Allows scripts in the book to run; these can access app data. Enable only for books you trust.": "允許的書籍腳本可存取應用程式資料；僅對您信任的書籍啟用",
   "Sort TOC by Page": "依頁碼排序目錄",
   "Search in {{count}} Book(s)..._other": "在 {{count}} 本書中搜索...",
   "No notes match your search": "找不到符合的筆記",

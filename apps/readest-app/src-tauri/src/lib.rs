@@ -161,7 +161,12 @@ fn set_window_open_with_files(app: &AppHandle, files: Vec<PathBuf>) {
 
 #[tauri::command]
 fn get_environment_variable(name: &str) -> String {
-    std::env::var(String::from(name)).unwrap_or(String::from(""))
+    // S-4: 只暴露应用实际消费的变量（Gamescope 检测），拒绝任意 env 可读面。
+    const ALLOWED: [&str; 2] = ["GAMESCOPE_WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP"];
+    if !ALLOWED.contains(&name) {
+        return String::new();
+    }
+    std::env::var(name).unwrap_or_default()
 }
 
 #[tauri::command]

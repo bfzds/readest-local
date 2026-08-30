@@ -17,12 +17,127 @@
 // turn it back into a `Uint8Array` before persisting through the existing
 // `Books/<hash>/cover.<ext>` path.
 
+use glob::Pattern;
 use image::{codecs::jpeg::JpegEncoder, imageops::FilterType, GenericImageView};
 use md5::{Digest, Md5};
 use serde::Serialize;
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{Cursor, Read, Seek, SeekFrom};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use tauri::path::BaseDirectory;
+use tauri::AppHandle;
+use tauri::Manager;
+use tauri_plugin_fs::FsExt;
+
+/// 校验并解析一个传给 parser 命令的文件路径。任何一步不满足即拒绝：
+///   1. 非空；
+///   2. 可 canonicalize（拒绝不存在的路径与可疑符号链接）；
+///   3. 是普通文件（拒绝目录、设备等）；
+///   4. 在 `fs_scope` 允许范围内（dialog 授权、persisted scope、显式 scope）。
+///
+/// 通过后返回规范化路径，供后续 `File::open` / 哈希读取。
+///
+/// Windows 注意：`canonicalize()` 对含非 ASCII 或超长路径会返回 `\\?\C:\...`
+/// 的 verbatim 形态，与 scope pattern（`C:\...`）不匹配；匹配前先剥前缀。
+pub fn validate_scoped_file(app: &AppHandle, raw: &str) -> Result<PathBuf, String> {
+    if raw.is_empty() {
+        return Err("empty path".to_string());
+    }
+    let path = PathBuf::from(raw);
+    let canonical = path
+        .canonicalize()
+        .map_err(|e| format!("cannot resolve path {raw:?}: {e}"))?;
+    let for_scope = strip_windows_verbatim(&canonical);
+    if !is_regular_file(&for_scope) {
+        return Err(format!("path is not a regular file: {canonical:?}"));
+    }
+    if scope_allows(app, &for_scope) {
+        Ok(canonical)
+    } else {
+        log::warn!(
+            "validate_scoped_file rejected path (not in app dirs / fs_scope): {}",
+            for_scope.to_string_lossy()
+        );
+        Err(format!("path not allowed by fs scope: {canonical:?}"))
+    }
+}
+
+/// 判断路径是否在允许范围内。允许来源（任一命中即可）：
+///   1. 标准应用目录（AppData/AppConfig/AppCache/Temp）下的路径 —— 覆盖
+///      已导入书库存（$APPDATA/Readest/...）、配置与封面等正常数据；
+///   2. runtime `fs_scope`（dialog 授权、persisted scope、拖放、显式 allow）
+///      —— 覆盖用户经系统文件选择器导入的外部书库/文件；
+///   3. `webdriver` feature 下，开发测试用 fixture 目录（`**/__tests__/**`）。
+///
+/// Windows verbatim 兜底：`canonicalize()` 对含非 ASCII/超长路径返回 `\\?\`
+/// 前缀，tauri 的 Path 级 `is_allowed` 会失配；这里统一剥前缀、按 `/` 分隔
+/// 做字符串级 glob 比对。
+fn scope_allows(app: &AppHandle, for_scope: &Path) -> bool {
+    // 1) 标准应用目录前缀。
+    for base in [
+        BaseDirectory::AppData,
+        BaseDirectory::AppConfig,
+        BaseDirectory::AppCache,
+        BaseDirectory::Temp,
+    ] {
+        if let Ok(dir) = app.path().resolve("", base) {
+            if for_scope.starts_with(strip_windows_verbatim(&dir)) {
+                return true;
+            }
+        }
+    }
+
+    // 2) runtime fs_scope（dialog 授权 + persisted + 显式 allow）。
+    let scope = app.fs_scope();
+    if scope.is_allowed(for_scope) {
+        return true;
+    }
+    let normalized = for_scope.to_string_lossy().replace('\\', "/");
+    let glob_matches = |patterns: &HashSet<Pattern>| {
+        patterns.iter().any(|p| {
+            glob::Pattern::new(&p.as_str().replace('\\', "/")).is_ok_and(|g| g.matches(&normalized))
+        })
+    };
+    if glob_matches(&scope.forbidden_patterns()) {
+        return false;
+    }
+    if glob_matches(&scope.allowed_patterns()) {
+        return true;
+    }
+
+    // 3) 仅开发测试构建：webdriver 测试需要读取仓库 fixtures。
+    #[cfg(feature = "webdriver")]
+    {
+        if normalized.contains("/__tests__/") {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn is_regular_file(path: &Path) -> bool {
+    std::fs::metadata(path)
+        .map(|m| m.is_file())
+        .unwrap_or(false)
+}
+
+/// 去掉 Windows verbatim 路径前缀 `\\?\`，仅用于 scope 匹配。
+fn strip_windows_verbatim(path: &Path) -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        let s = path.to_string_lossy();
+        match s.strip_prefix(r"\\?\") {
+            Some(rest) => PathBuf::from(rest),
+            None => path.to_path_buf(),
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        path.to_path_buf()
+    }
+}
 
 /// Cover thumbnail target. Sized for the library grid (~250-300px @2x)
 /// and the reader-sidebar / detail-view rows (which are smaller still).
