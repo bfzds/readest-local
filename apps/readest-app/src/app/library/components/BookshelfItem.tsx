@@ -99,7 +99,9 @@ interface BookshelfItemProps {
   handleLibraryNavigation: (targetGroup: string) => void;
   handleUpdateReadingStatus: (book: Book, status: ReadingStatus | undefined) => void;
   showTimeRemaining: boolean;
-  handleDeleteGroup?: (group: BooksGroup) => void;
+  // Two-step group delete: first click arms the button (it turns red), the
+  // second click commits the deletion.
+  onDeleteGroupCommit?: (group: BooksGroup) => void;
 }
 
 const BookshelfItem: React.FC<BookshelfItemProps> = ({
@@ -116,12 +118,13 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
   handleLibraryNavigation,
   handleUpdateReadingStatus,
   showTimeRemaining,
-  handleDeleteGroup,
+  onDeleteGroupCommit,
 }) => {
   const _ = useTranslation();
   const { appService } = useEnv();
   const { settings } = useSettingsStore();
   const { openBook } = useOpenBook();
+  const [deleteArmed, setDeleteArmed] = useState(false);
 
   const showBookDetailsModal = useCallback(async (book: Book) => {
     handleShowDetailsBook(book);
@@ -392,17 +395,25 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
           )}
         </div>
       </div>
-      {'books' in item && handleDeleteGroup && (
+      {'books' in item && onDeleteGroupCommit && (
         <button
           type='button'
-          aria-label={_('Delete Group')}
-          title={_('Delete Group')}
+          aria-label={deleteArmed ? _('Confirm delete') : _('Delete Group')}
+          title={deleteArmed ? _('Confirm delete') : _('Delete Group')}
+          onMouseLeave={() => setDeleteArmed(false)}
+          onPointerLeave={() => setDeleteArmed(false)}
           onClick={(e) => {
             e.stopPropagation();
             e.preventDefault();
-            handleDeleteGroup(item);
+            if (deleteArmed) onDeleteGroupCommit(item);
+            else setDeleteArmed(true);
           }}
-          className='bg-base-100/90 text-base-content/70 hover:text-error absolute bottom-1 right-1 z-10 flex h-6 w-6 items-center justify-center rounded-full opacity-0 shadow transition-opacity group-hover:opacity-100 hover:!opacity-100'
+          className={clsx(
+            'absolute bottom-1 right-1 z-10 flex h-6 w-6 items-center justify-center rounded-full shadow transition-colors',
+            deleteArmed
+              ? 'bg-error text-white'
+              : 'bg-base-100/90 text-base-content/70 hover:text-error opacity-0 transition-opacity group-hover:opacity-100 hover:!opacity-100',
+          )}
         >
           <MdDelete size={14} />
         </button>

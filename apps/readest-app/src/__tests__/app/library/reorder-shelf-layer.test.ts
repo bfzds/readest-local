@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   assignEmptyGroupAnchors,
   createGroupSorter,
+  rebaseLayerAfterGroupMerge,
+  relabelAnchorMap,
+  reassignToGroup,
   reorderShelfLayer,
   swapShelfUnits,
 } from '@/app/library/utils/libraryUtils';
@@ -270,5 +273,88 @@ describe('swapShelfUnits — drag model is a swap', () => {
     const items = [book('a', 0), book('b', 1)];
     expect(swapShelfUnits(items, 'a', 'a').changed).toBe(false);
     expect(swapShelfUnits(items, 'a', 'zzz').changed).toBe(false);
+  });
+});
+
+describe('rebaseLayerAfterGroupMerge — remaining groups keep their pre-merge order', () => {
+  const mk = (n: number): Book =>
+    ({
+      hash: `b${n}`,
+      format: 'EPUB',
+      title: `b${n}`,
+      groupName: `${n}`,
+      shelfIndex: n - 1,
+      createdAt: 0,
+      updatedAt: 0,
+    }) as Book;
+
+  // Top-level grouping: a book's immediate child segment is its top-level group
+  // (mirrors generateBookshelfItems with an empty parent).
+  const topLevelGroups = (bs: Book[]): BooksGroup[] => {
+    const map = new Map<string, BooksGroup>();
+    for (const b of bs) {
+      const rel = b.groupName ?? '';
+      const child = rel.includes('/') ? rel.slice(0, rel.indexOf('/')) : rel;
+      const g = map.get(child) ?? {
+        id: child,
+        name: child,
+        displayName: child,
+        books: [],
+        updatedAt: 0,
+      };
+      g.books.push(b);
+      map.set(child, g);
+    }
+    return [...map.values()];
+  };
+
+  it('end-to-end: merging book group 1 into 5 keeps 2,3,4,5,6 order', () => {
+    const books = [1, 2, 3, 4, 5, 6].map(mk);
+    const merged = reassignToGroup(books, { kind: 'group', groupName: '1' }, '5').updated;
+    const remainingItems = topLevelGroups(books).filter((g) => g.name !== '1');
+    const { books: rebased } = rebaseLayerAfterGroupMerge(remainingItems, merged, '5/1');
+    const idx = new Map(rebased.map((b) => [b.hash, b.shelfIndex ?? 0]));
+    const groups = topLevelGroups(merged).map((g) => ({
+      ...g,
+      books: g.books.map((b) => ({ ...b, shelfIndex: idx.get(b.hash) ?? b.shelfIndex })),
+    }));
+    const sorter = createGroupSorter(LibrarySortByType.Manual, 'en');
+    expect(groups.sort(sorter).map((g) => g.name)).toEqual(['2', '3', '4', '5', '6']);
+  });
+
+  it('keeps an empty-shell target group (no direct books) in place', () => {
+    const sub = { hash: 'sub', groupName: '1/x', shelfIndex: 0 } as Book;
+    const b2 = { hash: 'b2', groupName: '1/2', shelfIndex: 1 } as Book;
+    const b3 = { hash: 'b3', groupName: '3', shelfIndex: 2 } as Book;
+    const merged = [sub, b2, b3] as Book[];
+    const remaining: (Book | BooksGroup)[] = [group('1', sub), group('3', b3)];
+    const { books } = rebaseLayerAfterGroupMerge(remaining, merged, '1/2');
+    const idx = new Map(books.map((b) => [b.hash, b.shelfIndex ?? 0]));
+    // The merged b2 lands inside group 1's slot (after sub) — not at layer end.
+    expect(idx.get('b2')!).toBeGreaterThan(idx.get('sub')!);
+    expect(idx.get('b2')!).toBeLessThan(idx.get('b3')!);
+  });
+
+  it('re-anchors empty groups so the rest keep their order', () => {
+    const groups: BooksGroup[] = [1, 2, 3, 4, 5, 6].map((n) => group(String(n)));
+    const remaining = groups.filter((g) => g.name !== '1');
+    const { books, anchors } = rebaseLayerAfterGroupMerge(remaining, [], '5/1');
+    expect(books).toEqual([]);
+    const sorted = remaining
+      .map((g) => g.name)
+      .sort((a, b) => (anchors.get(a) ?? 0) - (anchors.get(b) ?? 0));
+    expect(sorted).toEqual(['2', '3', '4', '5', '6']);
+  });
+});
+
+describe('relabelAnchorMap — anchors follow renamed group paths', () => {
+  it('moves an old-path anchor to the new name', () => {
+    const out = relabelAnchorMap({ '粉/收藏': 2, 白: 5 }, new Map([['粉/收藏', '收藏']]));
+    expect(out).toEqual({ 收藏: 2, 白: 5 });
+  });
+
+  it('returns null when no anchor matches a relabeled path', () => {
+    expect(relabelAnchorMap({ 白: 5 }, new Map([['粉/收藏', '收藏']]))).toBeNull();
+    expect(relabelAnchorMap(undefined, new Map([['粉/收藏', '收藏']]))).toBeNull();
   });
 });

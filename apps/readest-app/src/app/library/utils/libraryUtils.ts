@@ -1279,3 +1279,65 @@ export const assignEmptyGroupAnchors = (
   }
   return anchors;
 };
+
+/**
+ * Rebase a shelf layer after one group is merged into another, so the
+ * remaining groups keep their pre-merge order. Merging keeps the source book's
+ * old small shelfIndex, which drags the target group's min-shelfIndex sort key
+ * to the front (e.g. merging 1 into 5 turns 1,2,3,4,5,6 into 5,2,3,4,6). This
+ * rebases the remaining books to 0..n-1 in remaining-layer order and appends
+ * the merged-in source books after the target's books, then re-anchors every
+ * empty group in the same order.
+ */
+export const rebaseLayerAfterGroupMerge = (
+  remainingItems: readonly (Book | BooksGroup)[],
+  updated: readonly Book[],
+  sourceFold: string, // e.g. "1/2" — merged source group's folded path
+): { books: Book[]; anchors: Map<string, number> } => {
+  // The folded source books belong *inside* the target group: append them to
+  // its slot so the target keeps its pre-merge position. Appending them to the
+  // very end of the whole layer instead would push an empty-shell target group
+  // (one with no direct books, only nested ones) to the back.
+  const targetName = sourceFold.split('/')[0] ?? sourceFold;
+  const foldBooks = updated.filter(
+    (b) => b.groupName === sourceFold || b.groupName?.startsWith(sourceFold + '/'),
+  );
+  const flat: Book[] = [];
+  for (const it of remainingItems) {
+    if ('format' in it) flat.push(it);
+    else {
+      flat.push(...it.books);
+      if ((it as BooksGroup).name === targetName) flat.push(...foldBooks);
+    }
+  }
+  const idx = new Map(flat.map((b, i) => [b.hash, i] as const));
+  const books = updated.map((b) => {
+    const i = idx.get(b.hash);
+    return i !== undefined && b.shelfIndex !== i ? { ...b, shelfIndex: i } : b;
+  });
+  const finalIdx = new Map(books.map((b) => [b.hash, b.shelfIndex ?? 0] as const));
+  const anchors = assignEmptyGroupAnchors(remainingItems, finalIdx);
+  return { books, anchors };
+};
+
+/**
+ * Follow the manual-sort anchor map when persisted group paths are relabelled
+ * (a group moved to another level). Keys matching an old path move their value
+ * to the new path, so stale orphan anchors can't resurrect the old empty group.
+ * Returns null when nothing moved.
+ */
+export const relabelAnchorMap = (
+  order: Record<string, number> | undefined,
+  relabeled: ReadonlyMap<string, string>,
+): Record<string, number> | null => {
+  if (!order) return null;
+  let next: Record<string, number> | null = null;
+  for (const [oldName, newName] of relabeled) {
+    if (oldName in order) {
+      next ??= { ...order };
+      next[newName] = order[oldName]!;
+      delete next[oldName];
+    }
+  }
+  return next;
+};

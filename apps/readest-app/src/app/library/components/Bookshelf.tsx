@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { MdManageSearch } from 'react-icons/md';
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PiPlus } from 'react-icons/pi';
@@ -40,6 +41,7 @@ import {
   ensureLibrarySortByType,
   ensureLibrarySecondarySortByType,
   expandBookshelfSelection,
+  findGroupById,
   getBookSortValue,
   getGroupSortValue,
   compareSortValues,
@@ -53,6 +55,8 @@ import {
   relabelPersistentGroups,
   swapShelfUnits,
   assignEmptyGroupAnchors,
+  rebaseLayerAfterGroupMerge,
+  relabelAnchorMap,
 } from '../utils/libraryUtils';
 import { eventDispatcher } from '@/utils/event';
 import { md5Fingerprint } from '@/utils/md5';
@@ -236,6 +240,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   const [showDeleteAlert, setShowDeleteAlert] = useState(false);
   const [showStatusAlert, setShowStatusAlert] = useState(false);
   const [showGroupingModal, setShowGroupingModal] = useState(false);
+  const [emptyGroupsToDelete, setEmptyGroupsToDelete] = useState<string[]>([]);
 
   const abortDeletionRef = useRef(false);
   const iconSize15 = useResponsiveSize(15);
@@ -573,18 +578,31 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       const batch = books.slice(i, i + concurrency);
       await Promise.all(batch.map((book) => deleteBook(book, false)));
     }
+    // Selected empty groups carry no books, so the book batch above is empty
+    // for them — remove them through the persistent-group delete path instead.
+    for (const name of emptyGroupsToDelete) {
+      await deleteGroupByName(name, false);
+    }
+    setEmptyGroupsToDelete([]);
     setSelectedBooks([]);
     setShowDeleteAlert(false);
     setShowSelectModeActions(true);
   };
 
   const deleteSelectedBooks = () => {
+    const ids = getSelectedBooks();
+    // Empty groups in the selection have no books to expand into; remember
+    // them so the delete step can drop the persisted group itself.
+    const emptyGroups = ids
+      .map((id) => findGroupById(sortedBookshelfItems, id))
+      .filter((g): g is BooksGroup => g !== undefined && g.books.length === 0);
+    setEmptyGroupsToDelete(emptyGroups.map((g) => g.name));
     // Expand any group ids in the selection into the book hashes they
     // visually represent — `generateBookshelfItems` rolls nested-folder
     // books into the parent group, and we want every one of them queued
     // for deletion, not just the books whose own `groupId` happens to
     // match the top-level group's id.
-    setBookIdsToDelete(expandBookshelfSelection(getSelectedBooks(), sortedBookshelfItems));
+    setBookIdsToDelete(expandBookshelfSelection(ids, sortedBookshelfItems));
     setShowSelectModeActions(false);
     setShowDeleteAlert(true);
   };
@@ -890,6 +908,72 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     ],
   );
 
+  const commitDeleteGroup = (g: BooksGroup) => void deleteGroupByName(g.name, false);
+
+  // --- Dev-only: capture/restore the current shelf layout (button cluster in
+  // the bottom-right corner). Compiled out of production builds. ---
+  const LAYOUT_SNAPSHOT_KEY = 'readest-layout-snapshot';
+  const [hasLayoutSnapshot, setHasLayoutSnapshot] = useState(false);
+  useEffect(() => {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem(LAYOUT_SNAPSHOT_KEY)) {
+      setHasLayoutSnapshot(true);
+    }
+  }, []);
+  const captureLayout = () => {
+    const snap = {
+      books: libraryBooks.map((b) => ({
+        hash: b.hash,
+        groupName: b.groupName,
+        groupId: b.groupId,
+        shelfIndex: b.shelfIndex,
+      })),
+      persistent: useLibraryStore.getState().persistentGroupNames ?? [],
+      emptyOrder: useSettingsStore.getState().settings.libraryEmptyGroupOrder ?? {},
+      customGroups: useSettingsStore.getState().settings.libraryCustomGroups ?? [],
+    };
+    localStorage?.setItem(LAYOUT_SNAPSHOT_KEY, JSON.stringify(snap));
+    setHasLayoutSnapshot(true);
+    eventDispatcher.dispatch('toast', { type: 'success', message: _('Layout saved') });
+  };
+  const restoreLayout = async () => {
+    const raw =
+      typeof localStorage !== 'undefined' ? localStorage.getItem(LAYOUT_SNAPSHOT_KEY) : null;
+    if (!raw) return;
+    try {
+      const snap = JSON.parse(raw) as {
+        books: { hash: string; groupName?: string; groupId?: string; shelfIndex?: number }[];
+        persistent: string[];
+        emptyOrder: Record<string, number>;
+        customGroups: string[];
+      };
+      // Empty groups exist purely as persisted names — restore the list first
+      // so refreshGroups re-floats them at their saved paths (not the moved one).
+      useLibraryStore.setState({ persistentGroupNames: snap.persistent ?? [] });
+      const byHash = new Map(snap.books.map((s) => [s.hash, s]));
+      const restored = libraryBooks.map((b) => {
+        const s = byHash.get(b.hash);
+        return s
+          ? { ...b, groupName: s.groupName, groupId: s.groupId, shelfIndex: s.shelfIndex }
+          : b;
+      });
+      await updateBooks(envConfig, restored);
+      useLibraryStore.getState().refreshGroups();
+      const live = useSettingsStore.getState().settings;
+      const nextSettings = {
+        ...live,
+        libraryEmptyGroupOrder: snap.emptyOrder,
+        libraryCustomGroups: snap.customGroups,
+      };
+      setSettings(nextSettings);
+      void saveSettings(envConfig, nextSettings);
+      updateUrlParams({ sort: LibrarySortByType.Manual });
+      eventDispatcher.dispatch('toast', { type: 'success', message: _('Layout restored') });
+    } catch {
+      eventDispatcher.dispatch('toast', { type: 'warning', message: _('No layout snapshot') });
+    }
+  };
+  const isDev = process.env.NODE_ENV === 'development';
+
   const renderBookshelfItem = useCallback(
     (index: number) => {
       if (isGridMode && index === sortedBookshelfItems.length) {
@@ -938,7 +1022,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           handleShowDetailsBook={handleShowDetailsBook}
           handleLibraryNavigation={handleLibraryNavigation}
           handleUpdateReadingStatus={handleUpdateReadingStatus}
-          handleDeleteGroup={setDeleteGroupTarget}
+          onDeleteGroupCommit={commitDeleteGroup}
           showTimeRemaining={showTimeRemaining}
         />
       );
@@ -953,6 +1037,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       isSelectMode,
       iconSize15,
       handleImportBooks,
+      commitDeleteGroup,
       toggleSelection,
       handleBookDelete,
       handleSetSelectMode,
@@ -989,11 +1074,14 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   const [dragGhostLabel, setDragGhostLabel] = useState('');
   const [dragGhostBook, setDragGhostBook] = useState<Book | null>(null);
   const [showDragGhost, setShowDragGhost] = useState(false);
+  // Live intent for the drop-under-the-pointer, rendered reactively so it
+  // follows the app language; tracked via ref to avoid a setState per move.
+  const [dragAction, setDragAction] = useState<'swap' | 'merge' | 'move' | null>(null);
+  const dragActionRef = useRef<'swap' | 'merge' | 'move' | null>(null);
   // Right-click on empty shelf space → "Create New Group".
   const [blankContextMenu, setBlankContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
-  const [deleteGroupTarget, setDeleteGroupTarget] = useState<BooksGroup | null>(null);
 
   const endShelfDrag = useCallback(() => {
     dragSourceRef.current = null;
@@ -1001,13 +1089,14 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     dragActiveRef.current = false;
     setShowDragGhost(false);
     setDragGhostBook(null);
+    dragActionRef.current = null;
+    setDragAction(null);
     document
-      .querySelectorAll('.drag-over-group')
-      .forEach((node) => node.classList.remove('drag-over-group'));
+      .querySelectorAll('.drag-over-group,.drag-over-merge')
+      .forEach((node) => node.classList.remove('drag-over-group', 'drag-over-merge'));
   }, []);
 
   const deleteGroupByName = async (targetGroup: string, purgeData: boolean) => {
-    setDeleteGroupTarget(null);
     // Delete the group's own books through the same book-delete path.
     const inGroupBooks = libraryBooks.filter(
       (b) =>
@@ -1052,12 +1141,20 @@ const Bookshelf: React.FC<BookshelfProps> = ({
         for (const next of relabeled.values()) {
           useLibraryStore.getState().addPersistentGroup(next);
         }
+        let nextCustom = custom;
         if (custom.length > 0) {
           const inCustom = new Map(
             Array.from(relabeled).filter(([oldName]) => custom.includes(oldName)),
           );
-          const nextCustom = custom.map((g) => inCustom.get(g) ?? g);
-          const nextSettings = { ...live, libraryCustomGroups: nextCustom };
+          nextCustom = custom.map((g) => inCustom.get(g) ?? g);
+        }
+        // Move manual-sort anchors along with their renamed paths, otherwise a
+        // stale orphan anchor can resurrect the old empty group on refresh.
+        const nextOrder = relabelAnchorMap(live.libraryEmptyGroupOrder, relabeled);
+        if (nextCustom !== custom || nextOrder) {
+          const nextSettings = nextOrder
+            ? { ...live, libraryCustomGroups: nextCustom, libraryEmptyGroupOrder: nextOrder }
+            : { ...live, libraryCustomGroups: nextCustom };
           setSettings(nextSettings);
           void saveSettings(envConfig, nextSettings);
         }
@@ -1142,20 +1239,37 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       dragActiveRef.current = false;
     };
 
-    // Resolve what the pointer is over as a move/order target: first a group
-    // cell (Group view), then a breadcrumb level node (any view; '' = "All").
-    const resolveHoverTarget = (
-      x: number,
-      y: number,
-    ): { el: HTMLElement | null; val: string | null } => {
+    type DropTarget = {
+      el: HTMLElement;
+      unit: 'book' | 'group' | 'level';
+      kind: 'swap' | 'merge' | 'move';
+      id: string;
+    };
+    // Resolve what the pointer is over as a drop target. Priority:
+    //  group cell (top half = swap order, bottom half = merge into the group),
+    //  breadcrumb level node (any view; '' = "All" → move to that level),
+    //  book cell (only a sort target).
+    const resolveHoverTarget = (x: number, y: number): DropTarget | null => {
       const under = document.elementFromPoint(x, y);
-      if (groupBy === LibraryGroupByType.Group) {
-        const g = (under?.closest?.('[data-group-name]') as HTMLElement | null) ?? null;
-        if (g) return { el: g, val: g.getAttribute('data-group-name') };
+      const g = (under?.closest?.('[data-group-name]') as HTMLElement | null) ?? null;
+      if (g) {
+        const rect = g.getBoundingClientRect();
+        const kind = y < rect.top + rect.height / 2 ? 'swap' : 'merge';
+        return { el: g, unit: 'group', kind, id: g.getAttribute('data-group-name') ?? '' };
       }
       const bc = (under?.closest?.('[data-drop-target-group]') as HTMLElement | null) ?? null;
-      if (bc) return { el: bc, val: bc.getAttribute('data-drop-target-group') };
-      return { el: null, val: null };
+      if (bc) {
+        return {
+          el: bc,
+          unit: 'level',
+          kind: 'move',
+          id: bc.getAttribute('data-drop-target-group') ?? '',
+        };
+      }
+      const b = (under?.closest?.('[data-book-hash]') as HTMLElement | null) ?? null;
+      if (b)
+        return { el: b, unit: 'book', kind: 'swap', id: b.getAttribute('data-book-hash') ?? '' };
+      return null;
     };
 
     const onPointerMove = (e: PointerEvent) => {
@@ -1185,41 +1299,50 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       }
       const ghost = dragGhostRef.current;
       if (ghost) {
-        ghost.style.left = `${e.clientX + 14}px`;
-        ghost.style.top = `${e.clientY + 14}px`;
+        // Glue the ghost to the pointer, offset to the lower-right. The moment
+        // the ghost would touch the viewport edge, flip it to the opposite side
+        // of the pointer instead of clamping (clamping makes it stall at the
+        // border and stop following the cursor). Measured per-move from the
+        // real layout rect; a hard 8px clamp remains only as a narrow-window
+        // fallback so it can never leave the screen.
+        const rect = ghost.getBoundingClientRect();
+        const gw = rect.width || 140;
+        const gh = rect.height || 32;
+        const gap = 14;
+        let left = e.clientX + gap;
+        if (left + gw > window.innerWidth - 8) left = e.clientX - gw - gap;
+        let top = e.clientY + gap;
+        if (top + gh > window.innerHeight - 8) top = e.clientY - gh - gap;
+        ghost.style.left = `${Math.max(8, left)}px`;
+        ghost.style.top = `${Math.max(8, top)}px`;
       }
       document
-        .querySelectorAll('.drag-over-group')
-        .forEach((node) => node.classList.remove('drag-over-group'));
+        .querySelectorAll('.drag-over-group,.drag-over-merge')
+        .forEach((node) => node.classList.remove('drag-over-group', 'drag-over-merge'));
       const hoverTarget = resolveHoverTarget(e.clientX, e.clientY);
-      if (hoverTarget.el) hoverTarget.el.classList.add('drag-over-group');
-      // Manual-sort drags highlight the book cell being dropped onto, so a
-      // sort gesture is visually distinct from a group-assignment gesture.
-      if (
-        settings.librarySortBy === LibrarySortByType.Manual &&
-        dragSourceRef.current?.kind === 'book'
-      ) {
-        const bookCell = document
-          .elementFromPoint(e.clientX, e.clientY)
-          ?.closest?.('[data-book-hash]') as HTMLElement | null;
-        if (bookCell && bookCell !== hoverTarget.el) bookCell.classList.add('drag-over-group');
+      if (hoverTarget) {
+        // Swap zone (order change) and merge zone (nest into the group) get
+        // different highlights so the user sees where each drop leads.
+        hoverTarget.el.classList.add(
+          hoverTarget.kind === 'merge' ? 'drag-over-merge' : 'drag-over-group',
+        );
+      }
+      // Track the current drop intent reactively (only when it changes), so the
+      // ghost label updates with the locale without a setState per move.
+      const action = hoverTarget?.kind ?? null;
+      if (action !== dragActionRef.current) {
+        dragActionRef.current = action;
+        setDragAction(action);
       }
     };
 
     const onPointerUp = async (e: PointerEvent) => {
       const wasDragging = dragActiveRef.current;
       const source = dragSourceRef.current;
-      const under = document.elementFromPoint(e.clientX, e.clientY);
-      const targetBookHash =
-        under?.closest?.('[data-book-hash]')?.getAttribute('data-book-hash') ?? null;
-      const targetLevel = resolveHoverTarget(e.clientX, e.clientY).val;
+      const target = resolveHoverTarget(e.clientX, e.clientY);
       endShelfDrag();
-      if (!wasDragging || !source) return;
+      if (!wasDragging || !source || !target) return;
 
-      // Manual-sort drag: reorder within the current layer. A book dropped on a
-      // book cell always reorders; in the Group view a group dropped on a
-      // sibling group cell reorders too (instead of silently nesting). Any
-      // other group target still assigns into that group.
       const sourceHasBooks =
         source.kind === 'book' ||
         libraryBooks.some(
@@ -1227,34 +1350,40 @@ const Bookshelf: React.FC<BookshelfProps> = ({
             !b.deletedAt &&
             (b.groupName === source.groupName || b.groupName?.startsWith(source.groupName + '/')),
         );
-      const sortByManual = settings.librarySortBy === LibrarySortByType.Manual;
-      const bookOrderTarget =
-        source.kind === 'book' && targetBookHash && targetBookHash !== source.hash;
+
+      // Manual-sort key for a shelf unit — used to rebuild remaining order after
+      // a merge regardless of the currently displayed view (a non-manual view
+      // would otherwise feed its own order into the rebase).
+      const manualKeyOf = (it: Book | BooksGroup): number =>
+        'format' in it
+          ? ((it as Book).shelfIndex ?? Number.MAX_SAFE_INTEGER)
+          : (it as BooksGroup).books.length
+            ? Math.min(
+                ...(it as BooksGroup).books.map((b) => b.shelfIndex ?? Number.MAX_SAFE_INTEGER),
+              )
+            : ((it as BooksGroup).manualOrder ?? Number.MAX_SAFE_INTEGER);
+
+      // --- 排序（互换）：书→书；组→组格子「上半」---
       const layerGroupNames = new Set(
         sortedBookshelfItems.filter((i): i is BooksGroup => 'books' in i).map((g) => g.name),
       );
-      const groupOrderTarget =
+      const isBookSwap =
+        source.kind === 'book' && target.unit === 'book' && target.id !== source.hash;
+      const isGroupSwap =
         source.kind === 'group' &&
-        targetLevel != null &&
-        targetLevel !== source.groupName &&
-        layerGroupNames.has(targetLevel);
-
-      if (sortByManual && (bookOrderTarget || groupOrderTarget)) {
-        // Group targets include empty groups — they are anchored units on the
-        // same ruler as books now. The drag model is a swap: dropping the
-        // source onto a sibling swaps the two positions, top or bottom half
-        // alike (e.g. 1,2,3,4 → drag 1 onto 4 → 4,2,3,1).
+        target.unit === 'group' &&
+        target.kind === 'swap' &&
+        target.id !== source.groupName &&
+        layerGroupNames.has(target.id);
+      if (isBookSwap || isGroupSwap) {
         const { updated, changed, ordered } = swapShelfUnits(
           sortedBookshelfItems,
           source.kind === 'book' ? source.hash : source.groupName,
-          source.kind === 'book' ? (targetBookHash as string) : (targetLevel as string),
+          target.id,
         );
         if (changed) {
-          // Empty groups move purely via their manual-sort anchor. Persist it
-          // first — synchronously — so the anchor and the book-index write land
-          // in the same render batch. Otherwise the await below splits them
-          // into two frames and the shelf briefly shows a mid-swap order (e.g.
-          // 4,1,2,3 before 4,2,3,1).
+          // Anchor-before-index so both land in the same render batch (no
+          // mid-swap flicker like 4,1,2,3 → 4,2,3,1).
           const anchors = assignEmptyGroupAnchors(
             ordered,
             new Map(updated.map((b) => [b.hash, b.shelfIndex ?? 0])),
@@ -1272,15 +1401,21 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           if (toWrite.length > 0) {
             await updateBooks(envConfig, toWrite);
           } else {
-            const live = useSettingsStore.getState().settings;
-            void saveSettings(envConfig, live);
+            void saveSettings(envConfig, useSettingsStore.getState().settings);
+          }
+          // Not in manual sort? Flip that view to manual so the freshly
+          // dragged order is shown immediately (otherwise the current sort
+          // key masks the shelfIndex change and the drag looks dead).
+          if (sortBy !== LibrarySortByType.Manual) {
+            updateUrlParams({ sort: LibrarySortByType.Manual });
           }
         }
         return;
       }
 
-      if (targetLevel === null) return;
-      const targetGroupName = targetLevel === '' ? undefined : targetLevel;
+      // --- 归组/移动：书→组格（并入）；组→组格「下半」并入；书/组→面包屑层级 ---
+      if (target.unit !== 'group' && target.unit !== 'level') return;
+      const targetGroupName = target.unit === 'level' && target.id === '' ? undefined : target.id;
       if (source.kind === 'group' && !sourceHasBooks) {
         if (!syncPersistentGroupMove(source.groupName, targetGroupName)) {
           eventDispatcher.dispatch('toast', {
@@ -1288,6 +1423,21 @@ const Bookshelf: React.FC<BookshelfProps> = ({
             message: _('Cannot move here: same or nested group'),
           });
           return;
+        }
+        // Empty groups carry no books to rebase; re-anchor the remaining layer
+        // so the rest keep their pre-move relative order.
+        const remaining = sortedBookshelfItems
+          .filter((it) => ('books' in it ? (it as BooksGroup).name !== source.groupName : true))
+          .sort((a, b) => manualKeyOf(a) - manualKeyOf(b));
+        const anchors = assignEmptyGroupAnchors(remaining);
+        if (anchors.size > 0) {
+          const live = useSettingsStore.getState().settings;
+          const nextOrder = {
+            ...(live.libraryEmptyGroupOrder ?? {}),
+            ...Object.fromEntries(anchors),
+          };
+          setSettings({ ...live, libraryEmptyGroupOrder: nextOrder });
+          void saveSettings(envConfig, { ...live, libraryEmptyGroupOrder: nextOrder });
         }
         useLibraryStore.getState().refreshGroups();
         return;
@@ -1300,10 +1450,50 @@ const Bookshelf: React.FC<BookshelfProps> = ({
         });
         return;
       }
-      await updateBooks(envConfig, updated);
+      // Group merged into another group: the source books keep their old small
+      // shelfIndex, which drags the target's min-sort key to the front. Rebase
+      // to remaining-layer order (source books appended after the target's) so
+      // the other groups keep their place, and re-anchor empty groups.
+      let booksToWrite = updated;
+      if (source.kind === 'group' && target.unit === 'group' && targetGroupName) {
+        const remaining = sortedBookshelfItems
+          .filter((it) => ('books' in it ? (it as BooksGroup).name !== source.groupName : true))
+          .sort((a, b) => manualKeyOf(a) - manualKeyOf(b));
+        const { books, anchors } = rebaseLayerAfterGroupMerge(
+          remaining,
+          updated,
+          `${targetGroupName}/${source.groupName}`,
+        );
+        booksToWrite = books;
+        if (anchors.size > 0) {
+          const live = useSettingsStore.getState().settings;
+          const nextOrder = {
+            ...(live.libraryEmptyGroupOrder ?? {}),
+            ...Object.fromEntries(anchors),
+          };
+          setSettings({ ...live, libraryEmptyGroupOrder: nextOrder });
+          void saveSettings(envConfig, { ...live, libraryEmptyGroupOrder: nextOrder });
+        }
+      }
+      await updateBooks(envConfig, booksToWrite);
       // A book-backed move can leave stale persisted names for empty records
-      // that shadow the group under its old path; relabel them to match.
-      if (source.kind === 'group') syncPersistentGroupMove(source.groupName, targetGroupName);
+      // that shadow the group under its old path; relabel them to match, then
+      // hard-clean the source group's old path and rebuild the group map so no
+      // ghost empty group survives at its former slot.
+      if (source.kind === 'group') {
+        syncPersistentGroupMove(source.groupName, targetGroupName);
+        useLibraryStore.getState().removePersistentGroups([source.groupName]);
+        useLibraryStore.getState().refreshGroups();
+      }
+      // After a merge, flip a non-manual view to manual so the rebased order is
+      // visible immediately (otherwise the current sort key masks the change).
+      if (
+        source.kind === 'group' &&
+        target.unit === 'group' &&
+        sortBy !== LibrarySortByType.Manual
+      ) {
+        updateUrlParams({ sort: LibrarySortByType.Manual });
+      }
     };
 
     const onPointerCancel = () => endShelfDrag();
@@ -1327,6 +1517,8 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     settings,
     sortedBookshelfItems,
     syncPersistentGroupMove,
+    sortBy,
+    updateUrlParams,
   ]);
 
   return (
@@ -1395,20 +1587,31 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           )}
         </div>
       )}
-      {showDragGhost && (
-        <div ref={dragGhostRef} className='shelf-drag-ghost' role='presentation'>
-          {dragGhostBook && (
-            <div className='shelf-drag-ghost-cover'>
-              <BookCover
-                book={dragGhostBook}
-                isPreview
-                imageClassName='h-full w-full rounded-[2px]'
-              />
-            </div>
-          )}
-          <div className='shelf-drag-ghost-title'>{dragGhostLabel}</div>
-        </div>
-      )}
+      {showDragGhost &&
+        createPortal(
+          <div ref={dragGhostRef} className='shelf-drag-ghost' role='presentation'>
+            {dragGhostBook && (
+              <div className='shelf-drag-ghost-cover'>
+                <BookCover
+                  book={dragGhostBook}
+                  isPreview
+                  imageClassName='h-full w-full rounded-[2px]'
+                />
+              </div>
+            )}
+            <div className='shelf-drag-ghost-title'>{dragGhostLabel}</div>
+            <span className='shelf-drag-hint' aria-hidden='true'>
+              {dragAction === 'swap'
+                ? _('Swap order')
+                : dragAction === 'merge'
+                  ? _('Move into group')
+                  : dragAction === 'move'
+                    ? _('Move to here')
+                    : ''}
+            </span>
+          </div>,
+          document.body,
+        )}
       {blankContextMenu && (
         <BookContextMenuPopup
           position={blankContextMenu}
@@ -1458,24 +1661,23 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           </div>
         </ModalPortal>
       )}
-      {deleteGroupTarget && (
-        <div
-          className='delete-alert fixed bottom-0 left-0 right-0 z-50 flex justify-center'
-          style={{ paddingBottom: `${(safeAreaInsets?.bottom || 0) + 16}px` }}
-        >
-          <DeleteConfirmAlert
-            title={_('Delete Group')}
-            message={
-              deleteGroupTarget.books.length > 0
-                ? _('This will delete {{count}} book(s) in this group.', {
-                    count: deleteGroupTarget.books.length,
-                  })
-                : _('This is an empty group and will be removed.')
-            }
-            showPurgeToggle={deleteGroupTarget.books.length > 0}
-            onCancel={() => setDeleteGroupTarget(null)}
-            onConfirm={(purge) => void deleteGroupByName(deleteGroupTarget.name, purge)}
-          />
+      {isDev && (
+        <div className='fixed bottom-4 right-4 z-50 flex items-center gap-2'>
+          <button
+            type='button'
+            onClick={captureLayout}
+            className='border-base-300 hover:border-base-content/40 bg-base-100/90 hover:bg-base-300/50 text-base-content/80 hover:text-base-content rounded-lg border px-3 py-1.5 text-xs font-medium shadow transition-colors'
+          >
+            {_('Save layout')}
+          </button>
+          <button
+            type='button'
+            onClick={() => void restoreLayout()}
+            disabled={!hasLayoutSnapshot}
+            className='border-base-300 hover:border-base-content/40 bg-base-100/90 hover:bg-base-300/50 text-base-content/80 hover:text-base-content rounded-lg border px-3 py-1.5 text-xs font-medium shadow transition-colors disabled:cursor-not-allowed disabled:opacity-50'
+          >
+            {_('Restore layout')}
+          </button>
         </div>
       )}
       {loading && (

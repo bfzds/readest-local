@@ -417,9 +417,41 @@ foliate-fxl {
 /* Shelf drag-and-drop target: the group cell under the cursor while dragging
    a book or another group onto it (see Bookshelf pointer handlers). */
 .drag-over-group {
-  outline: 2px solid var(--p);
+  outline: 3px solid var(--p);
   outline-offset: -2px;
   border-radius: 8px;
+  background: color-mix(in srgb, var(--p) 12%, transparent);
+  transition:
+    outline-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+/* The "merge into this group" half of a group cell: dashed ring + inner glow,
+   visually distinct from the solid swap-ring above. */
+.drag-over-merge {
+  outline: 3px dashed var(--p);
+  outline-offset: -2px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--p) 22%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--p) 35%, transparent);
+  transition:
+    outline-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+/* Live intent label inside the drag ghost (swap / move-into-group / move-level)
+   so the user sees which operation a drop will trigger before releasing. */
+.shelf-drag-hint {
+  font-size: 12px;
+  font-weight: 700;
+  /* Theme-independent dark chip: --p turns light inside dark themes, so mixing
+     it would produce a light pill with unreadable white text. */
+  color: #fff;
+  background: rgba(17, 24, 39, 0.82);
+  padding: 2px 8px;
+  border-radius: 999px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  white-space: nowrap;
 }
 
 /* Self-drawn drag ghost that follows the pointer during a shelf drag: a mini
@@ -430,7 +462,9 @@ foliate-fxl {
   display: flex;
   align-items: center;
   gap: 8px;
-  max-width: 260px;
+  max-width: min(260px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow: hidden;
   padding: 6px 10px;
   border-radius: 10px;
   background: var(--base-100, #fff);
