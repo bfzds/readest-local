@@ -250,10 +250,12 @@ describe('importBook metaHash deduplication', () => {
     const mockFile = new File(['content'], 'test.epub', { type: 'application/epub+zip' });
     const result = await service.importBook(mockFile, books);
 
-    // Should return the exact hash match, not the metaHash match
-    expect(result).toBe(exactMatchBook);
-    // metaHash duplicate should be soft-deleted during aggregation
-    expect(metaMatchBook.deletedAt).toBeTruthy();
+    // B-6：返回已存在书的不可变副本（新引用），原对象不被就地改。
+    expect(result).not.toBe(exactMatchBook);
+    expect(result?.hash).toBe('same-hash');
+    expect(result?.deletedAt).toBeNull();
+    // metaHash 重复书在数组/索引里被软删（原对象引用保持原样）。
+    expect(books.find((b) => b.hash === 'different-hash')!.deletedAt).toBeTruthy();
     expect(exactMatchBook.deletedAt).toBeNull();
   });
 
@@ -357,8 +359,8 @@ describe('importBook metaHash aggregation', () => {
     const active = books.filter((b) => b.metaHash === metaHash && !b.deletedAt);
     expect(active).toHaveLength(1);
     expect(active[0]!.hash).toBe('new-hash');
-    expect(book2.deletedAt).toBeTruthy();
-    expect(book3.deletedAt).toBeTruthy();
+    expect(books.find((b) => b.hash === 'hash-2')!.deletedAt).toBeTruthy();
+    expect(books.find((b) => b.hash === 'hash-3')!.deletedAt).toBeTruthy();
     expect(unrelated.deletedAt).toBeNull();
   });
 
@@ -564,8 +566,8 @@ describe('importBook metaHash aggregation', () => {
     await service.importBook(mockFile, books);
 
     // Duplicates should be soft-deleted and their directories cleaned up
-    expect(book2.deletedAt).toBeTruthy();
-    expect(book3.deletedAt).toBeTruthy();
+    expect(books.find((b) => b.hash === 'hash-2')!.deletedAt).toBeTruthy();
+    expect(books.find((b) => b.hash === 'hash-3')!.deletedAt).toBeTruthy();
     const removeDirPaths = fs.removeDir.mock.calls.map((c: unknown[]) => c[0]);
     expect(removeDirPaths).toContain('hash-2');
     expect(removeDirPaths).toContain('hash-3');
@@ -590,10 +592,10 @@ describe('importBook metaHash aggregation', () => {
     const mockFile = new File(['content'], 'test.epub', { type: 'application/epub+zip' });
     const result = await service.importBook(mockFile, books);
 
-    expect(result).toBe(exactMatch);
-    expect(exactMatch.deletedAt).toBeNull();
-    expect(dup1.deletedAt).toBeTruthy();
-    expect(dup2.deletedAt).toBeTruthy();
+    expect(result?.hash).toBe('exact-hash');
+    expect(result?.deletedAt).toBeNull();
+    expect(books.find((b) => b.hash === 'dup-1')!.deletedAt).toBeTruthy();
+    expect(books.find((b) => b.hash === 'dup-2')!.deletedAt).toBeTruthy();
   });
 
   it('should merge configs on exact hash match with duplicates', async () => {
@@ -801,8 +803,9 @@ describe('importBook with BookLookupIndex', () => {
     const mockFile = new File(['content'], 'test.epub', { type: 'application/epub+zip' });
     const result = await service.importBook(mockFile, books, { lookupIndex });
 
-    // Should reuse the existing book object via lookup index
-    expect(result).toBe(existingBook);
+    // 复用已存在书（经 lookup index 发现，未新建 push 到空数组）
+    expect(result?.hash).toBe('existing');
+    expect(books).toHaveLength(0);
   });
 
   it('buildBookLookupIndex skips deleted and url-backed books in byFilePath', async () => {
@@ -902,7 +905,8 @@ describe('importBook with BookLookupIndex', () => {
 
     expect(result?.title).toBe('异世界魔物娘收容');
     expect(result?.author).toBe('kof_boss');
-    expect(existing.title).toBe('异世界魔物娘收容');
-    expect(existing.sourceTitle).toBe('异世界魔物娘收容');
+    // B-6：不可变语义 — 原对象引用不被就地修改；结果对象携带最新标题。
+    expect(existing.title).toBe('第1章');
+    expect(existing.sourceTitle).toBe('第1章');
   });
 });

@@ -303,22 +303,35 @@ export async function computeCoverHash(fs: FileSystem, book: Book): Promise<stri
  *
  * @returns The merged config as a JSON string, or undefined if no duplicates were found.
  */
+export interface MergeBooksResult {
+  /** Aggregated best config JSON string (undefined when candidates have no configs). */
+  config?: string;
+  /** Duplicate books folded into `book`. Caller tombstones + deletes their dirs only after persistence succeeds. */
+  duplicates: Book[];
+}
+
 export async function mergeBooks(
   fs: FileSystem,
   books: Book[],
   book: Book,
   lookupIndex?: BookLookupIndex,
-): Promise<string | undefined> {
-  if (!book.metaHash) return undefined;
+): Promise<MergeBooksResult> {
+  if (!book.metaHash) return { duplicates: [] };
 
   const metaKey = `${book.metaHash}:${book.format}`;
   const duplicates = lookupIndex
-    ? (lookupIndex.byMetaKey.get(metaKey) ?? []).filter((b) => !b.deletedAt && b !== book)
+    ? (lookupIndex.byMetaKey.get(metaKey) ?? []).filter(
+        (b) => !b.deletedAt && b !== book && b.hash !== book.hash,
+      )
     : books.filter(
         (b) =>
-          b.metaHash === book.metaHash && b.format === book.format && !b.deletedAt && b !== book,
+          b.metaHash === book.metaHash &&
+          b.format === book.format &&
+          !b.deletedAt &&
+          b !== book &&
+          b.hash !== book.hash,
       );
-  if (duplicates.length === 0) return undefined;
+  if (duplicates.length === 0) return { duplicates: [] };
 
   const allCandidates = [book, ...duplicates];
   const configs: Partial<BookConfig>[] = [];
@@ -356,15 +369,10 @@ export async function mergeBooks(
     mergedConfigData = serializeRawConfig(base);
   }
 
-  for (const dup of duplicates) {
-    dup.deletedAt = Date.now();
-    const dupDir = getDir(dup);
-    if (await fs.exists(dupDir, 'Books')) {
-      await fs.removeDir(dupDir, 'Books', true);
-    }
-  }
-
-  return mergedConfigData;
+  // B-5：这里不设置 deletedAt、不删除任何重复书目录 — 那属于"提交/清理"阶段。
+  // 目录清理必须等 merged config 与目标文件全部落盘成功后执行，否则中途失败
+  // 会丢失重复书的目录（书/书签/进度）。tombstone 与目录清理交给调用方 commit。
+  return { config: mergedConfigData, duplicates };
 }
 
 // --- Book Import ---
@@ -549,9 +557,16 @@ export async function importBook(
     let existingBook = lookupIndex
       ? lookupIndex.byHash.get(hash)
       : books.find((b) => b.hash === hash);
+    let originalExistingHash: string | undefined;
     let metaHashMatch = false;
     let oldBookDir: string | undefined;
     if (existingBook) {
+      // B-6：已存在书的所有字段更新都写在副本上，成功后再提交 ——
+      // 中途抛错不污染调用方传入的 library 数组 / lookupIndex 的原对象。
+      // 记忆克隆前的 hash：后续 metaHashMatch 会把副本的 hash 改成目标值，
+      // 提交时需要按原 hash 回写数组/索引单元。
+      originalExistingHash = existingBook.hash;
+      existingBook = { ...existingBook };
       if (!transient) {
         existingBook.deletedAt = null;
       }
@@ -561,6 +576,7 @@ export async function importBook(
 
     // Aggregate all books with same metaHash and format, deduplicating into one entry
     let bestConfigData: string | undefined;
+    let mergeDuplicates: Book[] = [];
     if (!transient && metaHash) {
       if (!existingBook) {
         const metaKey = `${metaHash}:${format}`;
@@ -576,7 +592,9 @@ export async function importBook(
         }
       }
       if (existingBook) {
-        bestConfigData = await mergeBooks(fs, books, existingBook, lookupIndex);
+        const mergeResult = await mergeBooks(fs, books, existingBook, lookupIndex);
+        bestConfigData = mergeResult.config;
+        mergeDuplicates = mergeResult.duplicates;
       }
     }
 
@@ -793,7 +811,59 @@ export async function importBook(
     }
     book.coverImageUrl = await generateCoverImageUrlFn(book);
 
+    // B-5 / B-6：此时目标书文件与 config 已全部落盘成功，才执行提交与清理：
+    //   - 同步现有书副本引用到索引（后续批次不会再拿到过时对象）；
+    //   - 对合并掉的重复书设置 tombstone（副本）并删除其目录；清理失败仅告警，
+    //     tombstone 保留，下次导入可重试清理。
+    if (existingBook) {
+      const targetHash = originalExistingHash ?? existingBook.hash;
+      const bi = books.findIndex((b) => b.hash === targetHash);
+      if (bi >= 0) books[bi] = existingBook!;
+      if (lookupIndex) {
+        lookupIndex.byHash.set(existingBook.hash, existingBook);
+        for (const list of lookupIndex.byMetaKey.values()) {
+          const i = list.findIndex((b) => b.hash === targetHash);
+          if (i >= 0) list[i] = existingBook!;
+        }
+      }
+    }
+    if (mergeDuplicates.length > 0) {
+      for (const dup of mergeDuplicates) {
+        if (dup.deletedAt) continue;
+        let tombstoned: Book | null = null;
+        if (lookupIndex) {
+          tombstoned = { ...dup, deletedAt: Date.now() };
+          if (lookupIndex.byHash.get(dup.hash)) {
+            lookupIndex.byHash.set(dup.hash, tombstoned);
+          }
+          const dupKey = `${dup.metaHash}:${dup.format}`;
+          const list = lookupIndex.byMetaKey.get(dupKey);
+          if (list) {
+            const i = list.findIndex((b) => b.hash === dup.hash);
+            if (i >= 0) list[i] = tombstoned;
+          }
+        } else {
+          tombstoned = { ...dup, deletedAt: Date.now() };
+        }
+        const bi = books.findIndex((b) => b.hash === dup.hash);
+        if (bi >= 0) books[bi] = tombstoned;
+        try {
+          const dupDir = getDir(dup);
+          if (await fs.exists(dupDir, 'Books')) {
+            await fs.removeDir(dupDir, 'Books', true);
+          }
+        } catch (e) {
+          console.warn(
+            'merge: failed to clean duplicate book dir (tombstone kept, retry next import):',
+            dup.hash,
+            e,
+          );
+        }
+      }
+    }
+
     perfMark('importBook', 'total', t0);
+    // B-6：existingBook 是副本；调用方将以该对象更新 store，原对象未被动过。
     return existingBook || book;
   } catch (error) {
     console.error('Error importing book:', error);

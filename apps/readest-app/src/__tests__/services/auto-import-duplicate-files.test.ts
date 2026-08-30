@@ -187,8 +187,8 @@ describe('auto-import: watched folder with duplicated files', () => {
     const lookupIndex = buildBookLookupIndex(library, 'linux');
     await service.importBook(ORIGINAL_PATH, library, { lookupIndex, inPlace: true });
 
-    const book = library[0]!;
-    expect(book.filePath).toBe(ORIGINAL_PATH);
+    const originalObject = library[0]!;
+    expect(library[0]!.filePath).toBe(ORIGINAL_PATH);
 
     const renamed = '/lib/watched/renamed.epub';
     await service.importBook(renamed, library, {
@@ -196,10 +196,12 @@ describe('auto-import: watched folder with duplicated files', () => {
       inPlace: true,
     });
 
+    // B-6：原对象不被动过；store 通过新数组引用拿到更新后的副本。
+    expect(originalObject.filePath).toBe(ORIGINAL_PATH);
     // Content is read from `filePath`, so it must point at the name that
     // actually exists on disk now.
-    expect(book.filePath).toBe(renamed);
-    expect(book.altFilePaths).toEqual([ORIGINAL_PATH]);
+    expect(library[0]!.filePath).toBe(renamed);
+    expect(library[0]!.altFilePaths).toEqual([ORIGINAL_PATH]);
   });
 
   // The other dedup arm: two different files (different bytes, so different
