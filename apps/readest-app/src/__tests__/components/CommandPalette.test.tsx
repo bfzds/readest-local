@@ -1,13 +1,25 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import CommandPalette from '@/components/command-palette/CommandPalette';
+import type { CommandCategory, CommandItem, CommandSearchResult } from '@/services/commandRegistry';
+
+interface PaletteState {
+  isOpen: boolean;
+  close: ReturnType<typeof vi.fn>;
+  setQuery: ReturnType<typeof vi.fn>;
+  query: string;
+  results: CommandSearchResult[];
+  groupedResults: Record<CommandCategory, CommandSearchResult[]>;
+  recentItems: CommandSearchResult[];
+  executeCommand: ReturnType<typeof vi.fn>;
+}
 
 vi.mock('@/hooks/useTranslation', () => ({
   useTranslation: () => (key: string) => key,
 }));
 
 const { mockClose, mockUseCommandPalette, paletteFactory } = vi.hoisted(() => {
-  const paletteFactory = () => ({
+  const paletteFactory = (): PaletteState => ({
     isOpen: true,
     close: mockClose,
     setQuery: vi.fn(),
@@ -84,10 +96,18 @@ describe('CommandPalette', () => {
     // rotated results: 扁平顺序 [a1, b1, a2] 与分类连续布局 (settings=[a1,a2]，actions=[b1])
     // 不一致 —— 旧实现 settings 第二项会落到下标 1（b1）。
     const executeCommand = vi.fn();
-    const a1 = { id: 'a1', labelKey: 'A1', category: 'settings' } as never;
-    const a2 = { id: 'a2', labelKey: 'A2', category: 'settings' } as never;
-    const b1 = { id: 'b1', labelKey: 'B1', category: 'actions' } as never;
-    const makeResult = (item: never) => ({
+    const makeItem = (id: string, labelKey: string, category: CommandCategory): CommandItem => ({
+      id,
+      labelKey,
+      localizedLabel: labelKey,
+      keywords: [],
+      category,
+      action: () => {},
+    });
+    const a1 = makeItem('a1', 'A1', 'settings');
+    const a2 = makeItem('a2', 'A2', 'settings');
+    const b1 = makeItem('b1', 'B1', 'actions');
+    const makeResult = (item: CommandItem): CommandSearchResult => ({
       item,
       score: 0,
       positions: new Set<number>(),
