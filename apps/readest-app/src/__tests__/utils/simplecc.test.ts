@@ -46,34 +46,34 @@ describe.concurrent('suite', () => {
     ).toBe('我们在老挝的服务器的硬盘需要使用互联网算法软件解决异步的问题。');
   });
 
-  test('简体书选中词不 reverse：搜索词保持正文所见（简体）', () => {
-    expect(toSelectionSearchTerm('发财了去植发', 'zh-CN', 't2s')).toBe('发财了去植发');
+  test('简体书选中词不 reverse：搜索词保持正文所见（简体）', async () => {
+    expect(await toSelectionSearchTerm('发财了去植发', 'zh-CN', 't2s')).toBe('发财了去植发');
   });
 
-  test('未知/通用 zh 不 reverse（简体书为主，不把简体误转繁体）', () => {
-    expect(toSelectionSearchTerm('发财了去植发', 'zh', 't2s')).toBe('发财了去植发');
-    expect(toSelectionSearchTerm('发财了去植发', undefined, 't2s')).toBe('发财了去植发');
+  test('未知/通用 zh 不 reverse（简体书为主，不把简体误转繁体）', async () => {
+    expect(await toSelectionSearchTerm('发财了去植发', 'zh', 't2s')).toBe('发财了去植发');
+    expect(await toSelectionSearchTerm('发财了去植发', undefined, 't2s')).toBe('发财了去植发');
   });
 
-  test('繁体书 t2s 显示：reverse 回繁体原文以命中书内索引', () => {
-    expect(toSelectionSearchTerm('发财了去植发', 'zh-TW', 't2s')).toBe('發財了去植髮');
+  test('繁体书 t2s 显示：reverse 回繁体原文以命中书内索引', async () => {
+    expect(await toSelectionSearchTerm('发财了去植发', 'zh-TW', 't2s')).toBe('發財了去植髮');
   });
 
-  test('convertChineseVariant = none 不转换', () => {
-    expect(toSelectionSearchTerm('发财了去植发', 'zh-TW', 'none')).toBe('发财了去植发');
+  test('convertChineseVariant = none 不转换', async () => {
+    expect(await toSelectionSearchTerm('发财了去植发', 'zh-TW', 'none')).toBe('发财了去植发');
   });
 
-  test('简体书 s2t 显示：reverse 回简体以命中简体原文索引', () => {
-    expect(toSelectionSearchTerm('發財了去植髮', 'zh-CN', 's2t')).toBe('发财了去植发');
-    expect(toSelectionSearchTerm('鼠標', 'zh-CN', 's2tw')).toBe('鼠标');
+  test('简体书 s2t 显示：reverse 回简体以命中简体原文索引', async () => {
+    expect(await toSelectionSearchTerm('發財了去植髮', 'zh-CN', 's2t')).toBe('发财了去植发');
+    expect(await toSelectionSearchTerm('鼠標', 'zh-CN', 's2tw')).toBe('鼠标');
   });
 
-  test('s2t/s2tw 显示 + 繁体书：正文已是繁体原文，不 reverse', () => {
-    expect(toSelectionSearchTerm('發財了去植髮', 'zh-TW', 's2t')).toBe('發財了去植髮');
-    expect(toSelectionSearchTerm('鼠標', 'zh-TW', 's2tw')).toBe('鼠標');
+  test('s2t/s2tw 显示 + 繁体书：正文已是繁体原文，不 reverse', async () => {
+    expect(await toSelectionSearchTerm('發財了去植髮', 'zh-TW', 's2t')).toBe('發財了去植髮');
+    expect(await toSelectionSearchTerm('鼠標', 'zh-TW', 's2tw')).toBe('鼠標');
   });
 
-  test('tw2s 显示 + 简体书：正文已是简体原文，不 reverse', () => {
-    expect(toSelectionSearchTerm('软体', 'zh-CN', 'tw2s')).toBe('软体');
+  test('tw2s 显示 + 简体书：正文已是简体原文，不 reverse', async () => {
+    expect(await toSelectionSearchTerm('软体', 'zh-CN', 'tw2s')).toBe('软体');
   });
 });

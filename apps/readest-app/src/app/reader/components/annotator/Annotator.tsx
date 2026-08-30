@@ -1297,7 +1297,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     handleDismissPopup();
   };
 
-  const handleSearch = () => {
+  const handleSearch = async () => {
     if (!selection || !selection.text) return;
     handleDismissPopupAndSelection();
     // 把选中的显示词转成"书原文变体"再搜：仅繁体系书（zh-TW/HK/Hant，正文
@@ -1308,7 +1308,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
       bookData.book?.metadata?.language ??
       bookData.book?.primaryLanguage;
     const bookLanguage = Array.isArray(rawLang) ? rawLang[0] : rawLang;
-    const term = toSelectionSearchTerm(
+    const term = await toSelectionSearchTerm(
       selection.text,
       bookLanguage,
       viewSettings.convertChineseVariant,
