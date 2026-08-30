@@ -59,6 +59,7 @@ import {
   rebaseLayerAfterGroupMerge,
   relabelAnchorMap,
 } from '../utils/libraryUtils';
+import { sameLibraryQuery } from '@/app/library/libraryQueryParams';
 import { eventDispatcher } from '@/utils/event';
 import { md5Fingerprint } from '@/utils/md5';
 import { getLocalBookFilename } from '@/utils/book';
@@ -308,6 +309,8 @@ const Bookshelf: React.FC<BookshelfProps> = ({
 
   const updateUrlParams = useCallback(
     (updates: Record<string, string | null>) => {
+      // 依赖稳定接口：只读全局 window.location，不依赖每次 render 换新的
+      // searchParams 对象（C-1 防回调身份漂移导致的反复规范化导航）。
       const params = new URLSearchParams(window.location.search);
 
       Object.entries(updates).forEach(([key, value]) => {
@@ -328,11 +331,12 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       const newParamString = params.toString();
       const currentParamString = window.location.search.slice(1);
 
-      if (newParamString !== currentParamString) {
+      // 语义等价比较（顺序/编码无关）——参数顺序变化不再触发重复导航（C-2）。
+      if (!sameLibraryQuery(newParamString, currentParamString)) {
         navigateToLibrary(router, newParamString);
       }
     },
-    [router, searchParams],
+    [router],
   );
 
   const filteredBooks = useMemo(() => {
