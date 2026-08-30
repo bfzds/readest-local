@@ -46,7 +46,7 @@ describe('iframe sandbox probe (S-3 decision)', () => {
     );
     expect(iframe.contentDocument).not.toBeNull();
     // 书内脚本通过 parent 读到宿主全局 —— S-3 的威胁路径在此可见。
-    expect(iframe.contentDocument!.body!.dataset.reachable).toBe('true');
+    expect(iframe.contentDocument!.body!.dataset['reachable']).toBe('true');
   });
 
   it('非同源（仅 allow-scripts）：contentDocument 变 null（foliate 同步 DOM 依赖会失效）', async () => {
