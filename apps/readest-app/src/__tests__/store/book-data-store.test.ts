@@ -1,4 +1,5 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest';
+import { useFakeTimersForStore } from '../helpers/failure-injection';
 
 vi.mock('@/services/environment', () => ({
   isTauriAppPlatform: () => false,
@@ -51,6 +52,7 @@ function makeBookNote(overrides: Partial<BookNote> = {}): BookNote {
 }
 
 describe('bookDataStore', () => {
+  useFakeTimersForStore();
   beforeEach(() => {
     useBookDataStore.setState({ booksData: {} });
   });
