@@ -39,6 +39,7 @@ import {
   getTextFromRange,
 } from '@/utils/sel';
 import { eventDispatcher } from '@/utils/event';
+import { applyBackfilledPages } from '@/utils/booknoteBackfill';
 import { findTocItemBS } from '@/services/nav';
 import {
   beginGesture,
@@ -766,9 +767,13 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     //  - Skip entirely if there are no annotations missing a page.
     const config = getConfig(bookKey);
     const allAnnotations = config?.booknotes ?? [];
-    const pending = allAnnotations.filter((a) => !a.deletedAt && a.cfi && !a.page);
-    if (pending.length === 0) return;
-    pending.sort((a, b) => CFI.compare(a.cfi, b.cfi));
+    // 只记录待回填标注的 (id, cfi)，不持有任何对象引用：整个回填窗口内
+    // 用户的新增/编辑/删除都留在 store 里，最终按 id 只补 page。
+    const pendingRefs = allAnnotations
+      .filter((a) => !a.deletedAt && a.cfi && !a.page)
+      .map((a) => ({ id: a.id, cfi: a.cfi }))
+      .sort((a, b) => CFI.compare(a.cfi, b.cfi));
+    if (pendingRefs.length === 0) return;
 
     const GRACE_MS = 5000;
     const TICK_GAP_MS = 250;
@@ -794,6 +799,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     };
 
     let touched = false;
+    let filledById: Map<string, number> | null = null;
     let i = 0;
     const tick = async () => {
       if (cancelled) return;
@@ -804,12 +810,13 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
         scheduledHandle = setTimeout(tick, TICK_GAP_MS);
         return;
       }
-      const annotation = pending[i++];
-      if (annotation && !annotation.page) {
+      const ref = pendingRefs[i++];
+      if (ref) {
         try {
-          const progress = await view.getCFIProgress(annotation.cfi);
+          const progress = await view.getCFIProgress(ref.cfi);
           if (!cancelled && progress) {
-            annotation.page = progress.location.current + 1;
+            // 只累计 (id -> page)，不触碰任何 booknote 对象。
+            (filledById ??= new Map()).set(ref.id, progress.location.current + 1);
             touched = true;
           }
         } catch (err) {
@@ -817,12 +824,18 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
         }
       }
       if (cancelled) return;
-      if (i < pending.length) {
+      if (i < pendingRefs.length) {
         scheduledHandle = setTimeout(tick, TICK_GAP_MS);
-      } else if (touched) {
-        const updatedConfig = updateBooknotes(bookKey, allAnnotations);
-        if (updatedConfig) {
-          saveConfig(envConfig, bookKey, updatedConfig, settings);
+      } else if (touched && filledById) {
+        // 写前重新读取最新书签，仅对仍缺 page 的标注补值 —— 回填期间用户
+        // 新增/编辑/删除的标注原样保留，不被挂载时快照回收。
+        const latest = getConfig(bookKey)?.booknotes ?? [];
+        const merged = applyBackfilledPages(latest, filledById);
+        if (merged !== latest) {
+          const updatedConfig = updateBooknotes(bookKey, merged);
+          if (updatedConfig) {
+            saveConfig(envConfig, bookKey, updatedConfig, settings);
+          }
         }
       }
     };
