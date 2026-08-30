@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { reassignToGroup, relabelPersistentGroups } from '@/app/library/utils/libraryUtils';
+import {
+  reassignToGroup,
+  relabelPersistentGroups,
+  resolveGroupDropKind,
+} from '@/app/library/utils/libraryUtils';
 import { md5Fingerprint } from '@/utils/md5';
 import type { Book } from '@/types/book';
 
@@ -160,5 +164,28 @@ describe('relabelPersistentGroups — moving an empty group', () => {
   it('reports changed=false when the source does not exist in the list', () => {
     const { changed } = relabelPersistentGroups(['C', 'C/D'], 'A', 'D');
     expect(changed).toBe(false);
+  });
+});
+
+describe('resolveGroupDropKind — group cell drop intent（B-4）', () => {
+  // rect: top=0, height=100 → 上半 0–50，下半 50–100。
+  it('书拖进组格上半区 → merge（归入），不再提示 swap', () => {
+    expect(resolveGroupDropKind('book', 10, 0, 100)).toBe('merge');
+  });
+
+  it('书拖进组格下半区 → merge', () => {
+    expect(resolveGroupDropKind('book', 90, 0, 100)).toBe('merge');
+  });
+
+  it('组拖组上半区 → swap（换序）', () => {
+    expect(resolveGroupDropKind('group', 10, 0, 100)).toBe('swap');
+  });
+
+  it('组拖组下半区 → merge（并入）', () => {
+    expect(resolveGroupDropKind('group', 90, 0, 100)).toBe('merge');
+  });
+
+  it('边界：恰好中线归下半，merge', () => {
+    expect(resolveGroupDropKind('group', 50, 0, 100)).toBe('merge');
   });
 });

@@ -1190,6 +1190,20 @@ export const reorderShelfLayer = (
  * of whether the pointer landed on the top or bottom half. Same rebasing of the
  * whole layer's shelfIndex and `ordered` output as {@link reorderShelfLayer}.
  */
+export type GroupDropKind = 'swap' | 'merge';
+
+/**
+ * 拖入组格的落点语义：书拖进组格一律归入（merge）；只有“组拖组”且落在
+ * 上半区才是换序（swap）。下半区一律 merge，与高亮提示保持一致（B-4）。
+ */
+export const resolveGroupDropKind = (
+  sourceKind: 'book' | 'group' | null,
+  pointerY: number,
+  rectTop: number,
+  rectHeight: number,
+): GroupDropKind =>
+  sourceKind === 'group' && pointerY < rectTop + rectHeight / 2 ? 'swap' : 'merge';
+
 export const swapShelfUnits = (
   items: readonly (Book | BooksGroup)[],
   sourceId: string,

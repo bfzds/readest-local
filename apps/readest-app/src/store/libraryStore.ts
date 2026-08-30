@@ -139,6 +139,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const appService = await envConfig.getAppService();
     const { library, hashIndex } = get();
     const idx = hashIndex.get(book.hash);
+    const original = idx !== undefined ? library[idx] : undefined;
     // Build the new library immutably — never mutate the previous-state array.
     const newLibrary =
       idx !== undefined
@@ -149,6 +150,16 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       hashIndex: buildHashIndex(newLibrary),
       visibleLibrary: newLibrary.filter((b) => !b.deletedAt),
     });
+    // 仅当分组归属变化（改名/改组/删除）时重建组映射；普通阅读进度更新不
+    // 触发 O(n) MD5 的 refreshGroups（B-3）。
+    const groupChanged =
+      !original ||
+      original.groupName !== book.groupName ||
+      original.groupId !== book.groupId ||
+      original.deletedAt !== book.deletedAt;
+    if (groupChanged) {
+      get().refreshGroups();
+    }
     await appService.saveLibraryBooks(newLibrary);
   },
   updateBooks: async (

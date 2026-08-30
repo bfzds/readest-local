@@ -53,6 +53,7 @@ import {
   withTimeRemainingLast,
   reassignToGroup,
   relabelPersistentGroups,
+  resolveGroupDropKind,
   swapShelfUnits,
   assignEmptyGroupAnchors,
   rebaseLayerAfterGroupMerge,
@@ -1254,7 +1255,12 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       const g = (under?.closest?.('[data-group-name]') as HTMLElement | null) ?? null;
       if (g) {
         const rect = g.getBoundingClientRect();
-        const kind = y < rect.top + rect.height / 2 ? 'swap' : 'merge';
+        const kind = resolveGroupDropKind(
+          dragSourceRef.current?.kind ?? null,
+          y,
+          rect.top,
+          rect.height,
+        );
         return { el: g, unit: 'group', kind, id: g.getAttribute('data-group-name') ?? '' };
       }
       const bc = (under?.closest?.('[data-drop-target-group]') as HTMLElement | null) ?? null;
