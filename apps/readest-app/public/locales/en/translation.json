@@ -125,6 +125,7 @@
   "Cannot move here: same or nested group": "Cannot move here: same or nested group",
   "Manual": "Manual",
   "Group created: {{name}}": "Group created: {{name}}",
+  "A group with this name already exists": "A group with this name already exists",
   "Delete Group": "Delete Group",
   "This will delete {{count}} book(s) in this group.": "This will delete {{count}} book(s) in this group.",
   "This is an empty group and will be removed.": "This is an empty group and will be removed.",

@@ -754,6 +754,12 @@ export const getGroupSortValue = (
   const books = group.books;
 
   if (books.length === 0) {
+    // Manual sort orders empty (persisted) groups by their shelf anchor
+    // (libraryEmptyGroupOrder). The anchor is a float on the same ruler as
+    // book-backed groups' min shelfIndex, so empty groups can interleave.
+    if (sortBy === LibrarySortByType.Manual) {
+      return group.manualOrder ?? 0;
+    }
     return sortBy === LibrarySortByType.Title ||
       sortBy === LibrarySortByType.Series ||
       sortBy === LibrarySortByType.Author ||
@@ -788,7 +794,8 @@ export const getGroupSortValue = (
 
     case LibrarySortByType.Manual: {
       // A group sorts by its earliest manually-placed book; groups with no
-      // manual index sort last.
+      // manual index sort last. (Empty groups are handled by the early
+      // `books.length === 0` return above.)
       const minIndex = Math.min(
         ...books.map((b) => b.shelfIndex ?? Number.MAX_SAFE_INTEGER),
         Number.MAX_SAFE_INTEGER,
@@ -1088,4 +1095,187 @@ export const reassignToGroup = (
     }),
     changed: true,
   };
+};
+
+/**
+ * The relabeling that {@link reassignToGroup} applies to books, but for a list
+ * of persistent group *names*. Empty groups carry no books, so their path lives
+ * only in `persistentGroupNames` / `libraryCustomGroups` — moving one must
+ * rewrite those names, not any book rows. Mirrors the same cycle/no-op rules as
+ * the book path: yes to nesting elsewhere, no to self / own descendant / own
+ * ancestor / hoisting a top-level group.
+ */
+export const relabelPersistentGroups = (
+  names: readonly string[],
+  source: string,
+  target?: string,
+): { relabeled: Map<string, string>; changed: boolean } => {
+  const relabeled = new Map<string, string>();
+  if (!target) {
+    // Top level: hoist the source's leaf segment, dropping its parent prefix.
+    if (!source.includes('/')) return { relabeled, changed: false };
+    const topName = source.slice(source.lastIndexOf('/') + 1);
+    for (const name of names) {
+      if (name === source) relabeled.set(name, topName);
+      else if (name.startsWith(source + '/'))
+        relabeled.set(name, topName + name.slice(source.length));
+    }
+    return { relabeled, changed: relabeled.size > 0 };
+  }
+  if (source === target || target.startsWith(source + '/') || source.startsWith(target + '/')) {
+    return { relabeled, changed: false };
+  }
+  for (const name of names) {
+    if (name === source) relabeled.set(name, `${target}/${source}`);
+    else if (name.startsWith(source + '/'))
+      relabeled.set(name, `${target}/${source}${name.slice(source.length)}`);
+  }
+  return { relabeled, changed: relabeled.size > 0 };
+};
+
+/**
+ * Reorder the items of one bookshelf layer for manual sorting. `items` is the
+ * layer's rendered shelf (books and/or groups). `sourceId` is either a book
+ * hash or a group's full name; the whole source unit — for a group, every one
+ * of its books as one contiguous block, inner order preserved — moves to sit
+ * just before (`before: true`) or just after (`before: false`) the target
+ * unit. Reassigns the whole layer's `shelfIndex` 0..n-1 in the new order.
+ * Returns `changed: false` with an empty list when the move leaves the order
+ * unchanged (already sitting right next to the target).
+ */
+export const reorderShelfLayer = (
+  items: readonly (Book | BooksGroup)[],
+  sourceId: string,
+  targetId: string,
+  before: boolean,
+): { updated: Book[]; changed: boolean; ordered: (Book | BooksGroup)[] } => {
+  const idOf = (item: Book | BooksGroup): string =>
+    'format' in item ? (item as Book).hash : (item as BooksGroup).name;
+  const srcIdx = items.findIndex((i) => idOf(i) === sourceId);
+  const tgtIdx = items.findIndex((i) => idOf(i) === targetId);
+  if (srcIdx === -1 || tgtIdx === -1 || srcIdx === tgtIdx) {
+    return { updated: [], changed: false, ordered: [] };
+  }
+  const original = items.map(idOf);
+  const moving = items[srcIdx]!;
+  const rest = items.filter((_, i) => i !== srcIdx);
+  // Target index after the source unit is removed.
+  const t = srcIdx < tgtIdx ? tgtIdx - 1 : tgtIdx;
+  const insertAt = before ? t : t + 1;
+  const next = [...rest.slice(0, insertAt), moving, ...rest.slice(insertAt)];
+  const toUpdated = (units: readonly (Book | BooksGroup)[]): Book[] =>
+    units
+      .flatMap((it) => ('format' in it ? [it as Book] : (it as BooksGroup).books))
+      .map((b, i) => (b.shelfIndex === i ? b : { ...b, shelfIndex: i }));
+
+  if (next.length === original.length && next.every((it, i) => idOf(it) === original[i])) {
+    // The move left the order unchanged. For adjacent units the drop almost
+    // always means "swap these two" (e.g. dragging 1 onto the top of 2 to get
+    // 2,1,3,…), so swap instead of silently doing nothing.
+    if (Math.abs(srcIdx - tgtIdx) === 1) {
+      const swapped = items.slice();
+      const lo = Math.min(srcIdx, tgtIdx);
+      const hi = Math.max(srcIdx, tgtIdx);
+      [swapped[lo]!, swapped[hi]!] = [swapped[hi]!, swapped[lo]!];
+      return { updated: toUpdated(swapped), changed: true, ordered: swapped };
+    }
+    return { updated: [], changed: false, ordered: [] };
+  }
+  return { updated: toUpdated(next), changed: true, ordered: next };
+};
+
+/**
+ * Swap two units of a shelf layer in place — the drag model the user expects
+ * ("drag 1 onto 4 to get 4,2,3,1"), where the units trade positions regardless
+ * of whether the pointer landed on the top or bottom half. Same rebasing of the
+ * whole layer's shelfIndex and `ordered` output as {@link reorderShelfLayer}.
+ */
+export const swapShelfUnits = (
+  items: readonly (Book | BooksGroup)[],
+  sourceId: string,
+  targetId: string,
+): { updated: Book[]; changed: boolean; ordered: (Book | BooksGroup)[] } => {
+  const idOf = (item: Book | BooksGroup): string =>
+    'format' in item ? (item as Book).hash : (item as BooksGroup).name;
+  const srcIdx = items.findIndex((i) => idOf(i) === sourceId);
+  const tgtIdx = items.findIndex((i) => idOf(i) === targetId);
+  if (srcIdx === -1 || tgtIdx === -1 || srcIdx === tgtIdx) {
+    return { updated: [], changed: false, ordered: [] };
+  }
+  const swapped = items.slice();
+  const lo = Math.min(srcIdx, tgtIdx);
+  const hi = Math.max(srcIdx, tgtIdx);
+  [swapped[lo]!, swapped[hi]!] = [swapped[hi]!, swapped[lo]!];
+  const original = items.map(idOf);
+  if (swapped.every((it, i) => idOf(it) === original[i])) {
+    return { updated: [], changed: false, ordered: [] };
+  }
+  const updated = swapped
+    .flatMap((it) => ('format' in it ? [it as Book] : (it as BooksGroup).books))
+    .map((b, i) => (b.shelfIndex === i ? b : { ...b, shelfIndex: i }));
+  return { updated, changed: true, ordered: swapped };
+};
+
+/**
+ * Recompute the manual-sort anchor for every empty group in a layer after a
+ * reorder, so empty groups can sit anywhere book-backed groups do. Each empty
+ * group takes a slot in the gap between the neighbouring book "min" keys — the
+ * earliest book's shelfIndex (a loose book counts as a single-book "group").
+ * Empty groups in front of everything get a key below the first min, after
+ * everything they take lastMin + 0.5·(k+1), and a run of empty groups splits
+ * one gap evenly in the order they appeared. Returns full name -> anchor.
+ */
+export const assignEmptyGroupAnchors = (
+  ordered: readonly (Book | BooksGroup)[],
+  indices?: ReadonlyMap<string, number>,
+): Map<string, number> => {
+  // `ordered` still holds the pre-reorder book objects; the caller passes the
+  // rebased 0..n-1 indices so the anchor gaps use the keys the books will sort
+  // by after the move, not the stale ones.
+  const idxOf = (b: Book) => indices?.get(b.hash) ?? b.shelfIndex ?? Number.MAX_SAFE_INTEGER;
+  type U = { name: string; min: number | null };
+  const units: U[] = [];
+  for (const it of ordered) {
+    if ('format' in it) {
+      const b = it as Book;
+      units.push({ name: b.hash, min: idxOf(b) });
+    } else {
+      const g = it as BooksGroup;
+      units.push({
+        name: g.name,
+        min: g.books.length ? Math.min(...g.books.map(idxOf)) : null,
+      });
+    }
+  }
+  const anchors = new Map<string, number>();
+  let i = 0;
+  while (i < units.length) {
+    if (units[i]!.min !== null) {
+      i += 1;
+      continue;
+    }
+    const start = i;
+    while (i < units.length && units[i]!.min === null) i += 1;
+    const n = i - start;
+    const prevMin = start > 0 && units[start - 1]!.min !== null ? units[start - 1]!.min : null;
+    const nextMin = i < units.length && units[i]!.min !== null ? units[i]!.min : null;
+    for (let k = 0; k < n; k++) {
+      const u = units[start + k]!;
+      let anchor: number;
+      if (prevMin === null && nextMin === null) {
+        // Every unit is an empty group — no book key to reference. Anchor by
+        // the group's own position in the dragged order (start + slot), so the
+        // layer stays in the order the user just dragged it into.
+        anchor = start + k;
+      } else if (prevMin === null) {
+        anchor = (nextMin as number) - (n - k);
+      } else if (nextMin === null) {
+        anchor = prevMin + 0.5 * (k + 1);
+      } else {
+        anchor = prevMin + ((nextMin - prevMin) * (k + 1)) / (n + 1);
+      }
+      anchors.set(u.name, anchor);
+    }
+  }
+  return anchors;
 };

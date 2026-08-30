@@ -1997,6 +1997,7 @@
   "Cannot move here: same or nested group": "無法移至這裡：本身或子群組",
   "Manual": "手動排序",
   "Group created: {{name}}": "已建立群組：{{name}}",
+  "A group with this name already exists": "已有同名群組",
   "Delete Group": "刪除群組",
   "This will delete {{count}} book(s) in this group.": "將刪除該群組中的 {{count}} 本書。",
   "This is an empty group and will be removed.": "這是空群組，將被移除。",

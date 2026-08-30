@@ -348,7 +348,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
   return (
     <div
       className={clsx(
-        'format' in item ? 'group relative' : '',
+        'group relative',
         mode === 'grid' ? 'h-full' : 'sm:hover:bg-base-300/50 px-4 sm:px-6',
       )}
     >

@@ -617,6 +617,13 @@ export interface BooksGroup {
   books: Book[];
 
   updatedAt: number;
+  /**
+   * Manual-sort key for groups that carry no books (empty persisted groups):
+   * their position can't come from a member book's `shelfIndex`, so the bookshelf
+   * stamps the group's order in its persistent-name list here. Absent for groups
+   * derived from books.
+   */
+  manualOrder?: number;
 }
 export interface BookContent {
   book: Book;

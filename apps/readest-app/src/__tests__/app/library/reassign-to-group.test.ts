@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { reassignToGroup } from '@/app/library/utils/libraryUtils';
+import { reassignToGroup, relabelPersistentGroups } from '@/app/library/utils/libraryUtils';
 import { md5Fingerprint } from '@/utils/md5';
 import type { Book } from '@/types/book';
 
@@ -116,5 +116,49 @@ describe('reassignToGroup — top level (breadcrumb "All")', () => {
     );
     expect(changed).toBe(false);
     expect(updated).toBe(lib);
+  });
+});
+
+describe('relabelPersistentGroups — moving an empty group', () => {
+  it('rewrites the source subtree when nested into a target group', () => {
+    const names = ['A', 'A/B', 'C'];
+    const { relabeled, changed } = relabelPersistentGroups(names, 'A', 'D');
+    expect(changed).toBe(true);
+    expect(relabeled.get('A')).toBe('D/A');
+    expect(relabeled.get('A/B')).toBe('D/A/B');
+    expect(relabeled.get('C')).toBeUndefined();
+  });
+
+  it('hoists a nested empty group to the top level when dropped on "All"', () => {
+    const names = ['X/A', 'X/A/B', 'X'];
+    const { relabeled, changed } = relabelPersistentGroups(names, 'X/A', undefined);
+    expect(changed).toBe(true);
+    expect(relabeled.get('X/A')).toBe('A');
+    expect(relabeled.get('X/A/B')).toBe('A/B');
+    expect(relabeled.get('X')).toBeUndefined();
+  });
+
+  it('is a no-op hoisting a top-level empty group', () => {
+    const { relabeled, changed } = relabelPersistentGroups(['A', 'A/B'], 'A', undefined);
+    expect(changed).toBe(false);
+    expect(relabeled.size).toBe(0);
+  });
+
+  it('rejects moving into itself / its own descendant / its own ancestor', () => {
+    expect(relabelPersistentGroups(['A', 'A/B'], 'A', 'A').changed).toBe(false);
+    expect(relabelPersistentGroups(['A', 'A/B'], 'A', 'A/B').changed).toBe(false);
+    expect(relabelPersistentGroups(['A', 'A/B'], 'A/B', 'A').changed).toBe(false);
+  });
+
+  it('leaves names outside the source subtree untouched in the result', () => {
+    const { relabeled } = relabelPersistentGroups(['A', 'About', 'A/B'], 'A', 'D');
+    expect(relabeled.has('About')).toBe(false);
+    // Note: "A/B" names the source cascade; "About" shares the prefix but is not a member.
+    expect(relabeled.get('A/B')).toBe('D/A/B');
+  });
+
+  it('reports changed=false when the source does not exist in the list', () => {
+    const { changed } = relabelPersistentGroups(['C', 'C/D'], 'A', 'D');
+    expect(changed).toBe(false);
   });
 });

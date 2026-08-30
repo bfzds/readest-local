@@ -48,6 +48,10 @@ interface LibraryState {
   addGroup: (name: string) => BookGroupType;
   addPersistentGroup: (name: string) => BookGroupType;
   removePersistentGroups: (paths: string[]) => void;
+  // Move one persisted group name just before/after another in the persisted
+  // order (used by empty-group manual sorting). Returns false when the names
+  // are absent or the move leaves the order unchanged.
+  reorderPersistentGroup: (source: string, target: string, before: boolean) => boolean;
   getGroups: () => BookGroupType[];
   getGroupId: (path: string) => string | undefined;
   getGroupName: (id: string) => string | undefined;
@@ -282,6 +286,35 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       if (!removed) nextGroups[id] = name;
     }
     set({ persistentGroupNames: nextNames, groups: nextGroups });
+  },
+
+  reorderPersistentGroup: (source: string, target: string, before: boolean) => {
+    const { persistentGroupNames } = get();
+    const srcIdx = persistentGroupNames.indexOf(source);
+    const tgtIdx = persistentGroupNames.indexOf(target);
+    if (srcIdx === -1 || tgtIdx === -1 || srcIdx === tgtIdx) return false;
+    const rest = persistentGroupNames.filter((n) => n !== source);
+    const t = srcIdx < tgtIdx ? tgtIdx - 1 : tgtIdx;
+    const insertAt = before ? t : t + 1;
+    const next = [...rest.slice(0, insertAt), source, ...rest.slice(insertAt)];
+    if (
+      next.length === persistentGroupNames.length &&
+      next.every((n, i) => n === persistentGroupNames[i])
+    ) {
+      // Same as book drags: dropping one group onto an adjacent one almost
+      // always means "swap them" (e.g. dragging 1 onto the top of 2).
+      if (Math.abs(srcIdx - tgtIdx) === 1) {
+        const swapped = persistentGroupNames.slice();
+        const lo = Math.min(srcIdx, tgtIdx);
+        const hi = Math.max(srcIdx, tgtIdx);
+        [swapped[lo]!, swapped[hi]!] = [swapped[hi]!, swapped[lo]!];
+        set({ persistentGroupNames: swapped });
+        return true;
+      }
+      return false;
+    }
+    set({ persistentGroupNames: next });
+    return true;
   },
 
   getGroups: () => {

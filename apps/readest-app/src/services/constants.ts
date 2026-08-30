@@ -193,6 +193,7 @@ export const DEFAULT_SYSTEM_SETTINGS: Partial<SystemSettings> = {
   libraryViewMode: 'grid',
   librarySortBy: LibrarySortByType.Updated,
   libraryCustomGroups: [],
+  libraryEmptyGroupOrder: {},
   librarySortAscending: false,
   librarySortByAuto: true,
   libraryThenSortBy: 'none',

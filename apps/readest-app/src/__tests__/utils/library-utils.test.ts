@@ -713,6 +713,17 @@ describe('getGroupSortValue', () => {
     // Numeric sorts return 0 for empty groups
     expect(getGroupSortValue(group, LibrarySortByType.Updated)).toBe(0);
   });
+
+  it('orders empty groups by manualOrder ahead of book groups in manual sort', () => {
+    const sorter = createGroupSorter(LibrarySortByType.Manual, 'en');
+    const groups = [
+      createMockGroup({ name: 'Booksy', books: [createMockBook({ shelfIndex: 3 })] }),
+      createMockGroup({ name: 'EmptyB', books: [], manualOrder: 1 }),
+      createMockGroup({ name: 'EmptyA', books: [], manualOrder: 0 }),
+    ];
+    const sorted = groups.sort(sorter);
+    expect(sorted.map((g) => g.name)).toEqual(['EmptyA', 'EmptyB', 'Booksy']);
+  });
 });
 
 describe('createGroupSorter', () => {

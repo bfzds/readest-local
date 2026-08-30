@@ -434,6 +434,16 @@ export interface SystemSettings {
    */
   libraryCustomGroups?: string[];
   /**
+   * Manual-sort anchor for every persisted empty group, keyed by full path.
+   * Empty groups carry no books, so their shelf slot is stored here as a
+   * floating value that competes with book-backed groups' min shelfIndex on
+   * the same ruler — e.g. 3.5 sits right after a group whose earliest book has
+   * shelfIndex 3. An absent key falls back to the persisted-name order (empty
+   * groups first). Excluded from cross-device restore like
+   * {@link libraryCustomGroups}.
+   */
+  libraryEmptyGroupOrder?: Record<string, number>;
+  /**
    * Per-folder-group "group by" memory. Keyed by the current folder group's
    * path (as returned by libraryStore.getGroupName); `''` is the top-level
    * library. An absent key falls back to {@link libraryGroupBy}. Device-local:
