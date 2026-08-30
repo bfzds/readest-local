@@ -151,6 +151,16 @@ describe('validateChapterPattern（ReDoS 守门）', () => {
     expect(validateChapterPattern('(\\d+|x)+')).not.toEqual([]);
   });
 
+  it('含捕获组的用户规则被拒绝（B-8：避免双捕获错位），非捕获组放行', () => {
+    expect(validateChapterPattern('(第.+章)')).not.toEqual([]);
+    expect(validateChapterPattern('(第[0-9]+章|第N章)')).not.toEqual([]);
+    // 环视内的捕获组同样是捕获组（会与外层包裹组双捕获）
+    expect(validateChapterPattern('(?=(第.+章))[^\\n]*')).not.toEqual([]);
+    // 非捕获组 (?:)、无捕获组的普通规则放行
+    expect(validateChapterPattern('(?:第.+章)')).toEqual([]);
+    expect(validateChapterPattern('第[0-9]{1,3}章')).toEqual([]);
+  });
+
   it('区间量词嵌套量词链（(a+){20}、(?:(?:\\d+\\d*){10}x）被拦截', () => {
     expect(validateChapterPattern('(a+){20}')).not.toEqual([]);
     expect(validateChapterPattern('(?:\\d+\\d*){10}x')).not.toEqual([]);

@@ -257,6 +257,33 @@ export const validateChapterPattern = (pattern: string): string[] => {
     i++;
   }
   if (problems.length > 0) return problems;
+  // 捕获组契约（B-8）：用户每项规则会被外层再包一个捕获组
+  // `(?:^|\n)\s*(${pattern})`，内含捕获组会让章节 split 的双捕获语义错位、
+  // 全 TOC 损坏。用户规则不得携带捕获组（非捕获 `(?:`/环视 `(?=` 等除外）。
+  {
+    let j = 0;
+    while (j < pattern.length) {
+      const c = pattern[j]!;
+      if (c === '\\') {
+        j += 2;
+        continue;
+      }
+      if (c === '[') {
+        while (j < pattern.length && pattern[j] !== ']') j++;
+        j++;
+        continue;
+      }
+      if (c === '(') {
+        const rest = pattern.slice(j + 1);
+        const isNonCapturing = /^\?(:|=|!|<=|<!)/.test(rest);
+        if (!isNonCapturing) {
+          problems.push('不允许包含捕获组（章节规则只接受无捕获组的正则）');
+          return problems;
+        }
+      }
+      j++;
+    }
+  }
   // 嵌套量词链：一对不含嵌套括号的组内含量词、且闭组后又跟量词，是灾难性
   // 回溯的高发形态（(a+)+、(?:\\d+|x)* 等）。量词含区间形态 {n,m}——只认
   // 单字符量词会漏掉 (a+){20}、（?:\d+）{10} 这类炸弹，须一并拦截。
