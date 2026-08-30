@@ -208,5 +208,34 @@ export function libraryTests(getService: () => AppService) {
       expect(loaded).toHaveLength(1);
       expect(loaded[0]!.title).toBe('new');
     });
+
+    // B-7: a stale in-memory library (old reader window / throttled save)
+    // must never resurrect a book the disk already tombstoned.
+    it('does not let a stale save resurrect a tombstoned book', async () => {
+      const service = getService();
+      await service.saveLibraryBooks([makeBook({ hash: 'gone', deletedAt: 1111 })], {
+        replace: true,
+      });
+
+      // 旧窗口的 routine save 依旧拿到删除前的克隆（无 deletedAt）。
+      await service.saveLibraryBooks([makeBook({ hash: 'gone', title: 'zombie' })], {
+        replace: false,
+      });
+
+      const loaded = await service.loadLibraryBooks();
+      expect(loaded).toHaveLength(1);
+      expect(loaded[0]!.deletedAt).toBe(1111);
+    });
+
+    it('lets an incoming delete (deletedAt) tombstone an active disk row', async () => {
+      const service = getService();
+      await service.saveLibraryBooks([makeBook({ hash: 'a', title: 'live' })]);
+      await service.saveLibraryBooks([makeBook({ hash: 'a', deletedAt: 222 })], {
+        replace: false,
+      });
+
+      const loaded = await service.loadLibraryBooks();
+      expect(loaded[0]!.deletedAt).toBe(222);
+    });
   });
 }

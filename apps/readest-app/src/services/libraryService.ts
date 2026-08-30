@@ -57,6 +57,13 @@ export async function saveLibraryBooks(
   const existing = await safeLoadJSON<Book[]>(fs, getLibraryFilename(), 'Books', []);
   const merged = new Map<string, Book>();
   for (const book of existing) merged.set(book.hash, book);
-  for (const book of incoming) merged.set(book.hash, book); // incoming wins per hash
+  for (const book of incoming) {
+    const onDisk = merged.get(book.hash);
+    // B-7 防复活：磁盘上已软删（deletedAt）的书，不能被旧阅读窗口的陈旧
+    // incoming（无 tombstone）覆盖回活。只有显式携带 deletedAt 的 incoming
+    // （本轮删除）才允许覆盖磁盘条目标记新的删除时间。
+    if (onDisk && onDisk.deletedAt && !book.deletedAt) continue;
+    merged.set(book.hash, book); // incoming wins per hash
+  }
   await safeSaveJSON(fs, getLibraryFilename(), 'Books', Array.from(merged.values()));
 }
