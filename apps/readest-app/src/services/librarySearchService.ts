@@ -661,21 +661,25 @@ export async function* searchLibraryBooks(
     const singleLocale = new Set(batch.map((section) => section.locale)).size === 1;
     if (!singleLocale || !options.session) {
       const outcomes: SectionMatchOutcome[] = [];
+      // P-4：主线程 fallback 也用共享预算递减，预算用尽即停。
+      let budgetLeft = remaining;
       for (const section of batch) {
         if (signal?.aborted) return [];
+        if (budgetLeft <= 0) break;
         const state: { truncated?: boolean } = {};
         const matches =
           config.mode === 'fuzzy'
-            ? findFuzzyMatches(section.text, query, sharedPayload.fuzzyOptions, remaining, state)
+            ? findFuzzyMatches(section.text, query, sharedPayload.fuzzyOptions, budgetLeft, state)
             : findNearbyMatches(
                 section.text,
                 query,
                 sharedPayload.nearbyOptions,
                 undefined,
-                remaining,
+                budgetLeft,
                 state,
               );
         outcomes.push({ matches, truncated: Boolean(state.truncated) });
+        budgetLeft -= matches.length;
       }
       return outcomes;
     }
@@ -688,6 +692,7 @@ export async function* searchLibraryBooks(
       articles,
       sharedPayload,
       signal,
+      remaining,
     );
     return sections.map((result) => ({ matches: result.matches, truncated: result.truncated }));
   };

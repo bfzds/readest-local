@@ -11,7 +11,7 @@ import type {
 } from '@/utils/librarySearchWorkerProtocol';
 
 type SearchPayload = Omit<LibrarySearchWorkerSearchPayload, 'id'>;
-type BatchPayload = Omit<LibrarySearchWorkerBatchPayload, 'id' | 'sections'>;
+type BatchPayload = Omit<LibrarySearchWorkerBatchPayload, 'id' | 'sections' | 'budget'>;
 
 const abortError = () => new DOMException('Library search aborted', 'AbortError');
 
@@ -117,12 +117,16 @@ export const createLibrarySearchWorker = () => {
       sections: LibrarySearchWorkerBatchSection[],
       payload: BatchPayload,
       signal?: AbortSignal,
+      budget?: number,
     ) {
       if (signal?.aborted) throw abortError();
       if (typeof Worker === 'undefined') {
         const results: LibrarySearchWorkerBatchEntry[] = [];
+        let budgetLeft = budget ?? Infinity;
         for (const section of sections) {
           if (signal?.aborted) throw abortError();
+          if (budgetLeft <= 0) break;
+          const currentLimit = Math.max(0, Math.min(section.limit, budgetLeft));
           const outcome = searchOnMainThread({
             sectionKey: section.sectionKey,
             text: section.text,
@@ -130,9 +134,10 @@ export const createLibrarySearchWorker = () => {
             mode: payload.mode,
             fuzzyOptions: payload.fuzzyOptions,
             nearbyOptions: payload.nearbyOptions,
-            limit: section.limit,
+            limit: currentLimit,
           });
           results.push({ sectionKey: section.sectionKey, ...outcome });
+          budgetLeft -= outcome.matches.length;
         }
         return results;
       }
@@ -153,7 +158,7 @@ export const createLibrarySearchWorker = () => {
         signal?.addEventListener('abort', onAbort, { once: true });
         const request: LibrarySearchWorkerRequest = {
           type: 'search-batch',
-          payload: { ...payload, id, sections },
+          payload: { ...payload, id, sections, budget: budget ?? Number.POSITIVE_INFINITY },
         };
         try {
           getWorker().postMessage(request);

@@ -27,6 +27,8 @@ export interface LibrarySearchWorkerBatchPayload {
   fuzzyOptions: FuzzySearchOptions;
   nearbyOptions: NearbySearchOptions;
   sections: LibrarySearchWorkerBatchSection[];
+  /** 整批共享结果预算：worker 逐节递减，用尽即停止后续扫描并标 capped。 */
+  budget: number;
 }
 
 export type LibrarySearchWorkerRequest =
@@ -46,5 +48,5 @@ export interface LibrarySearchWorkerBatchEntry {
 
 export type LibrarySearchWorkerResponse =
   | { type: 'success'; id: number; matches: LibrarySearchWorkerMatch[]; truncated: boolean }
-  | { type: 'batch-success'; id: number; results: LibrarySearchWorkerBatchEntry[] }
+  | { type: 'batch-success'; id: number; results: LibrarySearchWorkerBatchEntry[]; capped: boolean }
   | { type: 'error'; id: number; message: string; code?: string };

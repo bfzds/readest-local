@@ -99,9 +99,27 @@ self.onmessage = (event) => {
     return;
   }
   if (event.data.type !== 'search-batch') return;
-  const { id, query, mode, fuzzyOptions, nearbyOptions, sections } = event.data.payload;
+  const {
+    id,
+    query,
+    mode,
+    fuzzyOptions,
+    nearbyOptions,
+    sections,
+    budget = Infinity,
+  } = event.data.payload;
   try {
-    const results = sections.map(({ sectionKey, text, limit }) => {
+    // P-4：整批共享预算。逐节递减，预算用尽即停止后续扫描，避免每节都用
+    // 同一上限导致批量结果线性超算、超传输。
+    let budgetLeft = budget;
+    let capped = false;
+    const results = [];
+    for (const { sectionKey, text, limit } of sections) {
+      if (budgetLeft <= 0) {
+        capped = true;
+        break;
+      }
+      const currentLimit = Math.max(0, Math.min(limit, budgetLeft));
       const { matches, truncated } = matchSection(
         sectionKey,
         text,
@@ -109,11 +127,13 @@ self.onmessage = (event) => {
         mode,
         fuzzyOptions,
         nearbyOptions,
-        limit,
+        currentLimit,
       );
-      return { sectionKey, matches, truncated };
-    });
-    self.postMessage({ type: 'batch-success', id, results });
+      results.push({ sectionKey, matches, truncated });
+      budgetLeft -= matches.length;
+      if (budgetLeft <= 0) capped = true;
+    }
+    self.postMessage({ type: 'batch-success', id, results, capped });
   } catch (error) {
     self.postMessage({
       type: 'error',

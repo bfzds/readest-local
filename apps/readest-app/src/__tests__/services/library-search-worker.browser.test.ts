@@ -143,3 +143,27 @@ test('search-batch nearby words keeps per-section word segmentation', async () =
 
   searchWorker.close();
 });
+
+test('search-batch honors a shared budget across sections (P-4)', async () => {
+  const searchWorker = createLibrarySearchWorker();
+  const batches = await searchWorker.searchBatch(
+    [
+      { sectionKey: 'b0', text: 'a'.repeat(200), limit: 500 },
+      { sectionKey: 'b1', text: 'a'.repeat(200), limit: 500 },
+    ],
+    {
+      query: 'a',
+      mode: 'fuzzy',
+      fuzzyOptions,
+      nearbyOptions,
+    },
+    undefined,
+    3,
+  );
+  // budget=3：第一节即用尽，第二节不再产出，总量不超过预算。
+  const totalMatches = batches.reduce((n, entry) => n + entry.matches.length, 0);
+  expect(totalMatches).toBeLessThanOrEqual(3);
+  expect(batches.length).toBeLessThanOrEqual(2);
+
+  searchWorker.close();
+});
