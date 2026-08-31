@@ -15,6 +15,25 @@ async function processInBatches<T>(
   }
 }
 
+// Merge-floor + LWW：以磁盘库为底（不因旧快照丢书），并对同 hash 行按
+// updatedAt 做 last-writer-wins —— 磁盘记录较新时不覆盖，旧阅读窗口不能
+// 碾压已持久化的新标题/进度/元数据；删除以 tombstone 形式保留优先。
+export const mergeLibraryRows = (existing: Book[], incoming: Book[]): Book[] => {
+  const merged = new Map<string, Book>();
+  for (const book of existing) merged.set(book.hash, book);
+  for (const book of incoming) {
+    const onDisk = merged.get(book.hash);
+    // 防复活：磁盘已软删，旧窗口陈旧 incoming（无 tombstone）不得覆盖回活。
+    if (onDisk && onDisk.deletedAt && !book.deletedAt) continue;
+    // LWW：双窗口同时改同一本书时，updatedAt 更新的记录保留。
+    if (onDisk && !onDisk.deletedAt && !book.deletedAt) {
+      if ((onDisk.updatedAt ?? 0) > (book.updatedAt ?? 0)) continue;
+    }
+    merged.set(book.hash, book);
+  }
+  return Array.from(merged.values());
+};
+
 export async function loadLibraryBooks(
   fs: FileSystem,
   generateCoverImageUrl: (book: Book) => Promise<string>,
@@ -48,22 +67,9 @@ export async function saveLibraryBooks(
     return;
   }
 
-  // Merge-floor: treat the on-disk library as a floor. A routine save may add
-  // new books or modify existing rows (including setting `deletedAt`
-  // tombstones), but it must never silently drop a book that exists on disk.
-  // This stops a stale or partially-loaded in-memory library (e.g. the
-  // cold-start "Open with" race) from wiping library.json. Deliberate removals
-  // must go through `{ replace: true }`.
+  // Merge-floor + LWW 合并（详见 mergeLibraryRows）：routine save 永不因旧
+  // 快照丢书或碾压较新的磁盘数据；删除走显式 tombstone。
   const existing = await safeLoadJSON<Book[]>(fs, getLibraryFilename(), 'Books', []);
-  const merged = new Map<string, Book>();
-  for (const book of existing) merged.set(book.hash, book);
-  for (const book of incoming) {
-    const onDisk = merged.get(book.hash);
-    // B-7 防复活：磁盘上已软删（deletedAt）的书，不能被旧阅读窗口的陈旧
-    // incoming（无 tombstone）覆盖回活。只有显式携带 deletedAt 的 incoming
-    // （本轮删除）才允许覆盖磁盘条目标记新的删除时间。
-    if (onDisk && onDisk.deletedAt && !book.deletedAt) continue;
-    merged.set(book.hash, book); // incoming wins per hash
-  }
-  await safeSaveJSON(fs, getLibraryFilename(), 'Books', Array.from(merged.values()));
+  const merged = mergeLibraryRows(existing, incoming);
+  await safeSaveJSON(fs, getLibraryFilename(), 'Books', merged);
 }
