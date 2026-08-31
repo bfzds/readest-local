@@ -48,7 +48,6 @@ export const throttle = <T extends (...args: any[]) => void | Promise<void>>(
       if (!timeout) {
         timeout = setTimeout(() => {
           timeout = null;
-          lastCall = Date.now();
           emit();
         }, remaining);
       }
