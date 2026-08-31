@@ -186,14 +186,17 @@ const CommandPalette: React.FC = () => {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onBlur={() => {
-              // Keep focus inside the palette while it's open: once the input
-              // loses focus (clicking empty dialog space, the page below, ...)
-              // arrow keys bubble from body/iframe to the window-level shortcut
-              // handler and move the page instead of the palette. Pulling focus
-              // back lets the input swallow them (useShortcuts skips INPUTs).
-              if (isOpen && document.hasFocus()) {
-                requestAnimationFrame(() => inputRef.current?.focus());
-              }
+              // Focus 仍在 dialog 内时尊重 Tab 移动到的目标；仅当焦点真正
+              // 离开 dialog（点击空白/页面）时才把焦点拉回 input，避免 blur
+              // 的 rAF 在 Tab 到结果后把焦点抢回 input。
+              if (!isOpen || !document.hasFocus()) return;
+              requestAnimationFrame(() => {
+                const input = inputRef.current;
+                const dialog = input?.closest<HTMLElement>('[role="dialog"]');
+                if (input && dialog && !dialog.contains(document.activeElement)) {
+                  input.focus();
+                }
+              });
             }}
             spellCheck={false}
             autoComplete='off'

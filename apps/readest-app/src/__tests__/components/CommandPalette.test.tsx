@@ -183,7 +183,9 @@ describe('CommandPalette', () => {
     const optionOf = (text: string): HTMLElement =>
       screen.getByText(text).closest<HTMLElement>('[role="option"]')!;
 
-    // 顺序：input → clear → A1 → B1 → input（循环）
+    // 顺序：input → clear → A1 → B1 → input（循环）。jsdom 无真实浏览器 blur/
+    // rAF 时序，这里同步断言 handler 移动；blur 抢焦竞态由下方独立用例以
+    // "焦点仍在 dialog 内不抢回"验证，并在真机键盘矩阵覆盖。
     input.focus();
     fireEvent.keyDown(dialog, { key: 'Tab' });
     expect(document.activeElement).toBe(screen.getByLabelText('Clear search'));
@@ -198,5 +200,43 @@ describe('CommandPalette', () => {
     input.focus();
     fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
     expect(document.activeElement).toBe(optionOf('B1'));
+  });
+
+  it('blur 时焦点仍在 dialog 内不把焦点抢回 input（Task2）', async () => {
+    const makeItem = (id: string, labelKey: string, category: CommandCategory): CommandItem => ({
+      id,
+      labelKey,
+      localizedLabel: labelKey,
+      keywords: [],
+      category,
+      action: () => {},
+    });
+    const makeResult = (item: CommandItem): CommandSearchResult => ({
+      item,
+      score: 0,
+      positions: new Set<number>(),
+      highlightIndices: new Set<number>(),
+    });
+    const a1 = makeItem('a1', 'A1', 'settings');
+    mockUseCommandPalette.mockImplementation(() => ({
+      isOpen: true,
+      close: mockClose,
+      setQuery: vi.fn(),
+      query: 'x',
+      results: [makeResult(a1)],
+      groupedResults: { settings: [makeResult(a1)], actions: [], navigation: [] },
+      recentItems: [],
+      executeCommand: vi.fn(),
+    }));
+
+    render(<CommandPalette />);
+    const input = screen.getByRole('textbox');
+    const option = screen.getByText('A1').closest<HTMLElement>('[role="option"]')!;
+    // Tab 已把焦点放到结果按钮上；此时 input 触发 blur（jsdom 同步）——
+    // 修复前无条件 rAF 会把焦点抢回 input。
+    option.focus();
+    fireEvent.blur(input);
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    expect(document.activeElement).toBe(option);
   });
 });
