@@ -9,13 +9,19 @@ const MAX_TRANSFORM_CACHE_BYTES = 8 * 1024 * 1024;
 const transformCache = new Map<string, string>();
 let transformCacheBytes = 0;
 
-// O(n) 滚动哈希，远低于十段 transform 的整章解析成本；只需区分"内容不同"。
+// O(n) 滚动哈希，远低于十段 transform 的整章解析成本。32 位单 hash 有理论
+// 碰撞（如 "Aa"/"BB" 同值），现用两路不同乘子的滚动 hash 异或长度做组合，
+// 把同 key 碰撞空间提到 ~2^64，且碰撞样本还需命中同一章节键才构成错误复用。
 const contentFingerprint = (content: string): number => {
-  let hash = 0;
+  let h1 = 0;
+  let h2 = 0;
   for (let i = 0; i < content.length; i++) {
-    hash = (hash * 31 + content.charCodeAt(i)) | 0;
+    const code = content.charCodeAt(i);
+    h1 = (h1 * 31 + code) | 0;
+    h2 = (Math.imul(h2, 0x9e3779b1) + code) | 0;
   }
-  return hash;
+  // 长度参与最终组合，先消除最廉价的前缀/截断碰撞。
+  return (h1 ^ Math.imul(h2, content.length + 1)) >>> 0;
 };
 
 // viewSettings 是纯数据（型号字段均为字符串/数字/布尔），JSON 序列化稳定；

@@ -72,6 +72,23 @@ const Dialog: React.FC<DialogProps> = ({
     } else {
       if (event.key === 'Escape') {
         onClose();
+      } else if (event.key === 'Tab' && dialogRef.current) {
+        // 焦点陷阱：Tab/Shift+Tab 在对话框可聚焦元素间循环，不逃逸到背景页。
+        const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), ' +
+            'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        );
+        if (focusables.length > 0) {
+          const first = focusables[0]!;
+          const last = focusables[focusables.length - 1]!;
+          if (event.shiftKey && document.activeElement === first) {
+            last.focus();
+            event.preventDefault();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            first.focus();
+            event.preventDefault();
+          }
+        }
       }
       event.stopPropagation();
     }

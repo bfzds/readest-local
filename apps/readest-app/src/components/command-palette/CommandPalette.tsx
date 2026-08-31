@@ -102,8 +102,13 @@ const CommandPalette: React.FC = () => {
           }
           break;
         case 'Tab':
-          // trap focus within the palette
+          // 焦点陷阱：Tab/Shift+Tab 在结果间循环，焦点不逃逸到背景页。
           e.preventDefault();
+          if (flattenedResults.length === 0) break;
+          setSelectedIndex((prev) => {
+            if (e.shiftKey) return prev <= 0 ? flattenedResults.length - 1 : prev - 1;
+            return prev >= flattenedResults.length - 1 ? 0 : prev + 1;
+          });
           break;
       }
     },
