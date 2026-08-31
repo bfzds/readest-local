@@ -610,8 +610,9 @@ export async function* searchLibraryBooks(
   };
 
   // fuzzy/nearby（worker 模式）整批一次投递，替代逐节 postMessage 往返。
-  // 每节 limit 取批起点 remaining；批内若已塞满结果上限，节内截断仍生效，
-  // 只是断点粒度从"节"放宽到"批"（plan 认可的 bounded batch 近似）。
+  // 预算分两层：worker 端 `budget` 共享预算是第一层限制（批内递减、用尽即停），
+  // service 端逐 section 合并前重算 remaining 做最终硬截断；任何 worker 超发
+  // 都不能让单本/全库结果越界。节内 truncated 只代表该节端点，不中断后续节。
   const matchSectionsBatch = async (
     book: Book,
     batch: Array<{ sectionIndex: number; text: string; locale: string }>,
@@ -766,11 +767,12 @@ export async function* searchLibraryBooks(
         const totalSections = meta!.totalSections;
         for (let offset = 0; offset < sections.length; offset += SEARCH_WORKER_BATCH_SIZE) {
           if (signal?.aborted) return;
-          const remaining = Math.min(
+          // 批次起点快速退出检查；真正的逐 section 预算在内层循环合并前重算。
+          const batchRemaining = Math.min(
             MAX_BOOK_SEARCH_RESULTS - bookMatches,
             MAX_TOTAL_SEARCH_RESULTS - totalMatches,
           );
-          if (remaining <= 0) {
+          if (batchRemaining <= 0) {
             bookTruncated = true;
             break;
           }
@@ -787,10 +789,18 @@ export async function* searchLibraryBooks(
             if (signal?.aborted) return;
             const section = batch[i]!;
             const outcome = outcomes[i]!;
-            if (outcome.truncated) bookTruncated = true;
-            // Task5：service 端最终硬截断 —— 即使 worker 异常超发，每节也只
-            // 消费剩余预算内的结果，单本/全库上限不被突破。
-            const capped = remaining > 0 ? outcome.matches.slice(0, remaining) : [];
+            // Task1：每节合并前重算剩余预算 —— worker 共享预算是第一层限制，
+            // service 逐 section 重算是最终硬边界；任何 worker 超发都不能越界，
+            // 节内 truncated 仅表示该节端点，不中断后续节继续填满预算。
+            const remaining = Math.min(
+              MAX_BOOK_SEARCH_RESULTS - bookMatches,
+              MAX_TOTAL_SEARCH_RESULTS - totalMatches,
+            );
+            if (remaining <= 0) {
+              bookTruncated = true;
+              break;
+            }
+            const capped = outcome.matches.slice(0, remaining);
             if (capped.length) {
               const subitems = toSubitems(config.mode, section.idx, section.text, capped);
               bookMatches += subitems.length;
@@ -801,14 +811,6 @@ export async function* searchLibraryBooks(
                 result: { index: section.idx, label: section.label, subitems },
               };
             }
-            if (
-              bookMatches >= MAX_BOOK_SEARCH_RESULTS ||
-              totalMatches >= MAX_TOTAL_SEARCH_RESULTS
-            ) {
-              bookTruncated = true;
-              break;
-            }
-            if (bookTruncated) break;
             await yieldSlice();
           }
           if (bookTruncated) break;

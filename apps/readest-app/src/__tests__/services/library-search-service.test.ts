@@ -631,3 +631,46 @@ describe('Task5 service hard cap', () => {
     await session.close();
   });
 });
+
+describe('indexed search hard cap (Task1)', () => {
+  it('缓存索引批内多个 section 超发时仍按当前剩余额度截断', async () => {
+    const book = makeBook('indexed-over', 'Indexed Over');
+    const file = makeFile('# A\nseed\n\n# B\nseed\n\n# C\nseed');
+    const service = makeService(new Map([['indexed-over', file]]));
+    const session = createLibrarySearchSession(service);
+
+    // 首次真实搜索建立持久 search.db，第二次才 mock worker → 走缓存索引路径。
+    for await (const _event of searchLibraryBooks(service, [book], 'seed', { config, session })) {
+      // 仅建索引
+    }
+    expect(service.loadBookContent).toHaveBeenCalledTimes(1);
+
+    vi.spyOn(session.searchWorker, 'searchBatch').mockImplementation(async (sections) =>
+      sections.map((section, index) => ({
+        sectionKey: section.sectionKey,
+        matches: Array.from({ length: index === 0 ? 300 : 800 }, (_, offset) => ({
+          start: offset,
+          end: offset + 1,
+          runs: [],
+        })),
+        truncated: true,
+      })),
+    );
+
+    const events: Array<{ type: string; result?: { subitems: unknown[] }; truncated?: boolean }> =
+      [];
+    for await (const event of searchLibraryBooks(service, [book], 'x', {
+      config: { ...config, mode: 'fuzzy' },
+      session,
+    })) {
+      events.push(event as never);
+    }
+
+    const total = events
+      .filter((event) => event.type === 'result')
+      .reduce((sum, event) => sum + (event.result?.subitems.length ?? 0), 0);
+    expect(total).toBe(500);
+    expect(events.at(-1)).toMatchObject({ type: 'completed', matchCount: 500, truncated: true });
+    await session.close();
+  });
+});
