@@ -8,9 +8,14 @@ const normalize = (value, options) => {
 
 export const MAX_FUZZY_QUERY_LENGTH = 256;
 
+// Intl 实例无内部可变状态，可跨调用复用：grapheme Segmenter 与 locale 无关，
+// 提为单例；word Segmenter/collator 按 key 缓存，避免整本搜索每节重建。
+const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+const wordSegmenters = new Map();
+const collators = new Map();
+
 const segmentGraphemes = (text, options) => {
-  const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
-  return Array.from(segmenter.segment(text), ({ segment, index }) => ({
+  return Array.from(GRAPHEME_SEGMENTER.segment(text), ({ segment, index }) => ({
     text: segment,
     start: index,
     end: index + segment.length,
@@ -219,19 +224,28 @@ const getSensitivity = ({ matchCase, matchDiacritics }) =>
         : 'base';
 
 const createSegmenter = (locale) => {
+  let segmenter = wordSegmenters.get(locale);
+  if (segmenter) return segmenter;
   try {
-    return new Intl.Segmenter(locale, { granularity: 'word' });
+    segmenter = new Intl.Segmenter(locale, { granularity: 'word' });
   } catch {
-    return new Intl.Segmenter('en', { granularity: 'word' });
+    segmenter = new Intl.Segmenter('en', { granularity: 'word' });
   }
+  wordSegmenters.set(locale, segmenter);
+  return segmenter;
 };
 
 const createCollator = (locale, sensitivity) => {
+  const key = `${locale}:${sensitivity}`;
+  let collator = collators.get(key);
+  if (collator) return collator;
   try {
-    return new Intl.Collator(locale, { sensitivity });
+    collator = new Intl.Collator(locale, { sensitivity });
   } catch {
-    return new Intl.Collator('en', { sensitivity });
+    collator = new Intl.Collator('en', { sensitivity });
   }
+  collators.set(key, collator);
+  return collator;
 };
 
 const CJK_SEGMENT_RE = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;

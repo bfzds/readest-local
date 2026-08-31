@@ -9,6 +9,8 @@ const nearbyOptions = {
   nearbyWords: 5,
 };
 
+const fuzzyOptions = { matchCase: false, matchDiacritics: false };
+
 test('runs searches in the module worker and restarts after cancellation', async () => {
   const searchWorker = createLibrarySearchWorker();
 
@@ -73,6 +75,71 @@ test('runs searches in the module worker and restarts after cancellation', async
       },
     ],
   });
+
+  searchWorker.close();
+});
+
+test('search-batch returns per-section results in the same order as single searches', async () => {
+  const searchWorker = createLibrarySearchWorker();
+
+  const single = await searchWorker.search({
+    sectionKey: 'single',
+    text: 'UserAuthController intro',
+    query: 'UserController',
+    mode: 'fuzzy',
+    fuzzyOptions,
+    nearbyOptions,
+    limit: 500,
+  });
+
+  const batches = await searchWorker.searchBatch(
+    [
+      { sectionKey: 'a', text: 'UserAuthController intro', limit: 500 },
+      { sectionKey: 'b', text: 'Nothing relevant here.', limit: 500 },
+    ],
+    {
+      query: 'UserController',
+      mode: 'fuzzy',
+      fuzzyOptions,
+      nearbyOptions,
+    },
+  );
+
+  expect(batches.map((entry) => entry.sectionKey)).toEqual(['a', 'b']);
+  expect(batches[0]!.matches).toEqual(single.matches);
+  expect(batches[1]!.matches).toEqual([]);
+  expect(batches[1]!.truncated).toBe(false);
+
+  searchWorker.close();
+});
+
+test('search-batch nearby words keeps per-section word segmentation', async () => {
+  const searchWorker = createLibrarySearchWorker();
+  const batches = await searchWorker.searchBatch(
+    [
+      { sectionKey: 'n0', text: 'alpha one beta gap', limit: 500 },
+      { sectionKey: 'n1', text: 'no co-occurrence here at all', limit: 500 },
+    ],
+    {
+      query: 'alpha beta',
+      mode: 'nearby-words',
+      fuzzyOptions,
+      nearbyOptions,
+    },
+  );
+
+  expect(batches[0]!.sectionKey).toBe('n0');
+  expect(batches[0]!.matches).toEqual([
+    {
+      start: 0,
+      end: 14,
+      runs: [
+        { start: 0, end: 5 },
+        { start: 10, end: 14 },
+      ],
+    },
+  ]);
+  expect(batches[1]!.matches).toEqual([]);
 
   searchWorker.close();
 });

@@ -1,12 +1,17 @@
 import { findFuzzyMatches } from '@/utils/fuzzySearch';
 import { findNearbyMatches } from '@/utils/nearbySearch';
 import type {
+  LibrarySearchWorkerBatchEntry,
+  LibrarySearchWorkerBatchPayload,
+  LibrarySearchWorkerBatchSection,
   LibrarySearchWorkerRequest,
   LibrarySearchWorkerResponse,
   LibrarySearchWorkerResult,
+  LibrarySearchWorkerSearchPayload,
 } from '@/utils/librarySearchWorkerProtocol';
 
-type SearchPayload = Omit<LibrarySearchWorkerRequest['payload'], 'id'>;
+type SearchPayload = Omit<LibrarySearchWorkerSearchPayload, 'id'>;
+type BatchPayload = Omit<LibrarySearchWorkerBatchPayload, 'id' | 'sections'>;
 
 const abortError = () => new DOMException('Library search aborted', 'AbortError');
 
@@ -16,7 +21,7 @@ export const createLibrarySearchWorker = () => {
   const pending = new Map<
     number,
     {
-      resolve: (result: LibrarySearchWorkerResult) => void;
+      resolve: (result: LibrarySearchWorkerResult | LibrarySearchWorkerBatchEntry[]) => void;
       reject: (error: Error) => void;
       signal?: AbortSignal;
       onAbort?: () => void;
@@ -51,6 +56,8 @@ export const createLibrarySearchWorker = () => {
       if (!request) return;
       if (event.data.type === 'success') {
         request.resolve({ matches: event.data.matches, truncated: event.data.truncated });
+      } else if (event.data.type === 'batch-success') {
+        request.resolve(event.data.results);
       } else {
         const error = new Error(event.data.message);
         if (event.data.code) Object.assign(error, { code: event.data.code });
@@ -90,9 +97,64 @@ export const createLibrarySearchWorker = () => {
           reject(abortError());
           if (pending.size === 0) terminateWorker();
         };
-        pending.set(id, { resolve, reject, signal, onAbort });
+        pending.set(id, {
+          resolve: (result) => resolve(result as LibrarySearchWorkerResult),
+          reject,
+          signal,
+          onAbort,
+        });
         signal?.addEventListener('abort', onAbort, { once: true });
         const request: LibrarySearchWorkerRequest = { type: 'search', payload: { ...payload, id } };
+        try {
+          getWorker().postMessage(request);
+        } catch (error) {
+          cleanupRequest(id);
+          reject(error instanceof Error ? error : new Error(String(error)));
+        }
+      });
+    },
+    async searchBatch(
+      sections: LibrarySearchWorkerBatchSection[],
+      payload: BatchPayload,
+      signal?: AbortSignal,
+    ) {
+      if (signal?.aborted) throw abortError();
+      if (typeof Worker === 'undefined') {
+        const results: LibrarySearchWorkerBatchEntry[] = [];
+        for (const section of sections) {
+          if (signal?.aborted) throw abortError();
+          const outcome = searchOnMainThread({
+            sectionKey: section.sectionKey,
+            text: section.text,
+            query: payload.query,
+            mode: payload.mode,
+            fuzzyOptions: payload.fuzzyOptions,
+            nearbyOptions: payload.nearbyOptions,
+            limit: section.limit,
+          });
+          results.push({ sectionKey: section.sectionKey, ...outcome });
+        }
+        return results;
+      }
+
+      const id = nextId++;
+      return await new Promise<LibrarySearchWorkerBatchEntry[]>((resolve, reject) => {
+        const onAbort = () => {
+          cleanupRequest(id);
+          reject(abortError());
+          if (pending.size === 0) terminateWorker();
+        };
+        pending.set(id, {
+          resolve: (result) => resolve(result as LibrarySearchWorkerBatchEntry[]),
+          reject,
+          signal,
+          onAbort,
+        });
+        signal?.addEventListener('abort', onAbort, { once: true });
+        const request: LibrarySearchWorkerRequest = {
+          type: 'search-batch',
+          payload: { ...payload, id, sections },
+        };
         try {
           getWorker().postMessage(request);
         } catch (error) {

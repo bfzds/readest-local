@@ -298,6 +298,9 @@ const MAX_OPEN_INDEX_DBS = 16;
 // SF2：节写入攒批大小。每 100 节一次 batch，500 节从 ~1,000 次 execute IPC
 // 往返降到 ~5 次；批次过大单条 SQL 字符串过长，适中即可。
 const SECTION_WRITE_BATCH_SIZE = 100;
+// 一次投递给搜索 worker 的节数上限：整书节数 ~2000 时往返从逐节 2000 次
+// 降到 ~20 次，同时避免单消息过大（每节文本 ~50KB 结构化克隆）。
+const SEARCH_WORKER_BATCH_SIZE = 100;
 
 export const createLibrarySearchSession = (appService: LibrarySearchAppService) => {
   const documents = new Map<string, { bookHash: string; pending: Promise<CachedSearchBook> }>();
@@ -545,6 +548,11 @@ export async function* searchLibraryBooks(
 
   const usesSearchWorker = config.mode === 'fuzzy' || config.mode === 'nearby-words';
 
+  // 每本书的匹配统计：被 matchSectionsBatch（函数顶层）与书循环共用，
+  // 故提升到顶层，每次书循环开头重置。
+  let bookMatches = 0;
+  let bookTruncated = false;
+
   const matchSectionText = async (
     book: Book,
     sectionIndex: number,
@@ -601,6 +609,89 @@ export async function* searchLibraryBooks(
     };
   };
 
+  // fuzzy/nearby（worker 模式）整批一次投递，替代逐节 postMessage 往返。
+  // 每节 limit 取批起点 remaining；批内若已塞满结果上限，节内截断仍生效，
+  // 只是断点粒度从"节"放宽到"批"（plan 认可的 bounded batch 近似）。
+  const matchSectionsBatch = async (
+    book: Book,
+    batch: Array<{ sectionIndex: number; text: string; locale: string }>,
+  ): Promise<SectionMatchOutcome[]> => {
+    if (!usesSearchWorker) {
+      const outcomes: SectionMatchOutcome[] = [];
+      for (const section of batch) {
+        const remaining = Math.min(
+          MAX_BOOK_SEARCH_RESULTS - bookMatches,
+          MAX_TOTAL_SEARCH_RESULTS - totalMatches,
+        );
+        outcomes.push(
+          remaining <= 0
+            ? { matches: [], truncated: true }
+            : await matchSectionText(
+                book,
+                section.sectionIndex,
+                section.text,
+                section.locale,
+                remaining,
+              ),
+        );
+      }
+      return outcomes;
+    }
+    const remaining = Math.min(
+      MAX_BOOK_SEARCH_RESULTS - bookMatches,
+      MAX_TOTAL_SEARCH_RESULTS - totalMatches,
+    );
+    if (remaining <= 0) return batch.map(() => ({ matches: [], truncated: true }));
+    const sharedPayload = {
+      query,
+      mode: config.mode as 'fuzzy' | 'nearby-words',
+      fuzzyOptions: {
+        matchCase: config.matchCase,
+        matchDiacritics: config.matchDiacritics,
+      },
+      nearbyOptions: {
+        locale: batch[0]!.locale,
+        matchCase: config.matchCase,
+        matchDiacritics: config.matchDiacritics,
+        nearbyWords: config.nearbyWords ?? DEFAULT_CONFIG.nearbyWords!,
+      },
+    };
+    // 节间 locale 不一致（live 提取路径按文档 lang 逐节取）或无 session 时
+    // 退化为逐节跑同一算法库（结果与 worker 一致），保持 nearby 分词语义。
+    const singleLocale = new Set(batch.map((section) => section.locale)).size === 1;
+    if (!singleLocale || !options.session) {
+      const outcomes: SectionMatchOutcome[] = [];
+      for (const section of batch) {
+        if (signal?.aborted) return [];
+        const state: { truncated?: boolean } = {};
+        const matches =
+          config.mode === 'fuzzy'
+            ? findFuzzyMatches(section.text, query, sharedPayload.fuzzyOptions, remaining, state)
+            : findNearbyMatches(
+                section.text,
+                query,
+                sharedPayload.nearbyOptions,
+                undefined,
+                remaining,
+                state,
+              );
+        outcomes.push({ matches, truncated: Boolean(state.truncated) });
+      }
+      return outcomes;
+    }
+    const articles = batch.map((section) => ({
+      sectionKey: `${book.hash}:${section.sectionIndex}`,
+      text: section.text,
+      limit: remaining,
+    }));
+    const sections = await options.session.searchWorker.searchBatch(
+      articles,
+      sharedPayload,
+      signal,
+    );
+    return sections.map((result) => ({ matches: result.matches, truncated: result.truncated }));
+  };
+
   const yieldSlice = async () => {
     if (performance.now() - sliceStarted >= 8) {
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -653,8 +744,8 @@ export async function* searchLibraryBooks(
           );
       const nodesFresh = currentNavHash == null || currentNavHash === meta?.navHash;
 
-      let bookMatches = 0;
-      let bookTruncated = false;
+      bookMatches = 0;
+      bookTruncated = false;
 
       if (indexDb && isSearchIndexFresh(meta, book) && nodesFresh) {
         // Indexed path: search cached text; the book file is never opened.
@@ -668,7 +759,7 @@ export async function* searchLibraryBooks(
         }
         if (signal?.aborted) return;
         const totalSections = meta!.totalSections;
-        for (const section of sections) {
+        for (let offset = 0; offset < sections.length; offset += SEARCH_WORKER_BATCH_SIZE) {
           if (signal?.aborted) return;
           const remaining = Math.min(
             MAX_BOOK_SEARCH_RESULTS - bookMatches,
@@ -678,27 +769,34 @@ export async function* searchLibraryBooks(
             bookTruncated = true;
             break;
           }
-          const outcome = await matchSectionText(
+          const batch = sections.slice(offset, offset + SEARCH_WORKER_BATCH_SIZE);
+          const outcomes = await matchSectionsBatch(
             book,
-            section.idx,
-            section.text,
-            locale,
-            remaining,
+            batch.map((section) => ({
+              sectionIndex: section.idx,
+              text: section.text,
+              locale,
+            })),
           );
-          if (signal?.aborted) return;
-          if (outcome.truncated) bookTruncated = true;
-          if (outcome.matches.length) {
-            const subitems = toSubitems(config.mode, section.idx, section.text, outcome.matches);
-            bookMatches += subitems.length;
-            totalMatches += subitems.length;
-            yield {
-              type: 'result',
-              book,
-              result: { index: section.idx, label: section.label, subitems },
-            };
+          for (let i = 0; i < batch.length; i++) {
+            if (signal?.aborted) return;
+            const section = batch[i]!;
+            const outcome = outcomes[i]!;
+            if (outcome.truncated) bookTruncated = true;
+            if (outcome.matches.length) {
+              const subitems = toSubitems(config.mode, section.idx, section.text, outcome.matches);
+              bookMatches += subitems.length;
+              totalMatches += subitems.length;
+              yield {
+                type: 'result',
+                book,
+                result: { index: section.idx, label: section.label, subitems },
+              };
+            }
+            if (bookTruncated) break;
+            await yieldSlice();
           }
           if (bookTruncated) break;
-          await yieldSlice();
         }
         yield {
           type: 'progress',
@@ -798,77 +896,120 @@ export async function* searchLibraryBooks(
             indexComplete = false;
           });
         };
-        for (const [sectionIndex, section] of bookDoc.sections.entries()) {
-          if (signal?.aborted) return;
-          if (typeof section.createDocument === 'function') {
-            const doc = await section.createDocument();
+        // fuzzy/nearby 匹配同样攒批，与写库共用同一提取循环（P-4）。yield
+        // 必须留在 generator 主函数体，故这里只计算并返回待 yield 的结果项。
+        const liveMatchBatch: Array<{
+          sectionIndex: number;
+          text: string;
+          locale: string;
+          label: string;
+        }> = [];
+        const consumeMatchBatch = async (): Promise<
+          Array<{ index: number; label: string; subitems: LibrarySearchMatch[] }>
+        > => {
+          if (liveMatchBatch.length === 0) return [];
+          const batch = liveMatchBatch.splice(0);
+          const outcomes = await matchSectionsBatch(book, batch);
+          if (signal?.aborted) return [];
+          const items: Array<{
+            index: number;
+            label: string;
+            subitems: LibrarySearchMatch[];
+          }> = [];
+          for (let i = 0; i < batch.length; i++) {
+            if (signal?.aborted) return [];
+            const section = batch[i]!;
+            const outcome = outcomes[i]!;
+            if (outcome.truncated) bookTruncated = true;
+            if (outcome.matches.length) {
+              const subitems = toSubitems(
+                config.mode,
+                section.sectionIndex,
+                section.text,
+                outcome.matches,
+              );
+              bookMatches += subitems.length;
+              totalMatches += subitems.length;
+              items.push({
+                index: section.sectionIndex,
+                label: section.label,
+                subitems,
+              });
+            }
+          }
+          return items;
+        };
+        try {
+          for (const [sectionIndex, section] of bookDoc.sections.entries()) {
             if (signal?.aborted) return;
-            if (doc) {
-              const prepared = prepareSearchSection(
-                `${book.hash}:${sectionIndex}`,
-                doc,
-                acceptNode,
-              );
-              const sectionLocale = doc.body?.lang || doc.documentElement?.lang || locale;
-              const label = tocProgress?.getProgress(sectionIndex, null)?.label ?? '';
-              if (indexDb) {
-                sectionWriteBatch.push({ idx: sectionIndex, label, text: prepared.text });
-                if (sectionWriteBatch.length >= SECTION_WRITE_BATCH_SIZE) {
-                  await flushSectionBatch();
-                }
-              }
-              const remaining = Math.min(
-                MAX_BOOK_SEARCH_RESULTS - bookMatches,
-                MAX_TOTAL_SEARCH_RESULTS - totalMatches,
-              );
-              if (options.sectionIndex != null && options.sectionIndex !== sectionIndex) {
-                // Scoped search: this section is only extracted for the index.
-              } else if (remaining <= 0) {
-                bookTruncated = true;
-              } else {
-                const outcome = await matchSectionText(
-                  book,
-                  sectionIndex,
-                  prepared.text,
-                  sectionLocale,
-                  remaining,
+            if (typeof section.createDocument === 'function') {
+              const doc = await section.createDocument();
+              if (signal?.aborted) return;
+              if (doc) {
+                const prepared = prepareSearchSection(
+                  `${book.hash}:${sectionIndex}`,
+                  doc,
+                  acceptNode,
                 );
-                if (signal?.aborted) return;
-                if (outcome.truncated) bookTruncated = true;
-                if (outcome.matches.length) {
-                  const subitems = toSubitems(
-                    config.mode,
+                const sectionLocale = doc.body?.lang || doc.documentElement?.lang || locale;
+                const label = tocProgress?.getProgress(sectionIndex, null)?.label ?? '';
+                if (indexDb) {
+                  sectionWriteBatch.push({ idx: sectionIndex, label, text: prepared.text });
+                  if (sectionWriteBatch.length >= SECTION_WRITE_BATCH_SIZE) {
+                    await flushSectionBatch();
+                  }
+                }
+                const remaining = Math.min(
+                  MAX_BOOK_SEARCH_RESULTS - bookMatches,
+                  MAX_TOTAL_SEARCH_RESULTS - totalMatches,
+                );
+                if (options.sectionIndex != null && options.sectionIndex !== sectionIndex) {
+                  // Scoped search: this section is only extracted for the index.
+                } else if (remaining <= 0) {
+                  bookTruncated = true;
+                } else {
+                  liveMatchBatch.push({
                     sectionIndex,
-                    prepared.text,
-                    outcome.matches,
-                  );
-                  bookMatches += subitems.length;
-                  totalMatches += subitems.length;
-                  yield {
-                    type: 'result',
-                    book,
-                    result: { index: sectionIndex, label, subitems },
-                  };
+                    text: prepared.text,
+                    locale: sectionLocale,
+                    label,
+                  });
+                  if (liveMatchBatch.length >= SEARCH_WORKER_BATCH_SIZE) {
+                    for (const item of await consumeMatchBatch()) {
+                      yield { type: 'result', book, result: item };
+                    }
+                  }
                 }
               }
             }
+            if (signal?.aborted) return;
+            const sectionsCompleted = sectionIndex + 1;
+            const bookProgress = totalSections ? sectionsCompleted / totalSections : 1;
+            yield {
+              type: 'progress',
+              book,
+              bookProgress,
+              progress: (bookIndex + bookProgress) / books.length,
+              sectionsCompleted,
+              totalSections,
+            };
+            // Keep indexing the remaining sections even after the result cap so
+            // the cache ends complete; only the matcher work is skipped.
+            await yieldSlice();
           }
-          if (signal?.aborted) return;
-          const sectionsCompleted = sectionIndex + 1;
-          const bookProgress = totalSections ? sectionsCompleted / totalSections : 1;
-          yield {
-            type: 'progress',
-            book,
-            bookProgress,
-            progress: (bookIndex + bookProgress) / books.length,
-            sectionsCompleted,
-            totalSections,
-          };
-          // Keep indexing the remaining sections even after the result cap so
-          // the cache ends complete; only the matcher work is skipped.
-          await yieldSlice();
+          await flushSectionBatch();
+          for (const item of await consumeMatchBatch()) {
+            yield { type: 'result', book, result: item };
+          }
+        } catch (error) {
+          // 提取中途出错（createDocument 等）：先 flush 已攒批再抛出，保住
+          // 错误前已匹配的结果，维持"结果先于错误"的流式顺序。
+          if (indexDb) await flushSectionBatch().catch(() => {});
+          for (const item of await consumeMatchBatch()) {
+            yield { type: 'result', book, result: item };
+          }
+          throw error;
         }
-        await flushSectionBatch();
 
         if (indexDb && indexComplete) {
           await completeSearchIndex(indexDb, totalSections).catch(() => {});

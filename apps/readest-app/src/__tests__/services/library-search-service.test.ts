@@ -203,6 +203,31 @@ describe('searchLibraryBooks', () => {
     expect(abortFile.close).toHaveBeenCalledOnce();
   });
 
+  it('worker-mode fuzzy search batches sections into one search-batch call', async () => {
+    // 一本多节 MD 书（每个 # 标题一节）。fuzzy/nearby 属 worker 模式，
+    // 整本搜索应攒批一次投递，而不是逐节 postMessage。
+    const book = makeBook('multi', 'Multi Section Book');
+    const md = '# Part one\nneedle here\n\n# Part two\nanother needle\n\n# Part three\nlast needle';
+    const file = makeFile(md);
+    const service = makeService(new Map([['multi', file]]));
+    const session = createLibrarySearchSession(service);
+    const searchSpy = vi.spyOn(session.searchWorker, 'search');
+    const batchSpy = vi.spyOn(session.searchWorker, 'searchBatch');
+
+    const events: Array<{ type: string }> = [];
+    for await (const event of searchLibraryBooks(service, [book], 'needle', {
+      config: { ...config, mode: 'fuzzy' },
+      session,
+    })) {
+      events.push(event);
+    }
+    await session.close();
+
+    expect(searchSpy).not.toHaveBeenCalled();
+    expect(batchSpy).toHaveBeenCalledTimes(1);
+    expect(events.filter((event) => event.type === 'result').length).toBeGreaterThan(0);
+  });
+
   it('reuses one session across content modes and closes cached files', async () => {
     const book = makeBook('book', 'Book');
     const file = makeFile('# Chapter\nneedle and UserAuthController near one words');
