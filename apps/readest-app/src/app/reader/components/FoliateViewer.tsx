@@ -61,7 +61,6 @@ import {
 } from '../utils/iframeEventHandlers';
 import { getMaxInlineSize } from '@/utils/config';
 import { getDirFromUILanguage } from '@/utils/rtl';
-import { isTauriAppPlatform } from '@/services/environment';
 import { TransformContext } from '@/services/transformers/types';
 import { transformContent } from '@/services/transformService';
 import { useBookCoverAutoSave } from '../hooks/useAutoSaveBookCover';
@@ -381,10 +380,8 @@ const FoliateViewer: React.FC<{
         skipToNextSectionLabel: _('End of this section. Continue to the next.'),
       });
 
-      // Inline scripts in tauri platforms are not executed by default
-      if (viewSettings.allowScript && isTauriAppPlatform()) {
-        evalInlineScripts(detail.doc);
-      }
+      // S-3：书内脚本不再执行——内容已在 sanitizer 剥离，这里不留任何
+      // eval/执行路径（宿主 IPC 不向书内脚本开放）。
 
       // only call on load if we have highlighting turned on.
       if (viewSettings.codeHighlighting) {
@@ -445,22 +442,6 @@ const FoliateViewer: React.FC<{
         registerSpeedListeners(detail.doc);
         registerBookmarkPullDoc(bookKey, detail.doc);
       }
-    }
-  };
-
-  const evalInlineScripts = (doc: Document) => {
-    if (doc.defaultView && doc.defaultView.frameElement) {
-      const iframe = doc.defaultView.frameElement as HTMLIFrameElement;
-      const scripts = doc.querySelectorAll('script:not([src])');
-      scripts.forEach((script, index) => {
-        const scriptContent = script.textContent || script.innerHTML;
-        try {
-          console.warn('Evaluating inline scripts in iframe');
-          iframe.contentWindow?.eval(scriptContent);
-        } catch (error) {
-          console.error(`Error executing iframe script ${index + 1}:`, error);
-        }
-      });
     }
   };
 
@@ -655,7 +636,8 @@ const FoliateViewer: React.FC<{
           allow?: boolean;
         }>;
         if (detail.isScript) {
-          detail.allow = viewSettings.allowScript ?? false;
+          // S-3：书内 <script src> 请求一律不允许加载，阻断外部脚本文件进入 iframe。
+          detail.allow = false;
         }
         if (isFontType(detail.type) && detail.href?.startsWith('fonts/')) {
           const fontFileName = detail.href.split('/').pop()?.toLowerCase();

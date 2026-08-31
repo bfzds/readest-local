@@ -668,13 +668,34 @@ describe('sanitizerTransformer', () => {
     expect(sanitizerTransformer.name).toBe('sanitizer');
   });
 
-  test('returns content unchanged when allowScript is true', async () => {
-    const html = '<html><body><script>alert("xss")</script><p>Hello</p></body></html>';
+  test('strips scripts even when allowScript is true (S-3)', async () => {
+    const html = '<html><head></head><body><script>alert("xss")</script><p>Hello</p></body></html>';
     const settings = { allowScript: true } as ViewSettings;
     const result = await sanitizerTransformer.transform(
       makeCtx({ content: html, viewSettings: settings }),
     );
-    expect(result).toBe(html);
+    expect(result).not.toContain('<script>');
+    expect(result).not.toContain('alert("xss")');
+    expect(result).toContain('<p>Hello</p>');
+  });
+
+  test('strips event-handler attributes and javascript: URLs (S-3)', async () => {
+    const html =
+      '<html><head></head><body>' +
+      '<p onclick="window.__TAURI_INTERNALS__.invoke(\'x\')">click me</p>' +
+      '<a href="javascript:fetch(\'http://evil\')">link</a>' +
+      '<img src="x" onerror="alert(1)" />' +
+      '</body></html>';
+    const settings = { allowScript: false } as ViewSettings;
+    const result = await sanitizerTransformer.transform(
+      makeCtx({ content: html, viewSettings: settings }),
+    );
+    expect(result).not.toContain('onclick');
+    expect(result).not.toContain('onerror');
+    expect(result).not.toContain('javascript:');
+    expect(result).not.toContain('__TAURI_INTERNALS__');
+    expect(result).toContain('click me');
+    expect(result).toContain('link');
   });
 
   test('sanitizes content when allowScript is false', async () => {

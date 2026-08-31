@@ -31,7 +31,7 @@ import { canShareText } from '@/utils/share';
 const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset }) => {
   const _ = useTranslation();
   const { envConfig, appService } = useEnv();
-  const { getView, getViews, getViewSettings, recreateViewer } = useReaderStore();
+  const { getView, getViews, getViewSettings } = useReaderStore();
   const { getBookData } = useBookDataStore();
   const { settings } = useSettingsStore();
   const { applyEinkMode } = useEinkMode();
@@ -84,7 +84,7 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
   );
   const [screenWakeLock, setScreenWakeLock] = useState(settings.screenWakeLock);
   const [autohideCursor, setAutohideCursor] = useState(settings.autohideCursor);
-  const [allowScript, setAllowScript] = useState(viewSettings.allowScript);
+  // S-3：书内脚本执行能力已移除，不再提供 "Allow JavaScript" 开关。
 
   const resetToDefaults = useResetViewSettings();
   const canShare = canShareText();
@@ -121,7 +121,6 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
       swapClickArea: setSwapClickArea,
       animated: setAnimated,
       isEink: setIsEink,
-      allowScript: setAllowScript,
       fullscreenClickArea: setFullscreenClickArea,
       disableDoubleClick: setIsDisableDoubleClick,
       enableAnnotationQuickActions: setEnableAnnotationQuickActions,
@@ -352,14 +351,6 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
     getViews().forEach((view) => view?.toggleAttribute('autohide-cursor', autohideCursor));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autohideCursor]);
-
-  useEffect(() => {
-    if (viewSettings.allowScript === allowScript) return;
-    saveViewSettings(envConfig, bookKey, 'allowScript', allowScript, true, false).then(() => {
-      recreateViewer(envConfig, bookKey);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowScript]);
 
   useEffect(() => {
     saveViewSettings(
@@ -640,23 +631,6 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
           checked={autohideCursor}
           onChange={() => setAutohideCursor(!autohideCursor)}
           data-setting-id='settings.control.autohideCursor'
-        />
-      </BoxedList>
-
-      <BoxedList title={_('Security')}>
-        <SettingsSwitchRow
-          label={_('Allow JavaScript')}
-          description={
-            allowScript
-              ? _(
-                  'Allows scripts in the book to run; these can access app data. Enable only for books you trust.',
-                )
-              : _('Enable only if you trust the file.')
-          }
-          checked={allowScript}
-          disabled={bookData?.book?.format !== 'EPUB'}
-          onChange={() => setAllowScript(!allowScript)}
-          data-setting-id='settings.control.allowJavascript'
         />
       </BoxedList>
     </div>

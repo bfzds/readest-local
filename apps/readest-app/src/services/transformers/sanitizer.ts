@@ -10,9 +10,9 @@ export const sanitizerTransformer: Transformer = {
   name: 'sanitizer',
 
   transform: async (ctx) => {
-    const allowScript = ctx.viewSettings.allowScript;
-    if (allowScript) return ctx.content;
-
+    // S-3：无论 allowScript 如何设置，书内容一律清洗（script/事件属性/
+    // javascript: URL 永不进入渲染 iframe）。书内脚本是宿主 IPC 暴露的唯一
+    // 执行面，关闭此短路后不再存在"开启脚本就不清洗"的路径。
     // Protect BiDi control characters that XMLSerializer encodes as numeric
     // character references, breaking Persian/Arabic text shaping. Both the
     // literal character and its numeric-entity form (produced by XMLSerializer)
