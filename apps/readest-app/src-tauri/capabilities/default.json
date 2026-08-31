@@ -102,47 +102,10 @@
     "core:webview:allow-create-webview-window",
     "core:path:allow-resolve-directory",
     "log:default",
-    "shell:default",
     "process:default",
     "process:allow-exit",
     "process:allow-restart",
     "opener:default",
-    {
-      "identifier": "shell:allow-spawn",
-      "allow": [
-        {
-          "name": "start-readest",
-          "cmd": "cmd",
-          "args": [
-            "/C",
-            "start",
-            "",
-            {
-              "validator": "^[^&|<>%!`\\n\\r\"]*\\.exe$"
-            }
-          ]
-        },
-        {
-          "name": "chmod-appimage",
-          "cmd": "chmod",
-          "args": [
-            "+x",
-            {
-              "validator": "^[^&|<>%!`\\n\\r\"]*\\.AppImage$"
-            }
-          ]
-        },
-        {
-          "name": "launch-appimage",
-          "cmd": "setsid",
-          "args": [
-            {
-              "validator": "^[^&|<>%!`\\n\\r\"]*\\.AppImage$"
-            }
-          ]
-        }
-      ]
-    },
     "clipboard-manager:allow-write-text",
     "clipboard-manager:allow-read-text",
     "device-info:default",
