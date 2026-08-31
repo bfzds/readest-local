@@ -33,7 +33,10 @@ import {
   ResolvedPath,
   FileItem,
   DistChannel,
+  LibraryLock,
+  SaveLibraryBooksOptions,
 } from '@/types/system';
+import type { Book } from '@/types/book';
 import { getOSPlatform, isContentURI, isFileURI, isValidURL } from '@/utils/misc';
 import { getDirPath, getFilename } from '@/utils/path';
 import { NativeFile, RemoteFile } from '@/utils/file';
@@ -772,6 +775,32 @@ export class NativeAppService extends BaseAppService {
 
   async ask(message: string): Promise<boolean> {
     return await ask(message);
+  }
+
+  // B-7 复核：跨 WebView 保存互斥 —— 用 Tauri 应用数据目录下的独占锁文件，
+  // 覆盖 BaseAppService 的单进程内存串行链（后者无法跨独立 WebView 共享）。
+  override async acquireLibraryLock(): Promise<LibraryLock | null> {
+    return await invoke<LibraryLock>('acquire_library_lock', { timeoutMs: 5000 });
+  }
+
+  override async releaseLibraryLock(lock: LibraryLock): Promise<void> {
+    await invoke('release_library_lock', { lockPath: lock.path, token: lock.token }).catch(
+      () => {},
+    );
+  }
+
+  // 文件锁内执行读-合并-写：跨 WebView 一次只有一个保存事务处于
+  // load-merge-save 阶段，两条并发保存不会互相覆盖较新的字段。
+  override async saveLibraryBooks(
+    books: Book[],
+    options?: SaveLibraryBooksOptions,
+  ): Promise<Book[]> {
+    const lock = await this.acquireLibraryLock();
+    try {
+      return await super.saveLibraryBooks(books, options);
+    } finally {
+      if (lock) await this.releaseLibraryLock(lock).catch(() => {});
+    }
   }
 
   async openDatabase(

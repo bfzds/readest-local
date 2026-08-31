@@ -8,6 +8,7 @@ import {
   FileInfo,
   FileItem,
   FileSystem,
+  LibraryLock,
   OsPlatform,
   ResolvedPath,
   SaveLibraryBooksOptions,
@@ -31,6 +32,11 @@ import * as FontSvc from './fontService';
 import * as ImageSvc from './imageService';
 import * as LibrarySvc from './libraryService';
 import * as Settings from './settingsService';
+
+// B-7 复核：单进程内存保存互斥链（Node/浏览器/测试）。多个并行
+// saveLibraryBooks 在链上串行执行 read-merge-write；跨 WebView 的互斥由
+// NativeAppService 用 Tauri 文件锁覆盖（override 下方两方法）。
+let librarySaveChain: Promise<unknown> = Promise.resolve();
 
 export abstract class BaseAppService implements AppService {
   osPlatform: OsPlatform = getOSPlatform();
@@ -354,7 +360,25 @@ export abstract class BaseAppService implements AppService {
     return LibrarySvc.loadLibraryBooks(this.fs, this.generateCoverImageUrl.bind(this));
   }
 
+  async acquireLibraryLock(): Promise<LibraryLock | null> {
+    // 默认无跨进程锁：单进程内存串行链（saveLibraryBooks）已保证互斥。
+    // NativeAppService 用 Tauri 文件锁覆盖，提供真正跨 WebView 的互斥。
+    return null;
+  }
+
+  async releaseLibraryLock(_lock: LibraryLock): Promise<void> {}
+
   async saveLibraryBooks(books: Book[], options?: SaveLibraryBooksOptions): Promise<Book[]> {
-    return await LibrarySvc.saveLibraryBooks(this.fs, books, options);
+    // 默认（单进程 Node/浏览器/测试）：内存串行链保证 read-merge-write 不
+    // 交错——多个并行保存依链依次执行，后者读取到前者写盘后的最新数据再
+    // LWW 合并，不会互相覆盖。
+    const run = librarySaveChain.then(async () =>
+      LibrarySvc.saveLibraryBooks(this.fs, books, options),
+    );
+    librarySaveChain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
   }
 }

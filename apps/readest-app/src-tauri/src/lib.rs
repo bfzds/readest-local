@@ -21,6 +21,7 @@ use tauri_plugin_fs::FsExt;
 use tauri::{Listener, Url};
 mod dir_scanner;
 mod epub_parser;
+mod library_lock;
 #[cfg(target_os = "macos")]
 mod macos;
 mod mobi_parser;
@@ -206,6 +207,8 @@ pub fn run() {
             epub_parser::parse_epub_full,
             mobi_parser::parse_mobi_metadata,
             mobi_parser::extract_mobi_cover_full,
+            library_lock::acquire_library_lock,
+            library_lock::release_library_lock,
             #[cfg(target_os = "macos")]
             macos::traffic_light::set_traffic_lights,
             #[cfg(target_os = "macos")]

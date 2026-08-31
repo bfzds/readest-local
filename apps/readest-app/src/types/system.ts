@@ -77,6 +77,11 @@ export interface SaveLibraryBooksOptions {
   replace?: boolean;
 }
 
+export interface LibraryLock {
+  path: string;
+  token: string;
+}
+
 export interface AppService {
   osPlatform: OsPlatform;
   appPlatform: AppPlatform;
@@ -184,6 +189,11 @@ export interface AppService {
   resolveNativeBookFilePath(book: Book): Promise<string | null>;
   loadLibraryBooks(): Promise<Book[]>;
   saveLibraryBooks(books: Book[], options?: SaveLibraryBooksOptions): Promise<Book[]>;
+  // B-7 复核：跨窗口 library 保存串行化锁。Tauri（多 WebView）用应用数据
+  // 目录下的独占锁文件实现；单进程/浏览器实现可给出内存锁或不实现
+  //（缺省时保存不加锁）。保持可选以最小化非 Tauri 端接线。
+  acquireLibraryLock?: () => Promise<LibraryLock | null>;
+  releaseLibraryLock?: (lock: LibraryLock) => Promise<void>;
   getCoverImageUrl(book: Book): string;
   getCoverImageBlobUrl(book: Book): Promise<string>;
   generateCoverImageUrl(book: Book): Promise<string>;
