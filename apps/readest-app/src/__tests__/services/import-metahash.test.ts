@@ -146,16 +146,14 @@ describe('importBook metaHash deduplication', () => {
     const mockFile = new File(['new content'], 'test.epub', { type: 'application/epub+zip' });
     const result = await service.importBook(mockFile, books);
 
-    // Should return the existing book, not a new one
-    expect(result).toBe(existingBook);
-    // Library should still have only one book
+    // B-6：合并写副本并提交快照——数组元素被替换为更新后的副本，原对象
+    // 不被原地改写（失败时也不会污染 library）。
     expect(books.length).toBe(1);
-    // Hash should be updated to new file's content hash
-    expect(existingBook.hash).toBe('new-hash-456');
-    // Metadata should be overridden
-    expect(existingBook.metadata).toEqual(TEST_METADATA);
-    // metaHash should be set
-    expect(existingBook.metaHash).toBe(metaHash);
+    expect(result).toBe(books[0]);
+    expect(books[0]!.hash).toBe('new-hash-456');
+    expect(books[0]!.metadata).toEqual(TEST_METADATA);
+    expect(books[0]!.metaHash).toBe(metaHash);
+    expect(existingBook.hash).toBe('old-hash-123');
   });
 
   // Cross-device file-update convergence (issue #4544 §E): re-importing an
@@ -177,10 +175,14 @@ describe('importBook metaHash deduplication', () => {
     const mockFile = new File(['new content'], 'test.epub', { type: 'application/epub+zip' });
     const result = await service.importBook(mockFile, books);
 
-    expect(result).toBe(existingBook);
-    expect(existingBook.hash).toBe('new-hash-456');
+    expect(books.length).toBe(1);
+    expect(result).toBe(books[0]);
+    expect(books[0]!.hash).toBe('new-hash-456');
     // uploadedAt cleared → book sync / manual upload re-pushes the new file.
-    expect(existingBook.uploadedAt).toBeNull();
+    expect(books[0]!.uploadedAt).toBeNull();
+    // 原件引用未被原地改写（不可变提交）。
+    expect(existingBook.hash).toBe('old-hash-123');
+    expect(existingBook.uploadedAt).not.toBeNull();
   });
 
   it('should not match metaHash for deleted books', async () => {
@@ -723,9 +725,13 @@ describe('importBook PDF filename-aware dedup', () => {
       books,
     );
 
-    expect(book2).toBe(book1);
+    // B-6：合并写副本并提交快照——返回的对象不再是原引用（books 数组元素被
+    // 替换为更新后的副本），原对象不被原地改写；失败时也不会污染原数组。
+    expect(book2).not.toBe(book1);
     expect(books.filter((b) => !b.deletedAt)).toHaveLength(1);
-    expect(book1!.hash).toBe('pdf-hash-2');
+    const merged = books.find((b) => !b.deletedAt)!;
+    expect(merged.hash).toBe('pdf-hash-2');
+    expect(book1!.hash).toBe('pdf-hash-1');
   });
 
   it('refreshBookMetadata preserves the salted metaHash for PDFs', async () => {

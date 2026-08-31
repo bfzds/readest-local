@@ -585,8 +585,15 @@ export async function importBook(
           : books.find((b) => b.metaHash === metaHash && b.format === format && !b.deletedAt);
         if (firstMatch) {
           oldBookDir = getDir(firstMatch);
-          existingBook = firstMatch;
           metaHashMatch = true;
+          // 提交点 818 按原 hash 回写数组/索引槽位——先记下 firstMatch
+          // 的原 hash（副本随后会把 hash 改成新值，否则找不到原槽位）。
+          originalExistingHash = firstMatch.hash;
+          // B-6：metaHash 聚合命中的书同样写副本——firstMatch 是 books /
+          // lookupIndex 的原对象，直接改 createdAt/updatedAt 会在后续 IO
+          // 失败时（提交点 818 未执行）污染调用方数组。失败时原对象保持。
+          existingBook = { ...firstMatch };
+          if (!transient) existingBook.deletedAt = null;
           existingBook.createdAt = Date.now();
           existingBook.updatedAt = Date.now();
         }
