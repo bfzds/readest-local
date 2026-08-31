@@ -354,7 +354,7 @@ export abstract class BaseAppService implements AppService {
     return LibrarySvc.loadLibraryBooks(this.fs, this.generateCoverImageUrl.bind(this));
   }
 
-  async saveLibraryBooks(books: Book[], options?: SaveLibraryBooksOptions): Promise<void> {
+  async saveLibraryBooks(books: Book[], options?: SaveLibraryBooksOptions): Promise<Book[]> {
     return await LibrarySvc.saveLibraryBooks(this.fs, books, options);
   }
 }

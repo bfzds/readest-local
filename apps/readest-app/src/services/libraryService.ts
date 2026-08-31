@@ -58,13 +58,15 @@ export async function saveLibraryBooks(
   fs: FileSystem,
   books: Book[],
   options?: SaveLibraryBooksOptions,
-): Promise<void> {
+): Promise<Book[]> {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const incoming = books.map(({ coverImageUrl, ...rest }) => rest);
 
+  // 返回实际写入的数据：replace 回写传入数组；routine save 返回 LWW 合并后
+  // 的最终快照，供调用方以此为准提交内存（避免用未合并的旧快照覆盖新数据）。
   if (options?.replace) {
     await safeSaveJSON(fs, getLibraryFilename(), 'Books', incoming);
-    return;
+    return incoming;
   }
 
   // Merge-floor + LWW 合并（详见 mergeLibraryRows）：routine save 永不因旧
@@ -72,4 +74,5 @@ export async function saveLibraryBooks(
   const existing = await safeLoadJSON<Book[]>(fs, getLibraryFilename(), 'Books', []);
   const merged = mergeLibraryRows(existing, incoming);
   await safeSaveJSON(fs, getLibraryFilename(), 'Books', merged);
+  return merged;
 }

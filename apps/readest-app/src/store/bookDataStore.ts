@@ -31,9 +31,9 @@ import { useLibraryStore } from './libraryStore';
 // happens via flushPendingLibrarySave() on hook unmount + window blur.
 const LIBRARY_SAVE_THROTTLE_MS = 30_000;
 let librarySaveTimeoutId: ReturnType<typeof setTimeout> | null = null;
-let librarySaveAppService: { saveLibraryBooks: (books: Book[]) => Promise<void> } | null = null;
+let librarySaveAppService: { saveLibraryBooks: (books: Book[]) => Promise<Book[]> } | null = null;
 const scheduleLibrarySave = (appService: {
-  saveLibraryBooks: (books: Book[]) => Promise<void>;
+  saveLibraryBooks: (books: Book[]) => Promise<Book[]>;
 }) => {
   librarySaveAppService = appService;
   if (librarySaveTimeoutId != null) return;

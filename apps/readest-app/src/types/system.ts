@@ -183,7 +183,7 @@ export interface AppService {
   loadBookContent(book: Book): Promise<BookContent>;
   resolveNativeBookFilePath(book: Book): Promise<string | null>;
   loadLibraryBooks(): Promise<Book[]>;
-  saveLibraryBooks(books: Book[], options?: SaveLibraryBooksOptions): Promise<void>;
+  saveLibraryBooks(books: Book[], options?: SaveLibraryBooksOptions): Promise<Book[]>;
   getCoverImageUrl(book: Book): string;
   getCoverImageBlobUrl(book: Book): Promise<string>;
   generateCoverImageUrl(book: Book): Promise<string>;

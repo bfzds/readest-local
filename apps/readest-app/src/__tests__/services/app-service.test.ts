@@ -189,9 +189,9 @@ describe('BaseAppService', () => {
       );
 
     test('delegates to LibrarySvc.saveLibraryBooks', async () => {
-      vi.mocked(LibrarySvc.saveLibraryBooks).mockResolvedValue(undefined);
+      vi.mocked(LibrarySvc.saveLibraryBooks).mockResolvedValue([]);
 
-      await expect(service.saveLibraryBooks([])).resolves.toBeUndefined();
+      await expect(service.saveLibraryBooks([])).resolves.toEqual([]);
       expect(LibrarySvc.saveLibraryBooks).toHaveBeenCalledWith(mockFs, [], undefined);
     });
 

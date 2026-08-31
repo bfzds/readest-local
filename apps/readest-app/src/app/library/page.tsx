@@ -666,18 +666,20 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       }
       if (gen !== libraryInitGeneration.current) return false;
       if (bookIds.length > 0) {
-        // 新书入内存（即使无新书也避免无谓重写盘）
-        if (library !== libraryBooks) {
-          setLibrary(library);
-        }
-        // C-4：先落盘再导航。保存失败时停在书库页并提示，避免"已打开阅读页
-        // 但导入记录未持久化"的半状态与未处理 rejection。
+        // C-4 复核：保存成功后才提交内存快照——保存失败时 store 不变、不
+        // 导航，也没有"内存含新书而磁盘未写"的半提交。
+        let saved: Book[];
         try {
-          await appService.saveLibraryBooks(library);
+          saved = await appService.saveLibraryBooks(library);
         } catch (error) {
           console.error('Failed to persist Open With books; staying on library:', error);
           return false;
         }
+        // 以磁盘最终 LWW 合并快照为准提交内存。
+        // 保存成功后才以磁盘最终快照提交内存；但仅当前 generation 允许提交，
+        // 防旧轮次的保存晚到污染新页面。
+        if (gen !== libraryInitGeneration.current) return false;
+        setLibrary(saved);
         setPendingNavigationBookIds(bookIds);
         return true;
       }
