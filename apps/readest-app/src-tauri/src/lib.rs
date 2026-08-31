@@ -188,6 +188,9 @@ struct SingleInstancePayload {
 }
 
 pub fn run() {
+    // B-7 复核：在任何 WebView 保存发生之前记录本进程启动时间，供陈旧
+    // library.lock 恢复判定（启动前遗留锁可安全收走，本进程创建的活锁不抢）。
+    library_lock::initialize_process_start();
     let builder = tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()

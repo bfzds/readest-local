@@ -784,9 +784,7 @@ export class NativeAppService extends BaseAppService {
   }
 
   override async releaseLibraryLock(lock: LibraryLock): Promise<void> {
-    await invoke('release_library_lock', { lockPath: lock.path, token: lock.token }).catch(
-      () => {},
-    );
+    await invoke('release_library_lock', { lockPath: lock.path, token: lock.token });
   }
 
   // 文件锁内执行读-合并-写：跨 WebView 一次只有一个保存事务处于
@@ -799,7 +797,14 @@ export class NativeAppService extends BaseAppService {
     try {
       return await super.saveLibraryBooks(books, options);
     } finally {
-      if (lock) await this.releaseLibraryLock(lock).catch(() => {});
+      // 释放失败要可观测，但不把已成功的库保存改写成失败。
+      if (lock) {
+        try {
+          await this.releaseLibraryLock(lock);
+        } catch (error) {
+          console.error('Failed to release library save lock:', error);
+        }
+      }
     }
   }
 

@@ -16,15 +16,33 @@ const makeBook = (partial: Partial<Book>): Book => ({
 // 最小 BaseAppService 子类 + 内存 library.json，用于验证保存串行化。
 class MemSaveService extends BaseAppService {
   mem: string;
+  // barrier：第一次保存的写盘可被测试扣住，用于证明 read-merge-write 顺序。
+  releaseFirstWrite!: () => void;
+  private firstWriteGate = new Promise<void>((resolve) => {
+    this.releaseFirstWrite = resolve;
+  });
+  private gateEnabled = false;
+  private writes = 0;
   constructor(initial: string) {
     super();
     this.mem = initial;
+  }
+
+  /** 仅 barrier 测试启用：第一次写盘前挂起，直到 releaseFirstWrite。 */
+  enableWriteBarrier(): void {
+    this.gateEnabled = true;
+  }
+
+  readWrites(): number {
+    return this.writes;
   }
 
   protected override fs = {
     readFile: async (): Promise<unknown> => this.mem,
     writeFile: async (path: string, _base: unknown, data: string): Promise<void> => {
       if (path.includes('library.json')) {
+        this.writes += 1;
+        if (this.gateEnabled && this.writes === 1) await this.firstWriteGate;
         this.mem = typeof data === 'string' ? data : JSON.stringify(data);
       }
     },
@@ -78,5 +96,24 @@ describe('library save serialized across concurrent saveLibraryBooks (B-7)', () 
 
     const disk = JSON.parse(svc.mem) as Book[];
     expect(disk[0]!.title).toBe('second-sync');
+  });
+});
+
+describe('barrier proves read-merge-write order (Task3)', () => {
+  it('先写者未完成时后写者不进入 read；释放后读到先写数据', async () => {
+    const svc = new MemSaveService(JSON.stringify([makeBook({ title: 'base', updatedAt: 50 })]));
+    svc.enableWriteBarrier();
+    const first = svc.saveLibraryBooks([makeBook({ title: 'A', updatedAt: 300 })]);
+    const second = svc.saveLibraryBooks([makeBook({ title: 'B', updatedAt: 100 })]);
+    // 让第一个保存推进到 write gate（此时第二个保存被内存串行链挡住，未进入 read）。
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(svc.readWrites()).toBe(1); // A 已到首次写盘（挂起在 gate），B 尚未参与
+    svc.releaseFirstWrite();
+    await Promise.all([first, second]);
+    const disk = JSON.parse(svc.mem) as Book[];
+    // 后保存者读到 A 的磁盘数据（updatedAt 300），旧快照（100）不覆盖它。
+    expect(disk[0]!.title).toBe('A');
+    expect(disk[0]!.updatedAt).toBe(300);
   });
 });
