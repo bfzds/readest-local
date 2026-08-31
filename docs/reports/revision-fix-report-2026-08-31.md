@@ -64,7 +64,7 @@
 
 | 项 | 状态与原因 |
 |---|---|
-| **C-6 Annotator 监听器清理** | **已完成（可执行计划 Task6）**。onLoad 的 section 监听器改用具名 handler 引用 + 幂等 cleanup：每类事件保存一次引用，组件卸载时统一 `removeEventListener` 成对清除，反复预加载/替换章节不再累积旧回调；WeakSet 防重复注册语义保留，触屏/指针/选中/右键 handler 调用语义与参数顺序不变。受组件挂载工具限制，监听器计数验证以代码模式 + 现有 annotator/reader 回归覆盖（计划条件性条款） |
+| **C-6 Annotator 监听器清理** | **代码与自动化修复完成，真机长会话验收待执行（2026-08-31 可执行计划 Task4）**。新增可单测 `SectionListenerRegistry`（index→doc→cleanup）：同 index 替换 doc 立即清理旧监听器、同 doc 重复 load 不重复挂载、`disposeAll` 幂等（3 个单测通过）；Annotator onLoad 先登记 replace 再 mount，并给每个 doc 挂 `pagehide`（iframe 销毁但 index 未复用）时 `disposeDocument`，组件卸载 `disposeAll`。触屏/指针/选中/右键 handler 调用语义与参数顺序不变（annotator/reader 82 测试通过）。真机长会话反复翻章/预加载的 listener 基数验收仍待手工执行 |
 | **P-8 完整虚拟化** | 维持 `content-visibility` 部分实现，不做真实虚拟化。原因（计划第 6 节）：完整虚拟化需同时兼容 sticky header、多本展开、键盘主导航与 ARIA，须先有真实性能数据与可访问性原型验证才重新排期 |
 | **规划 §2.2 的 Sol/Luna 双模型** | 本机无 `gpt-5.6-luna` agent；验证由主模型直接执行（命令、退出码、失败清单在本报告与任务日志可回溯）。功能等价的独立复核可后续用子代理补充 |
 

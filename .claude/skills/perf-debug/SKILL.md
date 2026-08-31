@@ -40,13 +40,13 @@ description: Readest Local 项目专属性能分析与调试技能（项目级�
 
 | 项 | 值 |
 |---|---|
-| 锚点 HEAD | `8218a6f` |
-| 最新报告 | `perf-debug-report-2026-08-19.md` |
-| 基线 | vitest 421 文件 / 5630 通过（1 skipped 文件 / 10 skipped 用例）；tsgo 0 错；biome 2 warnings（ingest-service.test.ts noUselessEscapeInString，他人未提交的 txt-worker 会话代码）；clippy 0 警告；Rust 单测 53 通过（@8218a6f 实测，8-19 报告） |
-| 当前优先级 | SF12 已修 → SF10（MDict trackedUrls）、新5（AdwaitaSelect a11y）、RF6 → 暂缓 HF2、macOS 实机项（RF1/RF9/RF10） |
-| 本报告已修 | SF12 page_stat_data 无界增长：StatisticsDb.MAX_PAGE_EVENTS_PER_BOOK=10000 + prunePageEvents（rowid 保留最近 N 条），飘页 flush 路径调用（ReadingStatsTracker.persist），test-first（新失败测试转绿）+ 34 测试文件 271 用例回归通过 |
-| 已分析未修 | SF10 MDict trackedUrls 无界累积：resolveImageResources 每次 lookup 为每 img 新建 blob URL push 进 provider 级数组，dispose 前不回收（同图反复新建、旧卡片移除不 revoke）；建议：参考 sound 锚点的 data-mdd-resolved 缓存 + 卡片级 URL 生命周期。新5 AdwaitaSelect 键盘导航已有完整实现+测试，剩余为 aria-activedescendant/焦点环 a11y 细节 |
-| 明确暂缓 | HF2 getVisibleRange 整章遍历（改动风险高）；RF6；macOS 实机项（RF1/RF9/RF10） |
+| 锚点 HEAD | `fa62666` |
+| 最新报告 | `revision-fix-report-2026-08-31.md` / `perf-debug-report-2026-08-31.md` |
+| 基线 | vitest 434 文件 / 5756 通过（1 skipped 文件 / 10 skipped 用例）@fa62666 实测；tsgo 0 错；biome 0 错误 + 1 warning（mdict）；clippy 0 警告；Rust 单测 60 通过（含 library lock 4 项）；browser 242 通过 / 11 失败（5 文件，与既有集合一致） |
+| 当前优先级 | browser 11 失败四组诊断（annotation-popup-layout+tts-auto-advance EnvProvider / iframe-keyboard-selection / paginator-turn-styles / EditorView）；真机手工验收清单（恶意 EPUB、双窗口并发、重复 prune、Open With 失败、反复开章节监听、palette 键盘矩阵）；origin 隔离架构验证 |
+| 本报告已修 | 缓存索引批内逐 section 重算预算（Task1）；CommandPalette blur 仅在焦点离开 dialog 时返焦（Task2）；library.lock 启动前陈旧锁恢复 + release 错误可见 + barrier 锁测试（Task3）；Annotator SectionListenerRegistry（替换清理/pagehide/disposeAll）+ 移除 throttle noExplicitAny（Task4/5） |
+| 已分析未修 | browser 11 失败尚未系统性根因（不得在诊断完成前改截图基线/放宽断言）；真正的 iframe origin 隔离未做（另立架构）；搜索结果 P-8 维持 content-visibility 部分实现（需真实性能+可访问性原型）；真机 Long 会话/手工验收待执行 |
+| 明确暂缓 | HF2 getVisibleRange 整章遍历（改动风险高）；RF6；macOS 实机项（RF1/RF9/RF10）；mdict 跨卡片 blob URL 复用；browser 11 失败的"Enviromental 猜测性修复"（本计划声明不猜修，须逐组红灯复现后再生成修复计划） |
 
 <!-- SNAPSHOT-END -->
 
