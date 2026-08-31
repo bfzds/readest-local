@@ -29,6 +29,7 @@ import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { useDeviceControlStore } from '@/store/deviceStore';
 import { useFoliateEvents } from '../../hooks/useFoliateEvents';
 import { useRendererInputListeners } from '../../hooks/useRendererInputListeners';
+import { createSectionListenerRegistry } from './sectionListenerRegistry';
 import { useTextSelector } from '../../hooks/useTextSelector';
 import { Point, Position, TextSelection } from '@/utils/sel';
 import {
@@ -340,11 +341,9 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
   const onLoad = (event: Event) => {
     const detail = (event as CustomEvent).detail;
     const { doc, index } = detail;
-    // C-6：同一 section 文档重复 load 不会重复挂监听 —— WeakSet 弱引用随
-    // doc GC 自动回收，section 重复 preload/重开时不累积 touch/pointer/
-    // selectionchange 处理器。
-    if (!doc || attachedSectionDocsRef.current.has(doc)) return;
-    attachedSectionDocsRef.current.add(doc);
+    // C-6 复核：section 监听器由 registry 管理 —— 同 index 替换 doc 立即清理
+    // 旧 doc，同 doc 重复 load 不重复 mount，组件卸载/页面隐藏时 disposeAll。
+    if (!doc) return;
     // C-6 复核：具名 handler + 幂等 cleanup。每个监听器保存一次引用，卸载
     // 时成对 remove，反复预加载/替换章节不累积旧回调。
     const disposers: Array<() => void> = [];
@@ -415,6 +414,13 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
       return false;
     };
 
+    // 先构造 cleanup 闭包（引用 disposers，mount 时填充），再登记 registry：
+    // 同 doc 重复 load 不重复 mount；index 已被替换时旧 doc 已在 registry 清理。
+    const cleanup = () => {
+      for (const dispose of disposers) dispose();
+      disposers.length = 0;
+    };
+    if (!sectionListenersRef.current.replace(index, doc, cleanup)) return;
     mount(doc, 'touchstart', touchStartFn, opts);
     mount(doc, 'touchmove', touchMoveFn, opts);
     mount(doc, 'touchend', touchEndFn);
@@ -427,12 +433,10 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     mount(doc, 'selectionchange', selectionFn);
     if (bookData.isFixedLayout) mount(doc, 'contextmenu', pdfContextFn);
     mount(doc, 'contextmenu', handleContextmenu);
-
-    const cleanup = () => {
-      for (const dispose of disposers) dispose();
-      disposers.length = 0;
-    };
-    sectionListenerCleanupsRef.current.push(cleanup);
+    // 页面隐藏（iframe 销毁但 index 尚未复用）时主动清理该 doc 的监听器。
+    const handlePageHide = () => sectionListenersRef.current.disposeDocument(doc);
+    doc.defaultView?.addEventListener('pagehide', handlePageHide, { once: true });
+    disposers.push(() => doc.defaultView?.removeEventListener('pagehide', handlePageHide));
   };
 
   const onCreateOverlay = (event: Event) => {
@@ -585,17 +589,10 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
   }, [isSideBarVisible, handleDismissPopup]);
 
   const lastRelocateCfiRef = useRef<string | null>(null);
-  // C-6：记录已挂过监听器的 section 文档，防重复 load 累积监听。
-  const attachedSectionDocsRef = useRef(new WeakSet<Document>());
-  // C-6 复核：每个已挂载 doc 对应一个幂等 cleanup；组件卸载时统一执行，
-  // 卸载/销毁阅读器不留下旧的 section 监听器。
-  const sectionListenerCleanupsRef = useRef<Array<() => void>>([]);
-  useEffect(() => {
-    return () => {
-      for (const cleanup of sectionListenerCleanupsRef.current) cleanup();
-      sectionListenerCleanupsRef.current = [];
-    };
-  }, []);
+  // C-6 复核：section 监听器注册表 —— index→doc→cleanup 对应，替换 doc 立即
+  // 清理旧的，重复 load 不重复挂载，组件卸载 disposeAll 幂等。
+  const sectionListenersRef = useRef(createSectionListenerRegistry());
+  useEffect(() => () => sectionListenersRef.current.disposeAll(), []);
   const onRelocate = (event: Event) => {
     // A page turn or scroll moves the anchor out from under any open popup
     // (including the note popup), so dismiss instead of leaving it floating
