@@ -600,3 +600,34 @@ describe('searchLibraryBooks', () => {
     await session.close();
   });
 });
+
+describe('Task5 service hard cap', () => {
+  it('异常 worker 超发结果不突破单本上限', async () => {
+    const book = makeBook('over', 'Over');
+    const file = makeFile('# A\nneedle text\n\n# B\nneedle text\n\n# C\nneedle text');
+    const service = makeService(new Map([['over', file]]));
+    const session = createLibrarySearchSession(service);
+    vi.spyOn(session.searchWorker, 'searchBatch').mockResolvedValue(
+      Array.from({ length: 3 }, (_, i) => ({
+        sectionKey: `over:${i}`,
+        matches: Array.from({ length: 800 }, (_, k) => ({ start: k, end: k + 6, runs: [] })),
+        truncated: true,
+      })),
+    );
+
+    const events: Array<{ type: string; result?: { subitems: unknown[] }; truncated?: boolean }> =
+      [];
+    for await (const event of searchLibraryBooks(service, [book], 'needle', {
+      config: { ...config, mode: 'fuzzy' },
+      session,
+    })) {
+      events.push(event as never);
+    }
+    const total = events
+      .filter((e) => e.type === 'result')
+      .reduce((sum, e) => sum + (e.result?.subitems.length ?? 0), 0);
+    expect(total).toBeLessThanOrEqual(500);
+    expect(events.some((e) => e.type === 'completed' && e.truncated)).toBe(true);
+    await session.close();
+  });
+});

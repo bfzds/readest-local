@@ -788,8 +788,11 @@ export async function* searchLibraryBooks(
             const section = batch[i]!;
             const outcome = outcomes[i]!;
             if (outcome.truncated) bookTruncated = true;
-            if (outcome.matches.length) {
-              const subitems = toSubitems(config.mode, section.idx, section.text, outcome.matches);
+            // Task5：service 端最终硬截断 —— 即使 worker 异常超发，每节也只
+            // 消费剩余预算内的结果，单本/全库上限不被突破。
+            const capped = remaining > 0 ? outcome.matches.slice(0, remaining) : [];
+            if (capped.length) {
+              const subitems = toSubitems(config.mode, section.idx, section.text, capped);
               bookMatches += subitems.length;
               totalMatches += subitems.length;
               yield {
@@ -797,6 +800,13 @@ export async function* searchLibraryBooks(
                 book,
                 result: { index: section.idx, label: section.label, subitems },
               };
+            }
+            if (
+              bookMatches >= MAX_BOOK_SEARCH_RESULTS ||
+              totalMatches >= MAX_TOTAL_SEARCH_RESULTS
+            ) {
+              bookTruncated = true;
+              break;
             }
             if (bookTruncated) break;
             await yieldSlice();
@@ -926,13 +936,14 @@ export async function* searchLibraryBooks(
             const section = batch[i]!;
             const outcome = outcomes[i]!;
             if (outcome.truncated) bookTruncated = true;
-            if (outcome.matches.length) {
-              const subitems = toSubitems(
-                config.mode,
-                section.sectionIndex,
-                section.text,
-                outcome.matches,
-              );
+            // Task5：live 汇总同样按当前剩余预算硬截断。
+            const remainingNow = Math.min(
+              MAX_BOOK_SEARCH_RESULTS - bookMatches,
+              MAX_TOTAL_SEARCH_RESULTS - totalMatches,
+            );
+            const capped = remainingNow > 0 ? outcome.matches.slice(0, remainingNow) : [];
+            if (capped.length) {
+              const subitems = toSubitems(config.mode, section.sectionIndex, section.text, capped);
               bookMatches += subitems.length;
               totalMatches += subitems.length;
               items.push({
@@ -940,6 +951,13 @@ export async function* searchLibraryBooks(
                 label: section.label,
                 subitems,
               });
+            }
+            if (
+              bookMatches >= MAX_BOOK_SEARCH_RESULTS ||
+              totalMatches >= MAX_TOTAL_SEARCH_RESULTS
+            ) {
+              bookTruncated = true;
+              break;
             }
           }
           return items;
