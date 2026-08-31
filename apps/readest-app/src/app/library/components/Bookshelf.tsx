@@ -1010,8 +1010,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       }
       const item = sortedBookshelfItems[index];
       if (!item) return null;
-      const itemSelected =
-        'hash' in item ? selectedBooks.includes(item.hash) : selectedBooks.includes(item.id);
+      const itemSelected = selectedBookSet.has('hash' in item ? item.hash : item.id);
       return (
         <BookshelfItem
           item={item}
@@ -1035,7 +1034,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       sortedBookshelfItems,
-      selectedBooks,
+      selectedBookSet,
       isGridMode,
       viewMode,
       coverFit,

@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useCallback, useState } from 'react';
+import { memo, useCallback, useState } from 'react';
 import { useEnv } from '@/context/EnvContext';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -429,4 +429,4 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
   );
 };
 
-export default BookshelfItem;
+export default memo(BookshelfItem);
