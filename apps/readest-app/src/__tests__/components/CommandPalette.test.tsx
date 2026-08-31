@@ -202,7 +202,64 @@ describe('CommandPalette', () => {
     expect(document.activeElement).toBe(optionOf('B1'));
   });
 
-  it('blur 时焦点仍在 dialog 内不把焦点抢回 input（Task2）', async () => {
+  const stubFocusEnvironment = () => {
+    // jsdom 无真实浏览器 blur/rAF/focus 时序：rAF 改同步执行 + hasFocus 固定为
+    // true，让 onBlur 里的回调在同一帧内可断言地跑完，且把测试锁定在"焦点与
+    // dialog 包含关系"这一核心逻辑上。真机交互仍由桌面键盘矩阵补充验收
+    // （Tab 到结果后不被抢焦、点击空白返焦）。
+    const rafSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      cb(0);
+      return 0;
+    });
+    const focusSpy = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    return () => {
+      rafSpy.mockRestore();
+      focusSpy.mockRestore();
+    };
+  };
+
+  it('blur 且焦点离开 dialog 时仍把焦点拉回 input（Task2 外部点击保护）', () => {
+    const makeItem = (id: string, labelKey: string, category: CommandCategory): CommandItem => ({
+      id,
+      labelKey,
+      localizedLabel: labelKey,
+      keywords: [],
+      category,
+      action: () => {},
+    });
+    const makeResult = (item: CommandItem): CommandSearchResult => ({
+      item,
+      score: 0,
+      positions: new Set<number>(),
+      highlightIndices: new Set<number>(),
+    });
+    const a1 = makeItem('a1', 'A1', 'settings');
+    mockUseCommandPalette.mockImplementation(() => ({
+      isOpen: true,
+      close: mockClose,
+      setQuery: vi.fn(),
+      query: 'x',
+      results: [makeResult(a1)],
+      groupedResults: { settings: [makeResult(a1)], actions: [], navigation: [] },
+      recentItems: [],
+      executeCommand: vi.fn(),
+    }));
+
+    render(<CommandPalette />);
+    const input = screen.getByRole('textbox');
+    const restore = stubFocusEnvironment();
+    try {
+      // 模拟点击 dialog 外部：焦点先落到 body（活动元素已离开 dialog），随后
+      // input blur —— rAF 必须把焦点拉回 input，防止方向键泄漏到页面。
+      document.body.focus();
+      fireEvent.blur(input);
+      expect(document.activeElement).toBe(input);
+    } finally {
+      restore();
+    }
+  });
+
+  it('blur 时焦点仍在 dialog 内不被抢回 input（Task2 负向回归）', () => {
     const makeItem = (id: string, labelKey: string, category: CommandCategory): CommandItem => ({
       id,
       labelKey,
@@ -232,11 +289,15 @@ describe('CommandPalette', () => {
     render(<CommandPalette />);
     const input = screen.getByRole('textbox');
     const option = screen.getByText('A1').closest<HTMLElement>('[role="option"]')!;
-    // Tab 已把焦点放到结果按钮上；此时 input 触发 blur（jsdom 同步）——
-    // 修复前无条件 rAF 会把焦点抢回 input。
-    option.focus();
-    fireEvent.blur(input);
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    expect(document.activeElement).toBe(option);
+    const restore = stubFocusEnvironment();
+    try {
+      // Tab 已把焦点放到结果按钮上；此时 input 触发 blur —— rAF 执行后
+      // activeElement 仍在 dialog 内，不得把焦点抢回 input。
+      option.focus();
+      fireEvent.blur(input);
+      expect(document.activeElement).toBe(option);
+    } finally {
+      restore();
+    }
   });
 });
