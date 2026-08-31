@@ -40,11 +40,11 @@ description: Readest Local 项目专属性能分析与调试技能（项目级�
 
 | 项 | 值 |
 |---|---|
-| 锚点 HEAD | `fa62666` |
-| 最新报告 | `revision-fix-report-2026-08-31.md` / `perf-debug-report-2026-08-31.md` |
-| 基线 | vitest 434 文件 / 5756 通过（1 skipped 文件 / 10 skipped 用例）@fa62666 实测；tsgo 0 错；biome 0 错误 + 1 warning（mdict）；clippy 0 警告；Rust 单测 60 通过（含 library lock 4 项）；browser 242 通过 / 11 失败（5 文件，与既有集合一致） |
+| 锚点 HEAD | `8fa579f` |
+| 最新报告 | `review-findings-remediation-report-2026-08-31.md` / `perf-debug-report-2026-08-31.md` |
+| 基线 | vitest 434 文件 / 5759 通过（1 skipped 文件 / 10 skipped 用例）@8fa579f 实测；tsgo 0 错；biome 0 错误 + 1 warning（mdict）；clippy 0 警告；Rust 单测 60 通过（含 library lock 4 项）；browser 242 通过 / 11 失败（5 文件，与既有集合一致） |
 | 当前优先级 | browser 11 失败四组诊断（annotation-popup-layout+tts-auto-advance EnvProvider / iframe-keyboard-selection / paginator-turn-styles / EditorView）；真机手工验收清单（恶意 EPUB、双窗口并发、重复 prune、Open With 失败、反复开章节监听、palette 键盘矩阵）；origin 隔离架构验证 |
-| 本报告已修 | 缓存索引批内逐 section 重算预算（Task1）；CommandPalette blur 仅在焦点离开 dialog 时返焦（Task2）；library.lock 启动前陈旧锁恢复 + release 错误可见 + barrier 锁测试（Task3）；Annotator SectionListenerRegistry（替换清理/pagehide/disposeAll）+ 移除 throttle noExplicitAny（Task4/5） |
+| 本报告已修 | 缓存索引批内逐 section 重算预算 + 末节 truncated 边界消费 outcome.truncated（Task1 及补证）；CommandPalette blur 仅在焦点离开 dialog 时返焦，正/负双测试定型（Task2 及补证）；library.lock 启动前陈旧锁恢复 + release 错误可见 + barrier 锁测试（Task3）；Annotator SectionListenerRegistry（替换清理/pagehide/disposeAll）+ disposeDocument 单测（Task4 及补证）；移除 throttle noExplicitAny（Task5） |
 | 已分析未修 | browser 11 失败尚未系统性根因（不得在诊断完成前改截图基线/放宽断言）；真正的 iframe origin 隔离未做（另立架构）；搜索结果 P-8 维持 content-visibility 部分实现（需真实性能+可访问性原型）；真机 Long 会话/手工验收待执行 |
 | 明确暂缓 | HF2 getVisibleRange 整章遍历（改动风险高）；RF6；macOS 实机项（RF1/RF9/RF10）；mdict 跨卡片 blob URL 复用；browser 11 失败的"Enviromental 猜测性修复"（本计划声明不猜修，须逐组红灯复现后再生成修复计划） |
 
