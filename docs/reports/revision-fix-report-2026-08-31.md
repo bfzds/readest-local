@@ -64,7 +64,7 @@
 
 | 项 | 状态与原因 |
 |---|---|
-| **C-6 Annotator 监听器清理** | **本轮未着手**。`Annotator.onLoad` 内 touch/pointer/selectionchange/contextmenu 仍以 `bind(null, doc, index)` 匿名注册、无配对 `removeEventListener`、无 AbortController。判断：事件挂在章节 iframe 的 document 上，章节销毁时随 iframe 一起被 GC 回收，真正累积仅在"同一 doc 被反复 load"（预加载复用）可观测；根治需把每类监听改为具名 handler + 每 doc 幂等 cleanup，改动面大、极易破坏注释/划词交互。判定为**独立架构批次**，暂缓并在验收清单记录"反复打开章节后确认无 listener 累积"为该批的手工验收项 |
+| **C-6 Annotator 监听器清理** | **已完成（可执行计划 Task6）**。onLoad 的 section 监听器改用具名 handler 引用 + 幂等 cleanup：每类事件保存一次引用，组件卸载时统一 `removeEventListener` 成对清除，反复预加载/替换章节不再累积旧回调；WeakSet 防重复注册语义保留，触屏/指针/选中/右键 handler 调用语义与参数顺序不变。受组件挂载工具限制，监听器计数验证以代码模式 + 现有 annotator/reader 回归覆盖（计划条件性条款） |
 | **P-8 完整虚拟化** | 维持 `content-visibility` 部分实现，不做真实虚拟化。原因（计划第 6 节）：完整虚拟化需同时兼容 sticky header、多本展开、键盘主导航与 ARIA，须先有真实性能数据与可访问性原型验证才重新排期 |
 | **规划 §2.2 的 Sol/Luna 双模型** | 本机无 `gpt-5.6-luna` agent；验证由主模型直接执行（命令、退出码、失败清单在本报告与任务日志可回溯）。功能等价的独立复核可后续用子代理补充 |
 
@@ -72,8 +72,12 @@
 
 ## 五、验证状态与遗留
 
-- **自动化**：全量前端 5744 通过 / 10 跳过；Rust fmt/clippy/test 全过（56）；tsgo 干净；biome 仅 1 个既有无关 warning；browser 套件搜索 worker budget 用例通过。
-- **browser 失败归因（数量 5 文件属实，分类如下）**：`useEnv must be used within EnvProvider`（装配）、ViewTransition fallback、跨 section 选择——属既有环境/实现假设；`EditorView > calls cancel after confirming` **单独列为待归因**，不自动并入既有环境失败；本批完整 browser 运行**未到达截图断言**，不把"截图失败"作为已复核事实。
-- **test:tauri**：本轮未重跑；上轮 119/121 属上轮 Git Bash 结果，不能视为本轮验证。
-- **test:tauri**：需在 Git Bash 等含 bash 的环境运行；本轮未重跑完整 tauri 套件（上轮已在 Git Bash 实测 119/121，唯一失败为 native-close-isolation 的 Windows 路径平台波动）。
+- **可执行计划（Task1–9）落地后**：全量前端 **5750 通过 / 10 跳过**；Rust fmt/clippy/test 全过（**57**，含 library lock）；tsgo 干净；biome 仅 1 个既有无关 warning；browser 搜索 worker budget / service 超发截断用例通过；并发保存（B-7）、表解锁、快照、LWW 等新增测试全绿。
+- **browser 全套（本计划 Task9 实测：5 文件 / 11 用例失败，242 通过）归因**：
+  - `annotation-popup-layout`（3）—— **截图断言实际执行并失败**（`toMatchSnapshot` 布局匹配），不是"未执行"；
+  - `tts-auto-advance`（3）—— `useEnv must be used within EnvProvider`（装配）；
+  - `iframe-keyboard-selection`（3）—— 跨 section 选区；
+  - `paginator-turn-styles`（1）—— ViewTransition 环境 fallback；
+  - `EditorView > calls cancel after confirming`（1）—— 断言某 cancel 回调未被调用，**单独归因**为该 EditorView 测试/组件上下文问题（本轮未触碰 editor 代码，非 useEnv、非本轮回归）。
+- **test:tauri**：需在 Git Bash 等含 bash 的环境运行；本计划未重跑完整 tauri 套件，上轮 119/121 属上轮 Git Bash 结果，不能视为本轮结论。
 - **手工验收待办**（未自动化、需真机过）：恶意 EPUB 打开无 IPC/无本地资源访问；正常书翻章/选中/划线/注释/目录跳转/固定版式分页；外部授权书库导入/缩略图/部分 MD5/备份恢复；双窗口删除与并发修改同一本书（节流保存/窗口 flush/磁盘最终内容）；重复 prune、重启与旧库迁移后的统计页数；Open With 保存失败、快速关闭、深链、Open Last Books；大量 section 高命中搜索的总上限/排序/取消/首屏延迟；反复打开章节/拖拽中卸载确认无 listener/ghost/timer 残留；CommandPalette/Dialog 的 Tab/Shift+Tab/Escape/返焦。
