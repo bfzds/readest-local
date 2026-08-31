@@ -458,6 +458,8 @@ foliate-fxl {
    cover + title preview of the dragged book/group. */
 .shelf-drag-ghost {
   position: fixed;
+  left: 0;
+  top: 0;
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -472,6 +474,8 @@ foliate-fxl {
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
   pointer-events: none;
   opacity: 0.96;
+  /* 逐帧用 transform 平移跟随指针，避免写 left/top 触发布局失效 */
+  will-change: transform;
 }
 
 .shelf-drag-ghost-cover {

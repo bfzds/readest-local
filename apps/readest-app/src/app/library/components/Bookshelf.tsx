@@ -484,6 +484,11 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     // Merge groups and ungrouped books, then sort them together
     const allItems: (Book | BooksGroup)[] = [...groups, ...ungroupedBooks];
     const groupSorter = createGroupSorter(sortBy, uiLanguage, groupBy);
+    // P-1：组排序键一次性预计算，比较器查表而非每次比较对整组 Math 聚合。
+    const groupSortValues = new Map<BooksGroup, ReturnType<typeof getGroupSortValue>>();
+    for (const group of groups) {
+      groupSortValues.set(group, getGroupSortValue(group, sortBy, groupBy));
+    }
 
     allItems.sort(
       withTimeRemainingLast<Book | BooksGroup>(sortBy, (a, b) => {
@@ -502,12 +507,12 @@ const Bookshelf: React.FC<BookshelfProps> = ({
 
         // For series/author groups: compare sort values to interleave properly
         if (isAGroup && !isBGroup) {
-          const groupValue = getGroupSortValue(a, sortBy, groupBy);
+          const groupValue = groupSortValues.get(a)!;
           const bookValue = getBookSortValue(b, sortBy);
           return compareSortValues(groupValue, bookValue, uiLanguage) * sortOrderMultiplier;
         } else if (!isAGroup && isBGroup) {
           const bookValue = getBookSortValue(a, sortBy);
-          const groupValue = getGroupSortValue(b, sortBy, groupBy);
+          const groupValue = groupSortValues.get(b)!;
           return compareSortValues(bookValue, groupValue, uiLanguage) * sortOrderMultiplier;
         }
         return 0;
@@ -1082,12 +1087,26 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   // follows the app language; tracked via ref to avoid a setState per move.
   const [dragAction, setDragAction] = useState<'swap' | 'merge' | 'move' | null>(null);
   const dragActionRef = useRef<'swap' | 'merge' | 'move' | null>(null);
+  // P-3：pointermove 只记最新坐标，由 rAF 帧内统一做 ghost 定位/命中测试/
+  // 高亮更新，避免逐事件强制 reflow；ghost 尺寸在拖拽期间缓存避免每帧
+  // getBoundingClientRect（窗口 resize 时失效）。
+  const dragRafRef = useRef<number | null>(null);
+  const pendingDragPosRef = useRef<{ x: number; y: number } | null>(null);
+  const dragGhostSizeRef = useRef<{ width: number; height: number } | null>(null);
+  const prevHoverElRef = useRef<HTMLElement | null>(null);
   // Right-click on empty shelf space → "Create New Group".
   const [blankContextMenu, setBlankContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
 
   const endShelfDrag = useCallback(() => {
+    if (dragRafRef.current != null) {
+      cancelAnimationFrame(dragRafRef.current);
+      dragRafRef.current = null;
+    }
+    pendingDragPosRef.current = null;
+    dragGhostSizeRef.current = null;
+    prevHoverElRef.current = null;
     dragSourceRef.current = null;
     dragStartPosRef.current = null;
     dragActiveRef.current = false;
@@ -1281,6 +1300,57 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       return null;
     };
 
+    const scheduleDragFrame = () => {
+      if (dragRafRef.current != null) return;
+      dragRafRef.current = requestAnimationFrame(() => {
+        dragRafRef.current = null;
+        const pending = pendingDragPosRef.current;
+        pendingDragPosRef.current = null;
+        if (!pending) return;
+        if (!dragSourceRef.current) return;
+        if (!dragActiveRef.current) return;
+
+        // Ghost 跟随：transform 平移 + 缓存尺寸，避免逐帧 getBoundingClientRect。
+        const ghost = dragGhostRef.current;
+        if (ghost) {
+          if (!dragGhostSizeRef.current) {
+            const rect = ghost.getBoundingClientRect();
+            dragGhostSizeRef.current = {
+              width: rect.width || 140,
+              height: rect.height || 32,
+            };
+          }
+          const gw = dragGhostSizeRef.current.width;
+          const gh = dragGhostSizeRef.current.height;
+          const gap = 14;
+          let left = pending.x + gap;
+          if (left + gw > window.innerWidth - 8) left = pending.x - gw - gap;
+          let top = pending.y + gap;
+          if (top + gh > window.innerHeight - 8) top = pending.y - gh - gap;
+          ghost.style.transform = `translate3d(${Math.max(8, left)}px, ${Math.max(8, top)}px, 0)`;
+        }
+
+        // 命中测试与高亮更新：只清上帧元素，不再全文档扫描高亮类。
+        const hoverTarget = resolveHoverTarget(pending.x, pending.y);
+        const prevHover = prevHoverElRef.current;
+        if (prevHover && prevHover !== hoverTarget?.el) {
+          prevHover.classList.remove('drag-over-group', 'drag-over-merge');
+        }
+        if (hoverTarget) {
+          hoverTarget.el.classList.add(
+            hoverTarget.kind === 'merge' ? 'drag-over-merge' : 'drag-over-group',
+          );
+        }
+        prevHoverElRef.current = hoverTarget?.el ?? null;
+
+        const action = hoverTarget?.kind ?? null;
+        if (action !== dragActionRef.current) {
+          dragActionRef.current = action;
+          setDragAction(action);
+        }
+      });
+    };
+
     const onPointerMove = (e: PointerEvent) => {
       const source = dragSourceRef.current;
       if (!source) return;
@@ -1306,43 +1376,8 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       } else {
         e.preventDefault();
       }
-      const ghost = dragGhostRef.current;
-      if (ghost) {
-        // Glue the ghost to the pointer, offset to the lower-right. The moment
-        // the ghost would touch the viewport edge, flip it to the opposite side
-        // of the pointer instead of clamping (clamping makes it stall at the
-        // border and stop following the cursor). Measured per-move from the
-        // real layout rect; a hard 8px clamp remains only as a narrow-window
-        // fallback so it can never leave the screen.
-        const rect = ghost.getBoundingClientRect();
-        const gw = rect.width || 140;
-        const gh = rect.height || 32;
-        const gap = 14;
-        let left = e.clientX + gap;
-        if (left + gw > window.innerWidth - 8) left = e.clientX - gw - gap;
-        let top = e.clientY + gap;
-        if (top + gh > window.innerHeight - 8) top = e.clientY - gh - gap;
-        ghost.style.left = `${Math.max(8, left)}px`;
-        ghost.style.top = `${Math.max(8, top)}px`;
-      }
-      document
-        .querySelectorAll('.drag-over-group,.drag-over-merge')
-        .forEach((node) => node.classList.remove('drag-over-group', 'drag-over-merge'));
-      const hoverTarget = resolveHoverTarget(e.clientX, e.clientY);
-      if (hoverTarget) {
-        // Swap zone (order change) and merge zone (nest into the group) get
-        // different highlights so the user sees where each drop leads.
-        hoverTarget.el.classList.add(
-          hoverTarget.kind === 'merge' ? 'drag-over-merge' : 'drag-over-group',
-        );
-      }
-      // Track the current drop intent reactively (only when it changes), so the
-      // ghost label updates with the locale without a setState per move.
-      const action = hoverTarget?.kind ?? null;
-      if (action !== dragActionRef.current) {
-        dragActionRef.current = action;
-        setDragAction(action);
-      }
+      pendingDragPosRef.current = { x: e.clientX, y: e.clientY };
+      scheduleDragFrame();
     };
 
     const onPointerUp = async (e: PointerEvent) => {
@@ -1506,16 +1541,26 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     };
 
     const onPointerCancel = () => endShelfDrag();
+    // 拖拽中改窗口尺寸会让缓存的 ghost 尺寸失效，重读一次。
+    const onWindowResize = () => {
+      dragGhostSizeRef.current = null;
+    };
 
     window.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointercancel', onPointerCancel);
+    window.addEventListener('resize', onWindowResize);
     return () => {
       window.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);
+      window.removeEventListener('resize', onWindowResize);
+      if (dragRafRef.current != null) {
+        cancelAnimationFrame(dragRafRef.current);
+        dragRafRef.current = null;
+      }
     };
   }, [
     groupBy,

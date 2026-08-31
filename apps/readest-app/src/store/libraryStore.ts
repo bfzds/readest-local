@@ -4,6 +4,25 @@ import { EnvConfigType, isTauriAppPlatform } from '@/services/environment';
 import { BOOK_UNGROUPED_NAME } from '@/services/constants';
 import { md5Fingerprint } from '@/utils/md5';
 
+// groupName → fingerprint 缓存：refreshGroups 每次重建都对相同组名重算 MD5，
+// 大书库会放大 O(N·depth) 开销。MD5 对同输入恒等，缓存安全；LRU 上限兜底。
+// 组名是字符串值，新名走新 key，无需在改名时显式清理。
+const groupFingerprintCache = new Map<string, string>();
+const groupFingerprint = (name: string): string => {
+  const cached = groupFingerprintCache.get(name);
+  if (cached) {
+    groupFingerprintCache.delete(name);
+    groupFingerprintCache.set(name, cached);
+    return cached;
+  }
+  const fp = md5Fingerprint(name);
+  if (groupFingerprintCache.size >= 4096) {
+    groupFingerprintCache.delete(groupFingerprintCache.keys().next().value!);
+  }
+  groupFingerprintCache.set(name, fp);
+  return fp;
+};
+
 interface LibraryState {
   library: Book[]; // might contain deleted books
   libraryLoaded: boolean;
@@ -226,11 +245,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
     library.forEach((book) => {
       if (book.groupName && book.groupName !== BOOK_UNGROUPED_NAME && !book.deletedAt) {
-        groups[md5Fingerprint(book.groupName)] = book.groupName;
+        groups[groupFingerprint(book.groupName)] = book.groupName;
         let nextSlashIndex = book.groupName.indexOf('/', 0);
         while (nextSlashIndex > 0) {
           const groupName = book.groupName.substring(0, nextSlashIndex);
-          groups[md5Fingerprint(groupName)] = groupName;
+          groups[groupFingerprint(groupName)] = groupName;
           nextSlashIndex = book.groupName.indexOf('/', nextSlashIndex + 1);
         }
       }
@@ -242,7 +261,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       let prefix = '';
       for (const segment of name.split('/')) {
         prefix = prefix ? `${prefix}/${segment}` : segment;
-        groups[md5Fingerprint(prefix)] = prefix;
+        groups[groupFingerprint(prefix)] = prefix;
       }
     }
 
