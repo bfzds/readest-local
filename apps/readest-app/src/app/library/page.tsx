@@ -670,7 +670,14 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         if (library !== libraryBooks) {
           setLibrary(library);
         }
-        appService.saveLibraryBooks(library);
+        // C-4：先落盘再导航。保存失败时停在书库页并提示，避免"已打开阅读页
+        // 但导入记录未持久化"的半状态与未处理 rejection。
+        try {
+          await appService.saveLibraryBooks(library);
+        } catch (error) {
+          console.error('Failed to persist Open With books; staying on library:', error);
+          return false;
+        }
         setPendingNavigationBookIds(bookIds);
         return true;
       }
@@ -742,10 +749,11 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           }
           setLoading(true);
         }, 500);
-    // stale 提前退出时的统一收尾：清掉本轮的加载定时器并关回遮罩。
+    // stale 提前退出时的统一收尾：清掉本轮的加载定时器。只有当前 generation
+    // （active 轮）允许把 loading 关回 false——旧轮 bail 不得关闭新轮次的遮罩。
     const bail = () => {
       if (loadingTimeout) clearTimeout(loadingTimeout);
-      setLoading(false);
+      if (!stale()) setLoading(false);
     };
     const initLibrary = async () => {
       const appService = await envConfig.getAppService();
