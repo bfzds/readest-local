@@ -345,6 +345,19 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     // selectionchange 处理器。
     if (!doc || attachedSectionDocsRef.current.has(doc)) return;
     attachedSectionDocsRef.current.add(doc);
+    // C-6 复核：具名 handler + 幂等 cleanup。每个监听器保存一次引用，卸载
+    // 时成对 remove，反复预加载/替换章节不累积旧回调。
+    const disposers: Array<() => void> = [];
+    const mount = (
+      target: Document | null,
+      type: string,
+      fn: EventListenerOrEventListenerObject,
+      opts?: boolean | AddEventListenerOptions,
+    ) => {
+      if (!target) return;
+      target.addEventListener(type, fn, opts);
+      disposers.push(() => target.removeEventListener(type, fn, opts));
+    };
 
     const handleTouchmove = (ev: TouchEvent) => {
       // Available on iOS, on Android not fired
@@ -356,75 +369,70 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
       handleTouchMove(ev);
     };
 
-    // Attach generic selection listeners for all formats, including PDF.
-    // For PDF we only guarantee Copy & Translate; highlight/annotate may be limited by CFI support.
-    //
-    // The renderer `scroll` listener and the Android `native-touch` bridge are
-    // NOT attached here: onLoad fires for every (pre)loaded section, but those
-    // listeners live on the renderer / global dispatcher, which outlive sections.
-    // Attaching them per load leaked one set per chapter and degraded paragraph
-    // mode over a long session. They are registered once per view via
-    // useRendererInputListeners below. Popup repositioning on scroll is already
-    // handled by the dedicated effect further down.
     const opts = { passive: false };
-    detail.doc?.addEventListener('touchstart', handleTouchStart, opts);
-    detail.doc?.addEventListener('touchmove', handleTouchmove, opts);
-    // Bound to the section so a selectionchange deferred during the drag can
-    // be processed (and the popup shown once) when the gesture ends.
-    detail.doc?.addEventListener('touchend', handleTouchEnd.bind(null, doc, index));
-    // Re-arm the instant quick action at the start of each gesture.
-    detail.doc?.addEventListener(
-      'pointerdown',
-      (ev: Event) => {
-        beginGesture(deferredQuickActionRef.current);
-        // Remember when the gesture started so the instant quick action can
-        // require a long-press hold (touch only — mouse selections fire on
-        // pointerup and shouldn't be time-gated).
-        pointerDownTimeRef.current = (ev as PointerEvent).pointerType === 'mouse' ? 0 : Date.now();
-      },
-      opts,
-    );
-    detail.doc?.addEventListener('mousedown', handleMouseDown);
-    detail.doc?.addEventListener('pointerdown', handlePointerDown.bind(null, doc, index), opts);
-    detail.doc?.addEventListener('pointermove', handlePointerMove.bind(null, doc, index), opts);
-    detail.doc?.addEventListener('pointercancel', handlePointerCancel.bind(null, doc, index));
-    detail.doc?.addEventListener('pointerup', handlePointerUp.bind(null, doc, index));
-    detail.doc?.addEventListener('selectionchange', handleSelectionchange.bind(null, doc, index));
-
-    // For PDF selections, enable right-click context menu to directly open translator popup.
-    if (bookData.isFixedLayout) {
-      detail.doc?.addEventListener('contextmenu', (e: Event) => {
-        try {
-          const sel = doc.getSelection?.();
-          if (sel && !sel.isCollapsed) {
-            const range = sel.getRangeAt(0);
-            const text = sel.toString();
-            if (text.trim()) {
-              setSelection({
-                key: bookKey,
-                text,
-                range,
-                index,
-                cfi: view?.getCFI(index, range),
-                page: index + 1,
-              });
-              // Show translation popup preferentially for PDF right-click
-              setShowAnnotPopup(true);
-              setShowDictionaryPopup(false);
-            }
+    const touchStartFn = handleTouchStart as EventListener;
+    const touchMoveFn = handleTouchmove as EventListener;
+    const mouseDownFn = handleMouseDown as EventListener;
+    const touchEndFn = handleTouchEnd.bind(null, doc, index) as unknown as EventListener;
+    const pointerStartFn = (ev: Event) => {
+      beginGesture(deferredQuickActionRef.current);
+      // Remember when the gesture started so the instant quick action can
+      // require a long-press hold (touch only — mouse selections fire on
+      // pointerup and shouldn't be time-gated).
+      pointerDownTimeRef.current = (ev as PointerEvent).pointerType === 'mouse' ? 0 : Date.now();
+    };
+    const pointerDownFn = handlePointerDown.bind(null, doc, index) as unknown as EventListener;
+    const pointerMoveFn = handlePointerMove.bind(null, doc, index) as unknown as EventListener;
+    const pointerCancelFn = handlePointerCancel.bind(null, doc, index) as unknown as EventListener;
+    const pointerUpFn = handlePointerUp.bind(null, doc, index) as unknown as EventListener;
+    const selectionFn = handleSelectionchange.bind(null, doc, index) as unknown as EventListener;
+    const pdfContextFn = (e: Event) => {
+      try {
+        const sel = doc.getSelection?.();
+        if (sel && !sel.isCollapsed) {
+          const range = sel.getRangeAt(0);
+          const text = sel.toString();
+          if (text.trim()) {
+            setSelection({
+              key: bookKey,
+              text,
+              range,
+              index,
+              cfi: view?.getCFI(index, range),
+              page: index + 1,
+            });
+            // Show translation popup preferentially for PDF right-click
+            setShowAnnotPopup(true);
+            setShowDictionaryPopup(false);
           }
-        } catch (err) {
-          console.warn('PDF context menu translation failed:', err);
         }
-        // Prevent native menu to keep experience consistent
-        e.preventDefault();
-        e.stopPropagation();
-        return false;
-      });
-    }
+      } catch (err) {
+        console.warn('PDF context menu translation failed:', err);
+      }
+      // Prevent native menu to keep experience consistent
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    };
 
-    // Disable the default context menu on mobile devices (selection handles suffice)
-    detail.doc?.addEventListener('contextmenu', handleContextmenu);
+    mount(doc, 'touchstart', touchStartFn, opts);
+    mount(doc, 'touchmove', touchMoveFn, opts);
+    mount(doc, 'touchend', touchEndFn);
+    mount(doc, 'pointerdown', pointerStartFn, opts);
+    mount(doc, 'mousedown', mouseDownFn);
+    mount(doc, 'pointerdown', pointerDownFn, opts);
+    mount(doc, 'pointermove', pointerMoveFn, opts);
+    mount(doc, 'pointercancel', pointerCancelFn);
+    mount(doc, 'pointerup', pointerUpFn);
+    mount(doc, 'selectionchange', selectionFn);
+    if (bookData.isFixedLayout) mount(doc, 'contextmenu', pdfContextFn);
+    mount(doc, 'contextmenu', handleContextmenu);
+
+    const cleanup = () => {
+      for (const dispose of disposers) dispose();
+      disposers.length = 0;
+    };
+    sectionListenerCleanupsRef.current.push(cleanup);
   };
 
   const onCreateOverlay = (event: Event) => {
@@ -579,6 +587,15 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
   const lastRelocateCfiRef = useRef<string | null>(null);
   // C-6：记录已挂过监听器的 section 文档，防重复 load 累积监听。
   const attachedSectionDocsRef = useRef(new WeakSet<Document>());
+  // C-6 复核：每个已挂载 doc 对应一个幂等 cleanup；组件卸载时统一执行，
+  // 卸载/销毁阅读器不留下旧的 section 监听器。
+  const sectionListenerCleanupsRef = useRef<Array<() => void>>([]);
+  useEffect(() => {
+    return () => {
+      for (const cleanup of sectionListenerCleanupsRef.current) cleanup();
+      sectionListenerCleanupsRef.current = [];
+    };
+  }, []);
   const onRelocate = (event: Event) => {
     // A page turn or scroll moves the anchor out from under any open popup
     // (including the note popup), so dismiss instead of leaving it floating
