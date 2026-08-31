@@ -313,6 +313,36 @@ describe('prune retained pages (B-9)', () => {
     expect(totals[0]!.total_read_pages).toBe(101);
   });
 
+  it('已归档页（seen）被 recompute 排除，重复归档被唯一约束阻止（B-9 复核）', async () => {
+    const stats = StatisticsDb.from(db);
+    const idBook = await stats.upsertBook({ bookMd5: 'm-seen', title: 'T', authors: 'A' });
+    // 现存 page=1，同时它已被历史归档（page_stat_seen）—— 模拟"重读后又可能再裁"。
+    await stats.insertPageEvent(idBook, {
+      page: 1,
+      startTime: 100,
+      duration: 1000,
+      totalPages: 10,
+    });
+    await db.execute(`INSERT INTO page_stat_seen (id_book, page) VALUES (?, 1)`, [idBook]);
+    await stats.recomputeBookTotals(idBook);
+    const total = await db.select<{ v: number }>(
+      `SELECT total_read_pages v FROM book WHERE id = ?`,
+      [idBook],
+    );
+    // retained_pages=0、现存页已在 seen → 不再重复计，total=0（页只算一次）。
+    expect(total[0]!.v).toBe(0);
+    // 唯一约束：同页再归档被忽略。
+    await db.execute(
+      `INSERT INTO page_stat_seen (id_book, page) VALUES (?, 1) ON CONFLICT DO NOTHING`,
+      [idBook],
+    );
+    const seenCount = await db.select<{ c: number }>(
+      `SELECT COUNT(*) c FROM page_stat_seen WHERE id_book = ?`,
+      [idBook],
+    );
+    expect(seenCount[0]!.c).toBe(1);
+  });
+
   it('retained_pages 默认 0，未超限的库不累积', async () => {
     const stats = StatisticsDb.from(db);
     await db.execute(

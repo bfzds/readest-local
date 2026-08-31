@@ -161,6 +161,20 @@ const migrations: Record<SchemaType, MigrationEntry[]> = {
         ALTER TABLE book ADD COLUMN retained_pages integer NOT NULL DEFAULT 0;
       `,
     },
+    {
+      // B-9（复核后）：retained_pages 仅按"本次删页 − 保留区页"累计，同一页
+      // 重读再裁会重复计入。新增历史页集合表，记录"已通过 prune 归档计入的
+      // 页"；prune 只对"被删 − 保留 − 已见"的净新增页计数并入表，recompute
+      // 从现存 DISTINCT 中排除已见页，保证每页只累计一次。
+      name: '2026083101_statistics_seen_pages',
+      sql: `
+        CREATE TABLE IF NOT EXISTS page_stat_seen (
+          id_book integer NOT NULL,
+          page integer NOT NULL,
+          PRIMARY KEY (id_book, page)
+        );
+      `,
+    },
   ],
   // Per-book search index/cache: one search.db in each book's directory
   // (beside cover.png), holding extracted section text so library full-text
