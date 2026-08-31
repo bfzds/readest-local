@@ -120,6 +120,23 @@ describe('StatisticsDb', () => {
     expect(book!.total_read_time).toBe(8);
   });
 
+  it('applies a large batch across chunked inserts with correct totals', async () => {
+    // 150 事件要跨 2 个批量插入（每批 100 行），总数与聚合必须与逐条一致。
+    const remoteBooks = [{ bookMd5: 'm-big', title: 'Big', authors: 'A' }];
+    const remoteEvents = Array.from({ length: 150 }, (_, i) => ({
+      bookMd5: 'm-big',
+      page: (i % 50) + 1,
+      startTime: 1000 + i,
+      duration: 10,
+      totalPages: 50,
+    }));
+    await stats.applyRemoteEvents(remoteBooks, remoteEvents);
+    const book = await stats.getBookByMd5('m-big');
+    // 150 条 × 10s = 1500 秒；若任一批次漏插则总和会变小。
+    expect(book!.total_read_time).toBe(150 * 10);
+    expect(book!.total_read_pages).toBe(50); // DISTINCT(page) over 1..50
+  });
+
   it('serializes concurrent applyRemoteEvents without nesting transactions (READEST-N)', async () => {
     // Two pulls racing on the shared connection (split-view trackers) must not
     // open a BEGIN inside a BEGIN ("cannot start a transaction within a transaction").

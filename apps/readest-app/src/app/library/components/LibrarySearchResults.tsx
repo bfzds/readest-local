@@ -135,7 +135,13 @@ const ResultGroupMatches = memo(
     sections: LibrarySearchSectionResult[];
     onSelectResult: (book: Book, match: LibrarySearchMatch) => void;
   }) => (
-    <div className='pb-1.5'>
+    <div
+      className='pb-1.5'
+      // P-8：屏外子项让浏览器跳过渲染/布局（content-visibility），展开几百条
+      // 匹配时首屏与滚动更顺；keep keyboard focus / ARIA 行为原样，滚动到
+      // 目标项才真正渲染。contain-intrinsic-size 稳定屏外占位高度。
+      style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 48px' }}
+    >
       {sections.map((section, sectionIndex) => (
         <div key={`${section.index}-${sectionIndex}`}>
           {section.label && (

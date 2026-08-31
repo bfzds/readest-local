@@ -293,17 +293,50 @@ export class StatisticsDb {
         const idByMd5 = new Map<string, number>();
         for (const b of books) idByMd5.set(b.bookMd5, await this.upsertBook(b));
         // Books referenced only by events (no metadata record) get a placeholder row.
-        const touched = new Set<number>();
+        // 先对缺失的 bookMd5 去重后一次性补齐 id，避免逐事件往返。
+        const missing = new Set<string>();
         for (const e of events) {
-          let id = idByMd5.get(e.bookMd5);
-          if (id === undefined) {
-            id = await this.ensureBookId(e.bookMd5);
-            idByMd5.set(e.bookMd5, id);
-          }
-          await this.insertPageEvent(id, e);
+          if (!idByMd5.has(e.bookMd5)) missing.add(e.bookMd5);
+        }
+        for (const md5 of missing) {
+          idByMd5.set(md5, await this.ensureBookId(md5));
+        }
+        const touched = new Set<number>();
+        const eventRows: Array<[number, number, number, number, number]> = [];
+        for (const e of events) {
+          const id = idByMd5.get(e.bookMd5)!;
+          eventRows.push([id, e.page, e.startTime, e.duration, e.totalPages]);
           touched.add(id);
         }
-        for (const id of touched) await this.recomputeBookTotals(id);
+        // P-10：逐事件 INSERT 攒成 VALUES 多行分块插入（SQLite 参数上限内），
+        // 大 pull 从 O(events) 次 IPC 收敛到 O(events/100)。
+        const ROWS_PER_BATCH = 100;
+        for (let i = 0; i < eventRows.length; i += ROWS_PER_BATCH) {
+          const chunk = eventRows.slice(i, i + ROWS_PER_BATCH);
+          const rowsPlaceholder = chunk.map(() => '(?, ?, ?, ?, ?)').join(', ');
+          await this.db.execute(
+            `INSERT INTO page_stat_data (id_book, page, start_time, duration, total_pages)
+             VALUES ${rowsPlaceholder}
+             ON CONFLICT(id_book, page, start_time)
+             DO UPDATE SET duration = max(duration, excluded.duration),
+                           total_pages = excluded.total_pages`,
+            chunk.flat(),
+          );
+        }
+        // recompute 聚合为一条 correlated UPDATE，替代逐 id 多次往返。
+        if (touched.size > 0) {
+          const ids = [...touched];
+          const idsPlaceholder = ids.map(() => '?').join(', ');
+          await this.db.execute(
+            `UPDATE book SET
+               total_read_time  = COALESCE(retained_read_time, 0) + COALESCE((SELECT SUM(duration) FROM page_stat_data WHERE id_book = book.id), 0),
+               total_read_pages = COALESCE(retained_pages, 0) + COALESCE((SELECT COUNT(DISTINCT page) FROM page_stat_data WHERE id_book = book.id), 0),
+               last_open        = COALESCE((SELECT MAX(start_time + duration) FROM page_stat_data WHERE id_book = book.id), last_open),
+               pages            = COALESCE((SELECT total_pages FROM page_stat_data WHERE id_book = book.id ORDER BY start_time DESC LIMIT 1), pages)
+             WHERE id IN (${idsPlaceholder})`,
+            ids,
+          );
+        }
         await this.db.execute('COMMIT');
       } catch (err) {
         await this.db.execute('ROLLBACK');
