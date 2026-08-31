@@ -1,13 +1,17 @@
 import init, { simplecc } from '@simplecc/simplecc_wasm';
 import { ConvertChineseVariant } from '@/types/book';
 
-let initialized = false;
+// C-10：共享初始化 Promise——并发首次划词只触发一次 WASM 加载；
+// 失败时清空以便下次调用重试（成功则永久缓存）。
+let initPromise: Promise<unknown> | null = null;
 
 const initSimpleCC = async () => {
-  if (initialized) return;
-
-  await init('/vendor/simplecc/simplecc_wasm_bg.wasm');
-  initialized = true;
+  if (initPromise) return initPromise;
+  initPromise = init('/vendor/simplecc/simplecc_wasm_bg.wasm').catch((error) => {
+    initPromise = null;
+    throw error;
+  });
+  return initPromise;
 };
 
 const convertReverseMap: Record<ConvertChineseVariant, ConvertChineseVariant> = {

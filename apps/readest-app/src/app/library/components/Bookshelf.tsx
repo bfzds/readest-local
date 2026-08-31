@@ -1555,12 +1555,13 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);
       window.removeEventListener('resize', onWindowResize);
-      if (dragRafRef.current != null) {
-        cancelAnimationFrame(dragRafRef.current);
-        dragRafRef.current = null;
-      }
+      // P-3 复核：统一走幂等 endShelfDrag —— 清 rAF/ghost/高亮/引用，
+      // 拖拽中途 effect 重跑或组件卸载不残留状态。endShelfDrag(useCallback
+      // 空依赖) 身份稳定，不引起重挂。
+      endShelfDrag();
     };
   }, [
+    endShelfDrag,
     groupBy,
     libraryBooks,
     envConfig,

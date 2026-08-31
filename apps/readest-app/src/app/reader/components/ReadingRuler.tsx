@@ -297,13 +297,12 @@ const ReadingRuler: React.FC<ReadingRulerProps> = ({
     [envConfig, bookKey],
   );
 
-  // C-12：卸载即 flush 最后位置，避免 10s 节流内拖动后卸载丢位置。
+  // C-12：卸载即 flush 最后位置（绕过 10s 节流窗口），并 cancel 残留 timer，
+  // 避免旧定时器晚到把已过期的位置再写回 store。
   useEffect(() => {
     return () => {
-      const pos = currentPositionRef.current;
-      if (pos != null) {
-        saveViewSettings(envConfig, bookKey, 'readingRulerPosition', pos, false, false);
-      }
+      throttledSave.flush?.();
+      throttledSave.cancel?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [envConfig, bookKey]);
