@@ -1134,61 +1134,10 @@ export const relabelPersistentGroups = (
 };
 
 /**
- * Reorder the items of one bookshelf layer for manual sorting. `items` is the
- * layer's rendered shelf (books and/or groups). `sourceId` is either a book
- * hash or a group's full name; the whole source unit — for a group, every one
- * of its books as one contiguous block, inner order preserved — moves to sit
- * just before (`before: true`) or just after (`before: false`) the target
- * unit. Reassigns the whole layer's `shelfIndex` 0..n-1 in the new order.
- * Returns `changed: false` with an empty list when the move leaves the order
- * unchanged (already sitting right next to the target).
- */
-export const reorderShelfLayer = (
-  items: readonly (Book | BooksGroup)[],
-  sourceId: string,
-  targetId: string,
-  before: boolean,
-): { updated: Book[]; changed: boolean; ordered: (Book | BooksGroup)[] } => {
-  const idOf = (item: Book | BooksGroup): string =>
-    'format' in item ? (item as Book).hash : (item as BooksGroup).name;
-  const srcIdx = items.findIndex((i) => idOf(i) === sourceId);
-  const tgtIdx = items.findIndex((i) => idOf(i) === targetId);
-  if (srcIdx === -1 || tgtIdx === -1 || srcIdx === tgtIdx) {
-    return { updated: [], changed: false, ordered: [] };
-  }
-  const original = items.map(idOf);
-  const moving = items[srcIdx]!;
-  const rest = items.filter((_, i) => i !== srcIdx);
-  // Target index after the source unit is removed.
-  const t = srcIdx < tgtIdx ? tgtIdx - 1 : tgtIdx;
-  const insertAt = before ? t : t + 1;
-  const next = [...rest.slice(0, insertAt), moving, ...rest.slice(insertAt)];
-  const toUpdated = (units: readonly (Book | BooksGroup)[]): Book[] =>
-    units
-      .flatMap((it) => ('format' in it ? [it as Book] : (it as BooksGroup).books))
-      .map((b, i) => (b.shelfIndex === i ? b : { ...b, shelfIndex: i }));
-
-  if (next.length === original.length && next.every((it, i) => idOf(it) === original[i])) {
-    // The move left the order unchanged. For adjacent units the drop almost
-    // always means "swap these two" (e.g. dragging 1 onto the top of 2 to get
-    // 2,1,3,…), so swap instead of silently doing nothing.
-    if (Math.abs(srcIdx - tgtIdx) === 1) {
-      const swapped = items.slice();
-      const lo = Math.min(srcIdx, tgtIdx);
-      const hi = Math.max(srcIdx, tgtIdx);
-      [swapped[lo]!, swapped[hi]!] = [swapped[hi]!, swapped[lo]!];
-      return { updated: toUpdated(swapped), changed: true, ordered: swapped };
-    }
-    return { updated: [], changed: false, ordered: [] };
-  }
-  return { updated: toUpdated(next), changed: true, ordered: next };
-};
-
-/**
  * Swap two units of a shelf layer in place — the drag model the user expects
  * ("drag 1 onto 4 to get 4,2,3,1"), where the units trade positions regardless
- * of whether the pointer landed on the top or bottom half. Same rebasing of the
- * whole layer's shelfIndex and `ordered` output as {@link reorderShelfLayer}.
+ * of whether the pointer landed on the top or bottom half. Reassigns the
+ * whole layer's `shelfIndex` 0..n-1 in the new order.
  */
 export type GroupDropKind = 'swap' | 'merge';
 

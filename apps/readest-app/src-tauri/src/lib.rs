@@ -152,10 +152,11 @@ fn set_window_open_with_files(app: &AppHandle, files: Vec<PathBuf>) {
         })
         .collect::<Vec<_>>()
         .join(",");
-    let window = app.get_webview_window("main").unwrap();
-    let script = format!("window.OPEN_WITH_FILES = [{files}];");
-    if let Err(e) = window.eval(&script) {
-        eprintln!("Failed to set open files variable: {e}");
+    if let Some(window) = app.get_webview_window("main") {
+        let script = format!("window.OPEN_WITH_FILES = [{files}];");
+        if let Err(e) = window.eval(&script) {
+            eprintln!("Failed to set open files variable: {e}");
+        }
     }
 }
 
