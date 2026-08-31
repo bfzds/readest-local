@@ -1094,6 +1094,10 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   const pendingDragPosRef = useRef<{ x: number; y: number } | null>(null);
   const dragGhostSizeRef = useRef<{ width: number; height: number } | null>(null);
   const prevHoverElRef = useRef<HTMLElement | null>(null);
+  // D-13：拖拽 effect 经 ref 读当前翻译函数，避免把 `_` 放进 deps 后随其
+  // 身份变化重绑全局监听。
+  const dragLangRef = useRef(_);
+  dragLangRef.current = _;
   // Right-click on empty shelf space → "Create New Group".
   const [blankContextMenu, setBlankContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
@@ -1211,19 +1215,13 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     if (alreadyExists) {
       eventDispatcher.dispatch('toast', {
         type: 'warning',
-        message: _('A group with this name already exists'),
+        message: dragLangRef.current('A group with this name already exists'),
       });
       return;
     }
     // Note: no refreshGroups() here — it rebuilds the group map from books and
     // would drop the still-empty group we just added.
     addPersistentGroup(fullName);
-    console.log(
-      '[create] fullName=',
-      fullName,
-      'groupKeys=',
-      Object.keys(useLibraryStore.getState().groups),
-    );
     // Persist the (possibly still-empty) group so it survives restarts; the
     // group map itself is otherwise rebuilt from books on init.
     const currentSettings = useSettingsStore.getState().settings;
@@ -1237,7 +1235,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     }
     eventDispatcher.dispatch('toast', {
       type: 'success',
-      message: _('Group created: {{name}}', { name: fullName }),
+      message: dragLangRef.current('Group created: {{name}}', { name: fullName }),
     });
     setNewGroupName('');
     setCreateGroupOpen(false);
@@ -1464,7 +1462,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
         if (!syncPersistentGroupMove(source.groupName, targetGroupName)) {
           eventDispatcher.dispatch('toast', {
             type: 'warning',
-            message: _('Cannot move here: same or nested group'),
+            message: dragLangRef.current('Cannot move here: same or nested group'),
           });
           return;
         }
@@ -1490,7 +1488,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       if (!changed) {
         eventDispatcher.dispatch('toast', {
           type: 'warning',
-          message: _('Cannot move here: same or nested group'),
+          message: dragLangRef.current('Cannot move here: same or nested group'),
         });
         return;
       }
@@ -1567,7 +1565,6 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     libraryBooks,
     envConfig,
     updateBooks,
-    _,
     settings,
     sortedBookshelfItems,
     syncPersistentGroupMove,

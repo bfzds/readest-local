@@ -6,7 +6,9 @@ import type { BaseDir, FileInfo } from '@/types/system';
 // createDir 是原子的（已存在抛错），拿锁 = 独占重建权；崩溃残留的锁目录用
 // mtime 判定陈旧后接管，避免永久卡死。
 
-export const SEARCH_BUILD_LOCK_STALE_MS = 30_000;
+// D-11：陈旧阈值从 30s 放宽到 120s——大书索引重建（提取+写入）完全可能
+// 超过 30s，30s 阈值会让并发窗口把"活锁"误判为陈旧而接管、触发双重建。
+export const SEARCH_BUILD_LOCK_STALE_MS = 120_000;
 const LOCK_DIR_SUFFIX = '.search-index.lock';
 export const searchBuildLockPath = (bookHash: string) => `${bookHash}/${LOCK_DIR_SUFFIX}`;
 

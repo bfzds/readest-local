@@ -43,6 +43,8 @@ export class ChapterTextCache {
   }
 
   private evict(): void {
+    // 至少保留最新一条：翻回当前章时避免因超预算被逐出再重 inflate。
+    // 其余按最旧优先逐出直至预算内。
     while (this.bytes > this.maxBytes && this.map.size > 1) {
       const oldestName = this.map.keys().next().value;
       if (oldestName === undefined) break;

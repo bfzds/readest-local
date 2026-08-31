@@ -19,7 +19,6 @@ import { debounce } from '@/utils/debounce';
 import { DEFAULT_NEARBY_WORDS } from '@/utils/searchConfig';
 import { clearLibrarySearchHistory, loadLibrarySearchHistory } from './utils/searchHistory';
 import type { LibrarySearchTarget } from '@/types/book';
-import { md5Fingerprint } from '@/utils/md5';
 import { navigateToLibrary, navigateToReader } from '@/utils/nav';
 import { getBookWithUpdatedMetadata, listFormater } from '@/utils/book';
 import { startReaderWindowWatchdog } from '@/utils/readerWindowWatchdog';
@@ -662,7 +661,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
             bookIds.push(book.hash);
           }
         } catch (error) {
-          console.log('Failed to import book:', file, error);
+          console.error('Failed to import book:', file, error);
         }
       }
       if (gen !== libraryInitGeneration.current) return false;
@@ -694,7 +693,6 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         bookIds.push(book.hash);
       }
     }
-    console.log('Opening last books:', bookIds);
     if (bookIds.length > 0) {
       setPendingNavigationBookIds(bookIds);
       return true;
@@ -854,18 +852,8 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   }, [libraryInitKey]);
 
   useEffect(() => {
-    const group = searchParams?.get('group') || '';
-    const groupName = getGroupName(group);
-    if (groupName) {
-      console.log('[nav] group=', group, '->', groupName);
-    } else {
-      const match = useLibraryStore
-        .getState()
-        .library.filter((b) => !b.deletedAt && b.groupName && md5Fingerprint(b.groupName) === group)
-        .map((b) => b.groupName);
-      console.log('[nav] group=', group, 'MISS name=undefined; bookMatches=', match);
-    }
-    setCurrentGroupPath(groupName);
+    setCurrentGroupPath(getGroupName(searchParams?.get('group') || ''));
+    // 依赖 libraryBooks：组名映射随书库数据就绪后再解析。
   }, [libraryBooks, searchParams, getGroupName]);
 
   useEffect(() => {
@@ -1202,7 +1190,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   });
 
   const handleBookDelete = (deleteAction: DeleteAction) => {
-    return async (book: Book, _syncBooks = true) => {
+    return async (book: Book) => {
       const deletionMessages: Partial<Record<DeleteAction, string>> = {
         both: _('Book deleted: {{title}}', { title: book.title }),
         local: _('Deleted local copy of the book: {{title}}', { title: book.title }),
@@ -1297,7 +1285,6 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
 
   const handleImportBooksFromFiles = async () => {
     setIsSelectMode(false);
-    console.log('Importing books from files...');
     selectFiles({ type: 'books', multiple: true }).then((result) => {
       if (result.files.length === 0 || result.error) return;
       importBooks(result.files, getImportTargetGroupId());

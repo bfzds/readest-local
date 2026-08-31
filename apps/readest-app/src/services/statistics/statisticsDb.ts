@@ -146,41 +146,50 @@ export class StatisticsDb {
       [idBook],
     );
     if ((countRows[0]?.c ?? 0) <= keep) return;
-    // 删行前先把将被删除的（最老）事件 duration 并入 retained_read_time。
-    // 否则下次 recompute 会把 total_read_time 重投影成"现存行之和"，历史累计
-    // 随裁剪回缩（SF12 后续修复）。
-    const archived = await this.db.select<{ sumDuration: number | null }>(
-      `SELECT SUM(duration) AS sumDuration
-         FROM (
-           SELECT duration FROM page_stat_data
-           WHERE id_book = ? ORDER BY start_time DESC LIMIT -1 OFFSET ?
-         )`,
-      [idBook, keep],
-    );
-    await this.db.execute(
-      `UPDATE book SET retained_read_time = retained_read_time + COALESCE(?, 0) WHERE id = ?`,
-      [archived[0]?.sumDuration ?? 0, idBook],
-    );
-    // B-9：被裁剪事件里的页面（去重后）也可能在保留区仍出现 —— 只累计
-    // "被删页集合 − 保留区还在的页" 的净新增页数，避免重复累计与回缩。
-    await this.db.execute(
-      `UPDATE book SET retained_pages = retained_pages + (
-         SELECT COUNT(DISTINCT deleted.page) FROM (
-           SELECT page FROM page_stat_data
-           WHERE id_book = ? ORDER BY start_time DESC LIMIT -1 OFFSET ?
-         ) deleted
-         WHERE deleted.page NOT IN (
-           SELECT page FROM page_stat_data
-           WHERE id_book = ? ORDER BY start_time DESC LIMIT ?
+    // D-10：裁剪的"累计 retained + DELETE"做成单事务，中途失败整体回滚，
+    // 避免 retained 已累计而 DELETE 未执行（或反之）的计数不一致。
+    await this.db.execute('BEGIN');
+    try {
+      // 删行前先把将被删除的（最老）事件 duration 并入 retained_read_time。
+      // 否则下次 recompute 会把 total_read_time 重投影成"现存行之和"，历史累计
+      // 随裁剪回缩（SF12 后续修复）。
+      const archived = await this.db.select<{ sumDuration: number | null }>(
+        `SELECT SUM(duration) AS sumDuration
+           FROM (
+             SELECT duration FROM page_stat_data
+             WHERE id_book = ? ORDER BY start_time DESC LIMIT -1 OFFSET ?
+           )`,
+        [idBook, keep],
+      );
+      await this.db.execute(
+        `UPDATE book SET retained_read_time = retained_read_time + COALESCE(?, 0) WHERE id = ?`,
+        [archived[0]?.sumDuration ?? 0, idBook],
+      );
+      // B-9：被裁剪事件里的页面（去重后）也可能在保留区仍出现 —— 只累计
+      // "被删页集合 − 保留区还在的页" 的净新增页数，避免重复累计与回缩。
+      await this.db.execute(
+        `UPDATE book SET retained_pages = retained_pages + (
+           SELECT COUNT(DISTINCT deleted.page) FROM (
+             SELECT page FROM page_stat_data
+             WHERE id_book = ? ORDER BY start_time DESC LIMIT -1 OFFSET ?
+           ) deleted
+           WHERE deleted.page NOT IN (
+             SELECT page FROM page_stat_data
+             WHERE id_book = ? ORDER BY start_time DESC LIMIT ?
+           )
          )
-       )
-       WHERE id = ?`,
-      [idBook, keep, idBook, keep, idBook],
-    );
-    await this.db.execute(
-      'DELETE FROM page_stat_data WHERE id_book = ? AND rowid NOT IN (SELECT rowid FROM page_stat_data WHERE id_book = ? ORDER BY start_time DESC LIMIT ?)',
-      [idBook, idBook, keep],
-    );
+         WHERE id = ?`,
+        [idBook, keep, idBook, keep, idBook],
+      );
+      await this.db.execute(
+        'DELETE FROM page_stat_data WHERE id_book = ? AND rowid NOT IN (SELECT rowid FROM page_stat_data WHERE id_book = ? ORDER BY start_time DESC LIMIT ?)',
+        [idBook, idBook, keep],
+      );
+      await this.db.execute('COMMIT');
+    } catch (err) {
+      await this.db.execute('ROLLBACK');
+      throw err;
+    }
   }
 
   async recomputeBookTotals(idBook: number): Promise<void> {

@@ -17,6 +17,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { CustomTheme, Palette, ThemeMode } from '@/styles/themes';
 import { EnvConfigType } from '@/services/environment';
 import { SystemSettings } from '@/types/settings';
+import { useSettingsStore } from '@/store/settingsStore';
 import { Insets } from '@/types/misc';
 
 declare global {
@@ -204,21 +205,23 @@ export const useThemeStore = create<ThemeState>((set, get) => {
     saveCustomTheme: async (envConfig, settings, theme, isDelete) => {
       const customThemes = settings.globalReadSettings.customThemes || [];
       const index = customThemes.findIndex((t) => t.name === theme.name);
+      // D-7：不可变更新——不动入参数组/对象，构造新引用以便 store 订阅者感知变化。
+      let nextThemes: CustomTheme[];
       if (isDelete) {
-        if (index > -1) {
-          customThemes.splice(index, 1);
-        }
+        nextThemes = index > -1 ? customThemes.filter((_, i) => i !== index) : customThemes;
+      } else if (index > -1) {
+        nextThemes = customThemes.map((t, i) => (i === index ? theme : t));
       } else {
-        if (index > -1) {
-          customThemes[index] = theme;
-        } else {
-          customThemes.push(theme);
-        }
+        nextThemes = [...customThemes, theme];
       }
-      settings.globalReadSettings.customThemes = customThemes;
-      localStorage.setItem('customThemes', JSON.stringify(customThemes));
+      const nextSettings: SystemSettings = {
+        ...settings,
+        globalReadSettings: { ...settings.globalReadSettings, customThemes: nextThemes },
+      };
+      localStorage.setItem('customThemes', JSON.stringify(nextThemes));
+      useSettingsStore.getState().setSettings(nextSettings);
       const appService = await envConfig.getAppService();
-      await appService.saveSettings(settings);
+      await appService.saveSettings(nextSettings);
     },
     handleSystemThemeChange: (systemIsDarkMode) => {
       const mode = get().themeMode;
