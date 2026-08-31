@@ -731,13 +731,35 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     // store non-empty before any disk load, so this skipped loadLibraryBooks and
     // a later save persisted the partial library (wiping library.json).
     const hasCachedLibrary = libraryLoadedFromDisk;
-    const loadingTimeout = hasCachedLibrary ? null : setTimeout(() => setLoading(true), 500);
     const stale = () => generation !== libraryInitGeneration.current;
+    // 过期轮（URL 规范化触发的并发 initLibrary）不得把全屏"加载中"置位：
+    // stale 提前退出的轮次没有后续 setLoading(false)，定时器若照常触发就把
+    // 遮罩遗留常驻、盖住已渲染完成的书库。回调里先守卫 stale。
+    const loadingTimeout = hasCachedLibrary
+      ? null
+      : setTimeout(() => {
+          if (stale()) {
+            bail();
+            return;
+          }
+          setLoading(true);
+        }, 500);
+    // stale 提前退出时的统一收尾：清掉本轮的加载定时器并关回遮罩。
+    const bail = () => {
+      if (loadingTimeout) clearTimeout(loadingTimeout);
+      setLoading(false);
+    };
     const initLibrary = async () => {
       const appService = await envConfig.getAppService();
-      if (stale()) return;
+      if (stale()) {
+        bail();
+        return;
+      }
       const settings = await appService.loadSettings();
-      if (stale()) return;
+      if (stale()) {
+        bail();
+        return;
+      }
       setSettings(settings);
 
       // Re-hydrate persisted (possibly still-empty) groups so they appear on
@@ -759,25 +781,40 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       const externalRoots = settings.externalLibraryFolders ?? [];
       if (externalRoots.length > 0 && appService.allowPathsInScopes) {
         await appService.allowPathsInScopes(externalRoots, true);
-        if (stale()) return;
+        if (stale()) {
+          bail();
+          return;
+        }
       }
 
       // Reuse the library from the store when we return from the reader
       const library = hasCachedLibrary ? libraryBooks : await appService.loadLibraryBooks();
-      if (stale()) return;
+      if (stale()) {
+        bail();
+        return;
+      }
       let opened = false;
       if (checkOpenWithBooks) {
         opened = await handleOpenWithBooks(appService, library);
-        if (stale()) return;
+        if (stale()) {
+          bail();
+          return;
+        }
       }
       setCheckOpenWithBooks(opened);
       if (!opened && checkLastOpenBooks && settings.openLastBooks) {
         opened = await handleOpenLastBooks(appService, settings.lastOpenBooks, library);
-        if (stale()) return;
+        if (stale()) {
+          bail();
+          return;
+        }
       }
       setCheckLastOpenBooks(opened);
 
-      if (stale()) return;
+      if (stale()) {
+        bail();
+        return;
+      }
       // Skip the redundant setLibrary on the cached path: the store already
       // contains the same array reference, and a no-op set would still
       // trigger refreshGroups (O(n) MD5) and a full Bookshelf re-render.
@@ -788,8 +825,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         setLibrary(library);
       }
       setLibraryLoaded(true);
-      if (loadingTimeout) clearTimeout(loadingTimeout);
-      setLoading(false);
+      bail();
     };
 
     const handleOpenWithBooks = async (appService: AppService, library: Book[]) => {
@@ -807,6 +843,8 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       pageMountedRef.current = false;
       // 使上一轮在途 async 的后续 setState 全部失效（卸载或 libraryInitKey 重进）。
       libraryInitGeneration.current += 1;
+      // 卸载/重进时清掉本轮的加载定时器，避免其稍后把 loading 置位后无人可关。
+      if (loadingTimeout) clearTimeout(loadingTimeout);
       setCheckOpenWithBooks(false);
       setCheckLastOpenBooks(false);
       isInitiating.current = false;
