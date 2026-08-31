@@ -790,8 +790,7 @@ export async function* searchLibraryBooks(
             const section = batch[i]!;
             const outcome = outcomes[i]!;
             // Task1：每节合并前重算剩余预算 —— worker 共享预算是第一层限制，
-            // service 逐 section 重算是最终硬边界；任何 worker 超发都不能越界，
-            // 节内 truncated 仅表示该节端点，不中断后续节继续填满预算。
+            // service 逐 section 重算是最终硬边界；预算耗尽才中断循环。
             const remaining = Math.min(
               MAX_BOOK_SEARCH_RESULTS - bookMatches,
               MAX_TOTAL_SEARCH_RESULTS - totalMatches,
@@ -800,6 +799,11 @@ export async function* searchLibraryBooks(
               bookTruncated = true;
               break;
             }
+            // 节内 truncated 表示该节还有更多匹配未采（独立于预算耗尽）。
+            // 末节恰填满预算且无下一节时会漏掉 remaining<=0 触发，必须在此
+            // 消费 outcome.truncated 保住"可能还有更多"的最终标记。仅置位，
+            // 不 break：后续节仍可继续填满预算。
+            if (outcome.truncated) bookTruncated = true;
             const capped = outcome.matches.slice(0, remaining);
             if (capped.length) {
               const subitems = toSubitems(config.mode, section.idx, section.text, capped);

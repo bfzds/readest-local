@@ -673,4 +673,50 @@ describe('indexed search hard cap (Task1)', () => {
     expect(events.at(-1)).toMatchObject({ type: 'completed', matchCount: 500, truncated: true });
     await session.close();
   });
+
+  it('缓存索引单 section 恰填满预算且 truncated 时仍标 truncated（末节边界）', async () => {
+    const book = makeBook('indexed-edge', 'Indexed Edge');
+    const service = makeService(
+      new Map<string, File | null>([['indexed-edge', makeFile('# A\nseed\n\n# B\nseed')]]),
+    );
+    const session = createLibrarySearchSession(service);
+
+    // 首次真实搜索建立持久 search.db，第二次才 mock worker → 走缓存索引路径。
+    for await (const _event of searchLibraryBooks(service, [book], 'seed', { config, session })) {
+      // 仅建索引
+    }
+    expect(service.loadBookContent).toHaveBeenCalledTimes(1);
+
+    // scoped 到单 section：worker 恰返回 500 条并标 truncated。预算恰好填满、
+    // 又没有下一节触发 remaining<=0 —— 服务端必须自己消费 outcome.truncated，
+    // 否则"可能还有更多"的信号在末节边界丢失（completed 不带 truncated）。
+    vi.spyOn(session.searchWorker, 'searchBatch').mockImplementation(async (sections) =>
+      sections.map((section) => ({
+        sectionKey: section.sectionKey,
+        matches: Array.from({ length: 500 }, (_, offset) => ({
+          start: offset,
+          end: offset + 1,
+          runs: [],
+        })),
+        truncated: true,
+      })),
+    );
+
+    const events: Array<{ type: string; result?: { subitems: unknown[] }; truncated?: boolean }> =
+      [];
+    for await (const event of searchLibraryBooks(service, [book], 'x', {
+      config: { ...config, mode: 'fuzzy' },
+      session,
+      sectionIndex: 0,
+    })) {
+      events.push(event as never);
+    }
+
+    const total = events
+      .filter((event) => event.type === 'result')
+      .reduce((sum, event) => sum + (event.result?.subitems.length ?? 0), 0);
+    expect(total).toBe(500);
+    expect(events.at(-1)).toMatchObject({ type: 'completed', matchCount: 500, truncated: true });
+    await session.close();
+  });
 });
