@@ -9,9 +9,9 @@ const MAX_TRANSFORM_CACHE_BYTES = 8 * 1024 * 1024;
 const transformCache = new Map<string, string>();
 let transformCacheBytes = 0;
 
-// O(n) 滚动哈希，远低于十段 transform 的整章解析成本。32 位单 hash 有理论
-// 碰撞（如 "Aa"/"BB" 同值），现用两路不同乘子的滚动 hash 异或长度做组合，
-// 把同 key 碰撞空间提到 ~2^64，且碰撞样本还需命中同一章节键才构成错误复用。
+// O(n) 滚动哈希，远低于十段 transform 的整章解析成本。两路不同乘子的 32 位
+// 滚动 hash 异或长度，降低部分结构性/常见碰撞风险（如多项式 hash 对特定
+// 模式的退化）；最终经 `>>> 0` 输出仍是 32 位指纹（不宣称更大碰撞空间）。
 const contentFingerprint = (content: string): number => {
   let h1 = 0;
   let h2 = 0;
