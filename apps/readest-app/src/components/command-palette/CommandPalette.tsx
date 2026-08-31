@@ -101,15 +101,36 @@ const CommandPalette: React.FC = () => {
             close();
           }
           break;
-        case 'Tab':
-          // 焦点陷阱：Tab/Shift+Tab 在结果间循环，焦点不逃逸到背景页。
+        case 'Tab': {
+          // 焦点陷阱（Task7）：Tab/Shift+Tab 在 input、clear 与结果按钮之间
+          // 循环移动真实 DOM 焦点；当落点是结果项时同步 selectedIndex 高亮。
           e.preventDefault();
-          if (flattenedResults.length === 0) break;
-          setSelectedIndex((prev) => {
-            if (e.shiftKey) return prev <= 0 ? flattenedResults.length - 1 : prev - 1;
-            return prev >= flattenedResults.length - 1 ? 0 : prev + 1;
-          });
+          const list = listRef.current;
+          const input = inputRef.current;
+          const options = list
+            ? Array.from(list.querySelectorAll<HTMLButtonElement>('button[role="option"]'))
+            : [];
+          const clearBtn =
+            list?.parentElement?.querySelector<HTMLButtonElement>('button[aria-label]');
+          const focusables: HTMLElement[] = [];
+          if (input) focusables.push(input);
+          if (clearBtn && query) focusables.push(clearBtn);
+          focusables.push(...options);
+          if (focusables.length === 0) break;
+          const active = document.activeElement as HTMLElement | null;
+          const idx = active ? focusables.indexOf(active) : -1;
+          const next = e.shiftKey
+            ? idx <= 0
+              ? focusables.length - 1
+              : idx - 1
+            : idx >= focusables.length - 1
+              ? 0
+              : idx + 1;
+          focusables[next]?.focus();
+          const optionFocus = options.indexOf(focusables[next] as HTMLButtonElement);
+          if (optionFocus >= 0) setSelectedIndex(optionFocus);
           break;
+        }
       }
     },
     [flattenedResults, selectedIndex, executeCommand, close],

@@ -144,4 +144,59 @@ describe('CommandPalette', () => {
     fireEvent.keyDown(dialog, { key: 'Enter' });
     expect(executeCommand).toHaveBeenCalledWith(a2);
   });
+
+  it('Tab/Shift+Tab 在输入、清除与结果间循环真实 DOM 焦点（Task7）', () => {
+    const makeItem = (id: string, labelKey: string, category: CommandCategory): CommandItem => ({
+      id,
+      labelKey,
+      localizedLabel: labelKey,
+      keywords: [],
+      category,
+      action: () => {},
+    });
+    const makeResult = (item: CommandItem): CommandSearchResult => ({
+      item,
+      score: 0,
+      positions: new Set<number>(),
+      highlightIndices: new Set<number>(),
+    });
+    const a1 = makeItem('a1', 'A1', 'settings');
+    const b1 = makeItem('b1', 'B1', 'actions');
+    mockUseCommandPalette.mockImplementation(() => ({
+      isOpen: true,
+      close: mockClose,
+      setQuery: vi.fn(),
+      query: 'x',
+      results: [makeResult(a1), makeResult(b1)],
+      groupedResults: {
+        settings: [makeResult(a1)],
+        actions: [makeResult(b1)],
+        navigation: [],
+      },
+      recentItems: [],
+      executeCommand: vi.fn(),
+    }));
+
+    render(<CommandPalette />);
+    const dialog = screen.getByRole('dialog');
+    const input = screen.getByRole('textbox');
+    const optionOf = (text: string): HTMLElement =>
+      screen.getByText(text).closest<HTMLElement>('[role="option"]')!;
+
+    // 顺序：input → clear → A1 → B1 → input（循环）
+    input.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(document.activeElement).toBe(screen.getByLabelText('Clear search'));
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(document.activeElement).toBe(optionOf('A1'));
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(document.activeElement).toBe(optionOf('B1'));
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(document.activeElement).toBe(input);
+
+    // Shift+Tab 从 input 回到最后一个结果
+    input.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(optionOf('B1'));
+  });
 });
