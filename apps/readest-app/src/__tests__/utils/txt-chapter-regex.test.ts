@@ -118,3 +118,12 @@ describe('English chapter regexps', () => {
     expect(meaningful.length).toBeLessThanOrEqual(5);
   });
 });
+
+describe('chapter regexp cache', () => {
+  it('reuses the compiled rule set across instances for the same language', () => {
+    const first = new TestableConverter().getChapterRegexps('zh').map((r) => r.source);
+    const second = new TestableConverter().getChapterRegexps('zh').map((r) => r.source);
+    expect(second).toEqual(first);
+    expect(second.length).toBeGreaterThan(0);
+  });
+});

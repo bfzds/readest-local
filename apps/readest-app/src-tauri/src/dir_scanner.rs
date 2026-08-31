@@ -46,16 +46,23 @@ fn read_dir_sync(
 
     let normalized_extensions: Vec<String> =
         extensions.iter().map(|ext| ext.to_lowercase()).collect();
+    // 通配放行（空列表或含 "*"）只判一次，避免每文件重复 contains 判断。
+    let accepts_all_extensions =
+        normalized_extensions.is_empty() || normalized_extensions.contains(&"*".to_string());
 
     if recursive {
         for entry_result in WalkDir::new(path).into_iter() {
             match entry_result {
                 Ok(entry) => {
                     if entry.file_type().is_file() {
-                        if let Some(scanned_file) =
-                            process_file_entry(entry.path(), &normalized_extensions)
+                        // 复用目录项自带的 metadata，避免对同一路径再开一次。
+                        let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                        if ext_matches(entry.path(), &normalized_extensions, accepts_all_extensions)
                         {
-                            files.push(scanned_file);
+                            files.push(ScannedFile {
+                                path: entry.path().to_string_lossy().to_string(),
+                                size,
+                            });
                         }
                     }
                 }
@@ -70,12 +77,21 @@ fn read_dir_sync(
                 for entry_result in entries {
                     match entry_result {
                         Ok(entry) => {
-                            let path = entry.path();
-                            if path.is_file() {
-                                if let Some(scanned_file) =
-                                    process_file_entry(&path, &normalized_extensions)
+                            // 一次 metadata 同时完成"是否文件"判定与取 size，取代原先
+                            // `path.is_file()` stat + `fs::metadata` stat 的两次。
+                            // DirEntry::metadata() 跟随符号链接，语义与原 is_file() 一致。
+                            if let Ok(meta) = entry.metadata() {
+                                if meta.is_file()
+                                    && ext_matches(
+                                        &entry.path(),
+                                        &normalized_extensions,
+                                        accepts_all_extensions,
+                                    )
                                 {
-                                    files.push(scanned_file);
+                                    files.push(ScannedFile {
+                                        path: entry.path().to_string_lossy().to_string(),
+                                        size: meta.len(),
+                                    });
                                 }
                             }
                         }
@@ -94,22 +110,61 @@ fn read_dir_sync(
     Ok(files)
 }
 
-fn process_file_entry(path: &Path, extensions: &[String]) -> Option<ScannedFile> {
-    if extensions.is_empty() || extensions.contains(&"*".to_string()) {
-        let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-        return Some(ScannedFile {
-            path: path.to_string_lossy().to_string(),
-            size,
-        });
-    } else if let Some(ext) = path.extension() {
-        let ext_str = ext.to_string_lossy().to_lowercase();
-        if extensions.contains(&ext_str) {
-            let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-            return Some(ScannedFile {
-                path: path.to_string_lossy().to_string(),
-                size,
-            });
-        }
+fn ext_matches(path: &Path, normalized_extensions: &[String], accepts_all: bool) -> bool {
+    if accepts_all {
+        return true;
     }
-    None
+    path.extension()
+        .map(|ext| normalized_extensions.contains(&ext.to_string_lossy().to_lowercase()))
+        .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("readest-scanner-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn non_recursive_filters_by_extension() {
+        let dir = temp_dir("nonrec");
+        fs::write(dir.join("a.txt"), "abc").unwrap();
+        fs::write(dir.join("b.epub"), "def").unwrap();
+        fs::create_dir(dir.join("sub")).unwrap();
+        fs::write(dir.join("sub").join("c.txt"), "xyz").unwrap();
+        let files = read_dir_sync(dir.to_str().unwrap(), false, &["txt".to_string()]).unwrap();
+        assert_eq!(files.len(), 1);
+        assert!(files[0].path.ends_with("a.txt"));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn recursive_includes_nested_files() {
+        let dir = temp_dir("rec");
+        fs::write(dir.join("a.txt"), "abc").unwrap();
+        fs::create_dir(dir.join("sub")).unwrap();
+        fs::write(dir.join("sub").join("b.txt"), "def").unwrap();
+        let files = read_dir_sync(dir.to_str().unwrap(), true, &["txt".to_string()]).unwrap();
+        assert_eq!(files.len(), 2);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn wildcard_accepts_all_extensions() {
+        let dir = temp_dir("wild");
+        fs::write(dir.join("a.txt"), "abc").unwrap();
+        fs::write(dir.join("b.pdf"), "def").unwrap();
+        for ext in [vec!["*".to_string()], vec![]] {
+            let files = read_dir_sync(dir.to_str().unwrap(), false, &ext).unwrap();
+            assert_eq!(files.len(), 2);
+        }
+        fs::remove_dir_all(&dir).unwrap();
+    }
 }

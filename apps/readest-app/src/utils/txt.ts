@@ -428,6 +428,9 @@ const escapeXml = (str: string) => {
 };
 
 export class TxtToEpubConverter {
+  private static readonly CHAPTER_REGEXP_CACHE_MAX = 32;
+  private static chapterRegexpCache = new Map<string, Array<{ source: string; flags: string }>>();
+
   public async convert(options: Txt2EpubOptions): Promise<ConversionResult> {
     if (options.file.size <= LARGE_TXT_THRESHOLD_BYTES) {
       return await this.convertSmallFile(options);
@@ -1044,7 +1047,18 @@ export class TxtToEpubConverter {
   }
 
   private createChapterRegexps(language: string, extraPatterns?: string[]): RegExp[] {
-    const chapterRegexps: RegExp[] = [];
+    // 同一语言+用户规则在整本转换的每个 segment 都会重建，跨实例缓存
+    // 复用（worker 每次转换新建实例）；上限 32 组，LRU 淘汰最旧。
+    const cacheKey = `${language}${extraPatterns?.join('') ?? ''}`;
+    const cached = TxtToEpubConverter.chapterRegexpCache.get(cacheKey);
+    // 缓存已验证的规则源而非 RegExp 实例：RegExp 是带 lastIndex 的有状态对象，
+    // 实例被多段/多实例共享会因 .test()/exec 的顺序依赖互相污染。
+    if (cached) {
+      TxtToEpubConverter.chapterRegexpCache.delete(cacheKey);
+      TxtToEpubConverter.chapterRegexpCache.set(cacheKey, cached);
+      return cached.map(({ source, flags }) => new RegExp(source, flags));
+    }
+    const specs: Array<{ source: string; flags: string }> = [];
 
     // ③ 用户自定义章节正则（方向③）：每项匹配"标题行内容"，自动补行首锚点，
     // 置于最前优先匹配；new RegExp 抛错（非法规则）或 validateChapterPattern
@@ -1053,7 +1067,8 @@ export class TxtToEpubConverter {
       if (!pattern) continue;
       if (validateChapterPattern(pattern).length > 0) continue;
       try {
-        chapterRegexps.push(new RegExp(String.raw`(?:^|\n)\s*(${pattern})`, 'u'));
+        new RegExp(String.raw`(?:^|\n)\s*(${pattern})`, 'u');
+        specs.push({ source: String.raw`(?:^|\n)\s*(${pattern})`, flags: 'u' });
       } catch {
         // 非法用户规则忽略
       }
@@ -1062,10 +1077,16 @@ export class TxtToEpubConverter {
     // ② 语言规则表（方向②）：zh/ja/ko/en 各有专门规则，其余语言回退到通用规则。
     const rules = CHAPTER_RULES[language] ?? CHAPTER_RULES['*'] ?? [];
     for (const { source, flags } of rules) {
-      chapterRegexps.push(new RegExp(source, flags));
+      specs.push({ source, flags });
     }
 
-    return chapterRegexps;
+    if (TxtToEpubConverter.chapterRegexpCache.size >= TxtToEpubConverter.CHAPTER_REGEXP_CACHE_MAX) {
+      TxtToEpubConverter.chapterRegexpCache.delete(
+        TxtToEpubConverter.chapterRegexpCache.keys().next().value!,
+      );
+    }
+    TxtToEpubConverter.chapterRegexpCache.set(cacheKey, specs);
+    return specs.map(({ source, flags }) => new RegExp(source, flags));
   }
 
   private async createEpub(chapters: Chapter[], metadata: Metadata): Promise<Blob> {
