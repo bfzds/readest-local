@@ -443,7 +443,6 @@ describe('services/constants', () => {
       expect(typeof DEFAULT_BOOK_LAYOUT.volumeKeysToFlip).toBe('boolean');
       expect(typeof DEFAULT_BOOK_LAYOUT.vertical).toBe('boolean');
       expect(typeof DEFAULT_BOOK_LAYOUT.rtl).toBe('boolean');
-      expect(typeof DEFAULT_BOOK_LAYOUT.allowScript).toBe('boolean');
       expect(typeof DEFAULT_BOOK_LAYOUT.hideScrollbar).toBe('boolean');
     });
 

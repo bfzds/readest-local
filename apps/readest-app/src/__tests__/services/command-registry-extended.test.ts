@@ -74,6 +74,12 @@ describe('buildCommandRegistry', () => {
     expect(items.length).toBeGreaterThan(0);
   });
 
+  it('does not expose the removed allow-javascript command (S-3)', () => {
+    const items = buildCommandRegistry(createMockOptions());
+    const ids = items.map((i) => i.id);
+    expect(ids).not.toContain('settings.control.allowJavascript');
+  });
+
   it('should include settings items from all panels', () => {
     const items = buildCommandRegistry(createMockOptions());
     const settingsItems = items.filter((i) => i.category === 'settings');

@@ -230,7 +230,6 @@ export interface BookLayout {
   vertical: boolean;
   rtl: boolean;
   scrollingOverlap: number;
-  allowScript: boolean;
   hideScrollbar: boolean;
   /* Auto Scroll (#4998) speed as a percentage; 100 = AUTO_SCROLL_BASE_PX_PER_SEC. */
   autoScrollSpeed: number;

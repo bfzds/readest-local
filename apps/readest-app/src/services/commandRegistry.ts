@@ -514,12 +514,6 @@ const controlPanelItems = [
     keywords: ['cursor', 'mouse', 'pointer', 'hide', 'autohide', 'idle'],
     section: 'Device',
   },
-  {
-    id: 'settings.control.allowJavascript',
-    labelKey: _('Allow JavaScript'),
-    keywords: ['javascript', 'js', 'script', 'security', 'allow'],
-    section: 'Security',
-  },
 ];
 
 // language panel items

@@ -165,7 +165,7 @@ describe('whitespaceTransformer', () => {
   });
 
   describe('when overrideLayout is true', () => {
-    const settings = { overrideLayout: true } as ViewSettings;
+    const settings = { overrideLayout: true } as unknown as ViewSettings;
 
     test('replaces &nbsp; with a normal space', async () => {
       const html = 'hello&nbsp;world';
@@ -288,7 +288,7 @@ describe('whitespaceTransformer', () => {
   });
 
   describe('when overrideLayout is false', () => {
-    const settings = { overrideLayout: false } as ViewSettings;
+    const settings = { overrideLayout: false } as unknown as ViewSettings;
 
     test('returns content unchanged with &nbsp;', async () => {
       const html = 'hello&nbsp;world';
@@ -357,7 +357,7 @@ describe('punctuationTransformer', () => {
       replaceQuotationMarks: true,
       convertChineseVariant: 'none' as const,
       vertical: false,
-    } as ViewSettings;
+    } as unknown as ViewSettings;
 
     test('returns content unchanged when no variant or vertical conversion needed', async () => {
       const html = '\u201C\u4F60\u597D\u201D';
@@ -373,7 +373,7 @@ describe('punctuationTransformer', () => {
       replaceQuotationMarks: true,
       convertChineseVariant: 's2t' as const,
       vertical: false,
-    } as ViewSettings;
+    } as unknown as ViewSettings;
 
     test('converts left double curly quote to left corner bracket', async () => {
       const result = await punctuationTransformer.transform(
@@ -424,7 +424,7 @@ describe('punctuationTransformer', () => {
       replaceQuotationMarks: true,
       convertChineseVariant: 's2t' as const,
       vertical: false,
-    } as ViewSettings;
+    } as unknown as ViewSettings;
 
     test('reverses the conversion direction when reversePunctuationTransform is true', async () => {
       // With s2t and reverse=true, the shouldReverse flag flips, so the mapping
@@ -447,7 +447,7 @@ describe('punctuationTransformer', () => {
       replaceQuotationMarks: true,
       convertChineseVariant: 'none' as const,
       vertical: true,
-    } as ViewSettings;
+    } as unknown as ViewSettings;
 
     test('converts left double curly quote to vertical form (Hans default)', async () => {
       const result = await punctuationTransformer.transform(
@@ -544,7 +544,7 @@ describe('punctuationTransformer', () => {
       replaceQuotationMarks: true,
       convertChineseVariant: 's2t' as const,
       vertical: true,
-    } as ViewSettings;
+    } as unknown as ViewSettings;
 
     test('applies variant conversion first, then vertical conversion', async () => {
       // s2t converts "\u201C" -> "\u300C" (「), then vertical Hans converts "\u300C" -> "\uFE41" (﹁)
@@ -621,7 +621,7 @@ describe('styleTransformer', () => {
 
   test('passes vertical setting to transformStylesheet', async () => {
     const html = '<style>div { writing-mode: vertical-rl; }</style>';
-    const settings = { vertical: true } as ViewSettings;
+    const settings = { vertical: true } as unknown as ViewSettings;
     await styleTransformer.transform(
       makeCtx({ content: html, viewSettings: settings, width: 800, height: 600 }),
     );
@@ -670,7 +670,7 @@ describe('sanitizerTransformer', () => {
 
   test('strips scripts even when allowScript is true (S-3)', async () => {
     const html = '<html><head></head><body><script>alert("xss")</script><p>Hello</p></body></html>';
-    const settings = { allowScript: true } as ViewSettings;
+    const settings = { allowScript: true } as unknown as ViewSettings;
     const result = await sanitizerTransformer.transform(
       makeCtx({ content: html, viewSettings: settings }),
     );
@@ -686,7 +686,7 @@ describe('sanitizerTransformer', () => {
       '<a href="javascript:fetch(\'http://evil\')">link</a>' +
       '<img src="x" onerror="alert(1)" />' +
       '</body></html>';
-    const settings = { allowScript: false } as ViewSettings;
+    const settings = { allowScript: false } as unknown as ViewSettings;
     const result = await sanitizerTransformer.transform(
       makeCtx({ content: html, viewSettings: settings }),
     );
@@ -700,7 +700,7 @@ describe('sanitizerTransformer', () => {
 
   test('sanitizes content when allowScript is false', async () => {
     const html = '<html><head></head><body><script>alert("xss")</script><p>Hello</p></body></html>';
-    const settings = { allowScript: false } as ViewSettings;
+    const settings = { allowScript: false } as unknown as ViewSettings;
     const result = await sanitizerTransformer.transform(
       makeCtx({ content: html, viewSettings: settings }),
     );
@@ -719,7 +719,7 @@ describe('sanitizerTransformer', () => {
     const html =
       '<html xmlns:epub="http://www.idpf.org/2007/ops"><head></head><body>' +
       '<aside epub:type="footnote">Note</aside></body></html>';
-    const settings = { allowScript: false } as ViewSettings;
+    const settings = { allowScript: false } as unknown as ViewSettings;
     const result = await sanitizerTransformer.transform(
       makeCtx({ content: html, viewSettings: settings }),
     );
@@ -728,7 +728,7 @@ describe('sanitizerTransformer', () => {
 
   test('preserves &nbsp; entities through sanitization', async () => {
     const html = '<html><head></head><body><p>hello&nbsp;world</p></body></html>';
-    const settings = { allowScript: false } as ViewSettings;
+    const settings = { allowScript: false } as unknown as ViewSettings;
     const result = await sanitizerTransformer.transform(
       makeCtx({ content: html, viewSettings: settings }),
     );
@@ -737,7 +737,7 @@ describe('sanitizerTransformer', () => {
 
   test('output starts with XML declaration and DOCTYPE', async () => {
     const html = '<html><head></head><body><p>test</p></body></html>';
-    const settings = { allowScript: false } as ViewSettings;
+    const settings = { allowScript: false } as unknown as ViewSettings;
     const result = await sanitizerTransformer.transform(
       makeCtx({ content: html, viewSettings: settings }),
     );
@@ -807,7 +807,7 @@ describe('simpleccTransformer', () => {
 
   test('returns content unchanged when convertChineseVariant is "none"', async () => {
     const html = '<html><body>Hello</body></html>';
-    const settings = { convertChineseVariant: 'none' as const } as ViewSettings;
+    const settings = { convertChineseVariant: 'none' as const } as unknown as ViewSettings;
     const result = await simpleccTransformer.transform(
       makeCtx({ content: html, viewSettings: settings }),
     );
@@ -829,7 +829,7 @@ describe('simpleccTransformer', () => {
     mockRun.mockImplementation((text: string) => text.replace(/Hello/g, 'Converted'));
 
     const html = '<html><body><p>Hello</p></body></html>';
-    const settings = { convertChineseVariant: 's2t' as const } as ViewSettings;
+    const settings = { convertChineseVariant: 's2t' as const } as unknown as ViewSettings;
     const result = await simpleccTransformer.transform(
       makeCtx({ content: html, viewSettings: settings }),
     );
