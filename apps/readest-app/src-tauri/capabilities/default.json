@@ -66,9 +66,6 @@
           "path": "**/last-book-cover.png"
         },
         {
-          "path": "$TEMP/**/*"
-        },
-        {
           "path": "$APPCACHE"
         },
         {

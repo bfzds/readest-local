@@ -64,8 +64,10 @@ pub fn validate_scoped_file(app: &AppHandle, raw: &str) -> Result<PathBuf, Strin
 }
 
 /// 判断路径是否在允许范围内。允许来源（任一命中即可）：
-///   1. 标准应用目录（AppData/AppConfig/AppCache/Temp）下的路径 —— 覆盖
+///   1. 标准应用数据目录（AppData/AppConfig/AppCache）下的路径 —— 覆盖
 ///      已导入书库存（$APPDATA/Readest/...）、配置与封面等正常数据；
+///      S-1/S-2：不再自动放行系统 Temp —— 那里可能残留其他程序的普通文件，
+///      parser 不应成为无授权读取入口；确需的临时产物走 fs_scope 显式授权。
 ///   2. runtime `fs_scope`（dialog 授权、persisted scope、拖放、显式 allow）
 ///      —— 覆盖用户经系统文件选择器导入的外部书库/文件；
 ///   3. `webdriver` feature 下，开发测试用 fixture 目录（`**/__tests__/**`）。
@@ -74,12 +76,11 @@ pub fn validate_scoped_file(app: &AppHandle, raw: &str) -> Result<PathBuf, Strin
 /// 前缀，tauri 的 Path 级 `is_allowed` 会失配；这里统一剥前缀、按 `/` 分隔
 /// 做字符串级 glob 比对。
 fn scope_allows(app: &AppHandle, for_scope: &Path) -> bool {
-    // 1) 标准应用目录前缀。
+    // 1) 标准应用数据目录前缀。
     for base in [
         BaseDirectory::AppData,
         BaseDirectory::AppConfig,
         BaseDirectory::AppCache,
-        BaseDirectory::Temp,
     ] {
         if let Ok(dir) = app.path().resolve("", base) {
             if for_scope.starts_with(strip_windows_verbatim(&dir)) {
