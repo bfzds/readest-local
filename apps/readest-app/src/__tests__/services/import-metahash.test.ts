@@ -32,7 +32,11 @@ vi.mock('@/utils/simplecc', () => ({
   simplifyChineseText: mockSimplifyChineseText,
 }));
 import { BaseAppService } from '@/services/appService';
-import { buildBookLookupIndex, refreshBookMetadata } from '@/services/bookService';
+import {
+  buildBookLookupIndex,
+  normalizeFilePathForIndex,
+  refreshBookMetadata,
+} from '@/services/bookService';
 
 // Concrete test subclass of BaseAppService with mocked fs
 class TestAppService extends BaseAppService {
@@ -914,5 +918,30 @@ describe('importBook with BookLookupIndex', () => {
     // B-6：不可变语义 — 原对象引用不被就地修改；结果对象携带最新标题。
     expect(existing.title).toBe('第1章');
     expect(existing.sourceTitle).toBe('第1章');
+  });
+
+  it('generateCoverImageUrl 失败时不提前污染 byFilePath 索引（B-6 复核）', async () => {
+    const metaHash = getMetadataHash(TEST_METADATA);
+    const original = makeBook({ hash: 'old-hash', metaHash, format: 'PDF' });
+    const books: Book[] = [original];
+    const lookupIndex = buildBookLookupIndex(books);
+    const storePath = 'C:/store/old-hash/test.pdf';
+    const pathKey = normalizeFilePathForIndex(storePath);
+    lookupIndex.byFilePath.set(pathKey, original);
+
+    mockPartialMD5.mockResolvedValue('new-hash');
+    setupMockBookDoc();
+    service.generateCoverImageUrl = vi.fn(async () => {
+      throw new Error('cover boom');
+    });
+
+    await expect(
+      service.importBook(storePath, books, { lookupIndex, inPlace: true, transient: false }),
+    ).rejects.toThrow('cover boom');
+
+    // 失败路径：数组、byHash 与 byFilePath 均保持原引用，未被提前污染。
+    expect(books[0]).toBe(original);
+    expect(lookupIndex.byHash.get('old-hash')).toBe(original);
+    expect(lookupIndex.byFilePath.get(pathKey)).toBe(original);
   });
 });

@@ -559,6 +559,10 @@ export async function importBook(
       : books.find((b) => b.hash === hash);
     let originalExistingHash: string | undefined;
     let metaHashMatch = false;
+    // B-6 复核：路径索引延迟到最终提交点。提前 set 会在 cover URL 生成等
+    // 后续异步失败时留下"索引指向草稿/新路径"的脏态。
+    let pendingFilePathKey: string | undefined;
+    let pendingFilePathBook: Book | null = null;
     let oldBookDir: string | undefined;
     if (existingBook) {
       // B-6：已存在书的所有字段更新都写在副本上，成功后再提交 ——
@@ -804,16 +808,21 @@ export async function importBook(
         }
       }
     }
-    // Now that `filePath` is set, keep the path index in sync so later files
-    // in the same batch (and the next call into importBook) can hit the
-    // in-place fast path. Only persistent in-place imports go into the
-    // index — transient previews are short-lived and never persisted to
-    // the library so indexing them would just leak references.
-    if (lookupIndex && inPlace && !transient && typeof file === 'string') {
+    // Now that `filePath` is set, record the path-index entry as a pending commit
+    // (only applied after every write, cover and cover-URL step succeeds). A
+    // failure between here and the commit point must not leave `byFilePath`
+    // pointing at a draft or a path that never persisted. Only persistent
+    // in-place imports go into the index — transient previews are short-lived
+    // and never persisted to the library so indexing them would just leak
+    // references.
+    if (inPlace && !transient && typeof file === 'string') {
       const indexedBook = existingBook || book;
-      if (indexedBook.filePath) {
+      if (indexedBook.filePath && lookupIndex) {
         const key = normalizeFilePathForIndex(indexedBook.filePath, osPlatform);
-        if (key) lookupIndex.byFilePath.set(key, indexedBook);
+        if (key) {
+          pendingFilePathKey = key;
+          pendingFilePathBook = indexedBook;
+        }
       }
     }
     book.coverImageUrl = await generateCoverImageUrlFn(book);
@@ -869,6 +878,11 @@ export async function importBook(
       }
     }
 
+    // B-6 复核：全部文件/封面/配置/cover URL 落盘并提交数组与三个主索引后，
+    // 最后统一提交路径索引（此前任何一步失败都不会污染 byFilePath）。
+    if (pendingFilePathKey && pendingFilePathBook && lookupIndex) {
+      lookupIndex.byFilePath.set(pendingFilePathKey, pendingFilePathBook);
+    }
     perfMark('importBook', 'total', t0);
     // B-6：existingBook 是副本；调用方将以该对象更新 store，原对象未被动过。
     return existingBook || book;
