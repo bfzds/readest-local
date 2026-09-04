@@ -2093,5 +2093,8 @@
   "p {{page}}": "第 {{page}} 頁",
   "{{count}} Highlights_other": "{{count}} 則高亮",
   "{{count}} Notes_other": "{{count}} 則筆記",
-  "{{matched}} of {{total}}": "{{matched}} / {{total}} 項"
+  "{{matched}} of {{total}}": "{{matched}} / {{total}} 項",
+  "Speech": "語音",
+  "Skip Parenthetical Readings": "略過括號內的讀音",
+  "Do not speak kana or Han readings shown after Han text": "不朗讀漢字文字後顯示的假名或漢字讀音"
 }

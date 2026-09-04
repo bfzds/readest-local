@@ -35,6 +35,10 @@ import {
   MediaOverlayTTS,
   MEDIA_OVERLAY_VOICE_ID,
 } from './mediaOverlay';
+import {
+  stripInlineReadingAnnotations,
+  stripInlineReadingAnnotationsFromSSML,
+} from './inlineAnnotations';
 
 // App-wide monotonic sequence for 'tts-position' events. A fresh TTSController
 // is constructed per `tts-speak`, so a per-instance counter would restart at 0
@@ -128,6 +132,7 @@ export class TTSController extends EventTarget {
   #currentSentenceIndex: number = -1;
   #ttsDoc: Document | null = null;
   #ttsGranularity: TTSGranularity = 'sentence';
+  #skipInlineAnnotations = false;
 
   // Word-level highlight state for the currently spoken chunk. Armed by a
   // successful dispatchSpeakMark, populated by prepareSpeakWords when a TTS
@@ -482,6 +487,13 @@ export class TTSController extends EventTarget {
     this.#highlightGranularity = granularity;
   }
 
+  setSkipInlineAnnotations(enabled: boolean) {
+    if (this.#skipInlineAnnotations === enabled) return;
+    this.#skipInlineAnnotations = enabled;
+    this.#sectionTimeline = null;
+    this.#timelineSectionIndex = -1;
+  }
+
   async initViewTTS(index?: number) {
     if (this.#ttsSectionIndex === -1) {
       const fromSectionIndex = (index || this.#getPrimaryContent()?.index) ?? 0;
@@ -643,7 +655,11 @@ export class TTSController extends EventTarget {
         createTTSNodeFilter(),
         this.#ttsGranularity,
       )) {
-        sentences.push({ ...entry, text: entry.range.toString() });
+        const text = entry.range.toString();
+        sentences.push({
+          ...entry,
+          text: this.#skipInlineAnnotations ? stripInlineReadingAnnotations(text) : text,
+        });
       }
     }
     const timeline = new SectionTimeline(
@@ -954,6 +970,10 @@ export class TTSController extends EventTarget {
 
     if (this.preprocessCallback) {
       ssml = await this.preprocessCallback(ssml);
+    }
+
+    if (this.#skipInlineAnnotations) {
+      ssml = stripInlineReadingAnnotationsFromSSML(ssml);
     }
 
     return ssml;

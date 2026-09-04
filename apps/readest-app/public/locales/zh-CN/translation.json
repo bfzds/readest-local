@@ -2093,5 +2093,8 @@
   "p {{page}}": "第 {{page}} 页",
   "{{count}} Highlights_other": "{{count}} 条划线",
   "{{count}} Notes_other": "{{count}} 条笔记",
-  "{{matched}} of {{total}}": "{{matched}} / {{total}} 项"
+  "{{matched}} of {{total}}": "{{matched}} / {{total}} 项",
+  "Speech": "语音",
+  "Skip Parenthetical Readings": "跳过括号内的读音",
+  "Do not speak kana or Han readings shown after Han text": "不朗读汉字文本后显示的假名或汉字读音"
 }
