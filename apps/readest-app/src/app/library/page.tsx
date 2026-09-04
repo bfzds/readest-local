@@ -931,6 +931,21 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     options: { silent?: boolean } = {},
   ): Promise<{ failedPaths: string[] }> => {
     setLoading(true);
+    try {
+      return await runImportBooks(files, groupId, options);
+    } finally {
+      // 保存/收尾任一步抛错（如 Tauri ACL 拒绝、磁盘失败）都不能把全屏
+      // 加载遮罩留在最上层卡死书库——复位必须发生在 finally 里。
+      setLoading(false);
+      setImportProgress(null);
+    }
+  };
+
+  const runImportBooks = async (
+    files: SelectedFile[],
+    groupId?: string,
+    options: { silent?: boolean } = {},
+  ): Promise<{ failedPaths: string[] }> => {
     const totalFiles = files.length;
     let processedFiles = 0;
     setImportProgress({ done: 0, total: totalFiles });
@@ -1126,8 +1141,6 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     if (txtGuideQueueRef.current.length > 0) {
       setGuideItem(txtGuideQueueRef.current.shift()!);
     }
-    setLoading(false);
-    setImportProgress(null);
     return { failedPaths };
   };
 
