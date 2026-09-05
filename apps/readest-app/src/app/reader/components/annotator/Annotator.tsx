@@ -1357,7 +1357,11 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     setShowDictionaryPopup(true);
   };
 
-  const handleSpeakText = async (oneTime = false) => {
+  // `oneTime` is required rather than defaulted: it decides whether this reads
+  // the selection and stops or starts an open-ended session from it, and every
+  // entry point here means the former. Defaulting it silently turned Ctrl/Cmd+R
+  // into "start the book from this paragraph" (#5011).
+  const handleSpeakText = async (oneTime: boolean) => {
     if (!selection || !selection.text) return;
     setShowAnnotPopup(false);
     setEditingAnnotation(null);
@@ -1420,7 +1424,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
         handleDictionary();
       },
       onReadAloudSelection: () => {
-        handleSpeakText();
+        handleSpeakText(true);
       },
       onProofreadSelection: () => {
         handleProofread();
@@ -1857,7 +1861,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
       case 'dictionary':
         return { tooltipText: _(label), Icon, onClick: handleDictionary };
       case 'tts':
-        return { tooltipText: _(label), Icon, onClick: handleSpeakText };
+        return { tooltipText: _(label), Icon, onClick: () => handleSpeakText(true) };
       case 'proofread':
         return {
           tooltipText: _(label),
