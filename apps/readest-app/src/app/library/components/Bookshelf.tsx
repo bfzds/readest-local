@@ -1098,6 +1098,10 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   // 身份变化重绑全局监听。
   const dragLangRef = useRef(_);
   dragLangRef.current = _;
+  // 选择模式下禁用拖拽源捕获：经 ref 读取，避免把 isSelectMode 加进拖拽
+  // effect 依赖导致监听器频繁重绑。
+  const isSelectModeRef = useRef(isSelectMode);
+  isSelectModeRef.current = isSelectMode;
   // Right-click on empty shelf space → "Create New Group".
   const [blankContextMenu, setBlankContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
@@ -1246,6 +1250,9 @@ const Bookshelf: React.FC<BookshelfProps> = ({
 
     const onPointerDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
+      // 选择模式下格子上的按下是"选中"，不得顺手进入拖拽（交换/归组），
+      // 否则多选时轻拖即触发排序交换，与用户意图相悖。
+      if (isSelectModeRef.current) return;
       const el = e.target as HTMLElement | null;
       const bookEl = el?.closest?.('[data-book-hash]');
       const groupEl = bookEl ? null : (el?.closest?.('[data-group-name]') ?? null);
@@ -1539,6 +1546,12 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     };
 
     const onPointerCancel = () => endShelfDrag();
+    // Escape 取消进行中的拖拽：放下前允许反悔，不做任何排序/归组改动。
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && dragActiveRef.current) {
+        endShelfDrag();
+      }
+    };
     // 拖拽中改窗口尺寸会让缓存的 ghost 尺寸失效，重读一次。
     const onWindowResize = () => {
       dragGhostSizeRef.current = null;
@@ -1548,12 +1561,14 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointercancel', onPointerCancel);
+    window.addEventListener('keydown', onKeyDown);
     window.addEventListener('resize', onWindowResize);
     return () => {
       window.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);
+      window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('resize', onWindowResize);
       // P-3 复核：统一走幂等 endShelfDrag —— 清 rAF/ghost/高亮/引用，
       // 拖拽中途 effect 重跑或组件卸载不残留状态。endShelfDrag(useCallback

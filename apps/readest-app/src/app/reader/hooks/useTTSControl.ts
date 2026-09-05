@@ -67,6 +67,9 @@ export const useTTSControl = ({ bookKey, onRequestHidePanel }: UseTTSControlProp
   const previousSectionLabelRef = useRef<string | undefined>(undefined);
   const ttsControllerRef = useRef<TTSController | null>(null);
   const isStartingTTSRef = useRef(false);
+  // 在途启动期间收到的启动请求（快速 stop→start）：存最后一条，在途启动
+  // 收尾后重放，避免"按了播放没反应"。
+  const pendingStartEventRef = useRef<CustomEvent['detail'] | null>(null);
   // Last broadcast playback state, so a follower engaging mid-session can be
   // replayed the current state on demand (see handleTTSSyncRequest).
   const playbackStateRef = useRef<'playing' | 'paused' | 'stopped'>('stopped');
@@ -792,7 +795,12 @@ export const useTTSControl = ({ bookKey, onRequestHidePanel }: UseTTSControlProp
     // Guard against concurrent starts (e.g. rapid double-clicks on the TTS
     // icon). Without this, both invocations race past the `await`s below and
     // end up creating two TTSController instances that speak simultaneously.
-    if (isStartingTTSRef.current) return;
+    if (isStartingTTSRef.current) {
+      // 停止后立即再点播放：第一次启动仍在 init 窗口期内，直接丢弃第二次
+      // 会让用户"按了播放没反应"。挂起本次请求，在在途启动收尾后重放。
+      pendingStartEventRef.current = event.detail;
+      return;
+    }
     isStartingTTSRef.current = true;
 
     try {
@@ -902,6 +910,12 @@ export const useTTSControl = ({ bookKey, onRequestHidePanel }: UseTTSControlProp
         ttsController.useNarration = viewSettings.ttsUseNarration ?? true;
         await ttsController.init();
         await ttsController.initViewTTS(ttsFromIndex);
+        // 启动窗口期内用户点了停止：handleStop 已把 ref 置空并 shutdown 本
+        // 控制器、复位全部 UI 状态。若继续往下执行，会在已销毁的控制器上
+        // speak（语音失控），并在 ref 已空的情况下重新点亮 ttsEnabled——
+        // 之后所有 tts-stop 都在 handleTTSStop 的 ref 判空处变成 no-op，
+        // 朗读将无法停止。此处必须放弃本次启动，且不回改 UI（stop 已复位）。
+        if (ttsControllerRef.current !== ttsController) return;
         ttsController.updateHighlightOptions(
           getTTSHighlightOptions(viewSettings.ttsHighlightOptions, viewSettings.isEink),
         );
@@ -953,6 +967,12 @@ export const useTTSControl = ({ bookKey, onRequestHidePanel }: UseTTSControlProp
       }
     } finally {
       isStartingTTSRef.current = false;
+      // 重放挂起的启动请求（快速 stop→start 场景）。
+      const pending = pendingStartEventRef.current;
+      if (pending) {
+        pendingStartEventRef.current = null;
+        eventDispatcher.dispatch('tts-speak', pending);
+      }
     }
   };
 

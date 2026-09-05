@@ -662,6 +662,14 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           }
         } catch (error) {
           console.error('Failed to import book:', file, error);
+          // 双击打开损坏/不支持的文件时不能零反馈：明确报哪个文件失败。
+          eventDispatcher.dispatch('toast', {
+            message: _('Failed to import book(s): {{filenames}}', {
+              filenames: listFormater(false).format([getFilename(file)]),
+            }),
+            timeout: 4000,
+            type: 'error',
+          });
         }
       }
       if (gen !== libraryInitGeneration.current) return false;
@@ -673,6 +681,11 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           saved = await appService.saveLibraryBooks(library);
         } catch (error) {
           console.error('Failed to persist Open With books; staying on library:', error);
+          eventDispatcher.dispatch('toast', {
+            message: _('Failed to save library'),
+            timeout: 4000,
+            type: 'error',
+          });
           return false;
         }
         // 以磁盘最终 LWW 合并快照为准提交内存。
@@ -846,7 +859,20 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       return false;
     };
 
-    initLibrary();
+    // initLibrary 内部任何一步 reject（loadSettings/loadLibraryBooks IPC 失败、
+    // 封面 blob URL 生成失败等）都不能让全屏"加载中"遮罩常驻：catch 里复用
+    // bail() 收尾本轮流次，active 轮失败再给出可见错误提示。
+    initLibrary().catch((error) => {
+      console.error('Failed to initialize library:', error);
+      bail();
+      if (!stale()) {
+        eventDispatcher.dispatch('toast', {
+          type: 'error',
+          message: _('Failed to load library'),
+          timeout: 2500,
+        });
+      }
+    });
     return () => {
       pageMountedRef.current = false;
       // 使上一轮在途 async 的后续 setState 全部失效（卸载或 libraryInitKey 重进）。
@@ -1105,10 +1131,23 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     }
 
     // Persist the full library once after every file in the batch is done.
+    let saveFailed = false;
     if (successfulImports.length > 0) {
       const finalLibrary = useLibraryStore.getState().library;
       const finalAppService = await envConfig.getAppService();
-      await finalAppService.saveLibraryBooks(finalLibrary);
+      try {
+        await finalAppService.saveLibraryBooks(finalLibrary);
+      } catch (error) {
+        // 书目已进内存 store（书架上可见），但磁盘未写入——不提示的话用户
+        // 以为导入成功，重启后书"消失"（典型诱因：双窗口书库锁超时）。
+        saveFailed = true;
+        console.error('Failed to persist imported books:', error);
+        eventDispatcher.dispatch('toast', {
+          message: _('Failed to save library'),
+          timeout: 4000,
+          type: 'error',
+        });
+      }
     }
 
     if (!options.silent && failedImports.length > 1) {
@@ -1127,7 +1166,11 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     // Surface the success toast when books were imported. In silent (auto-import)
     // mode failures are suppressed, so show success independently of them; in
     // interactive mode keep the original behaviour (only when nothing failed).
-    if (successfulImports.length > 0 && (options.silent || failedImports.length === 0)) {
+    if (
+      successfulImports.length > 0 &&
+      !saveFailed &&
+      (options.silent || failedImports.length === 0)
+    ) {
       eventDispatcher.dispatch('toast', {
         message: _('Successfully imported {{count}} book(s)', {
           count: successfulImports.length,
