@@ -17,14 +17,24 @@ const setHovered = (key: string | null) => {
 };
 
 describe('useMiniPlayerAutoHide', () => {
+  const originalWidth = window.innerWidth;
+  const originalHeight = window.innerHeight;
+
   beforeEach(() => {
     vi.useFakeTimers();
     setHovered(null);
+    // Auto-hide only applies on mobile/compact viewports (desktop has no hover
+    // toolbar to re-summon the card, so hiding it strands the transport
+    // controls). Existing behaviour tests run in a mobile viewport.
+    window.innerWidth = 500;
+    window.innerHeight = 800;
   });
 
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
+    window.innerWidth = originalWidth;
+    window.innerHeight = originalHeight;
   });
 
   it('shows the full player when the session starts, then hides it after 5s', () => {
@@ -168,5 +178,28 @@ describe('useMiniPlayerAutoHide', () => {
     mounted = true;
     rerender();
     expect(result.current).toBe(true);
+  });
+
+  it('never auto-hides the full player on a desktop-size viewport', () => {
+    window.innerWidth = 1280;
+    window.innerHeight = 800;
+    const { result } = renderHook(() => useMiniPlayerAutoHide(BOOK, 'full', true));
+
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(result.current).toBe(true);
+  });
+
+  it('still auto-hides on a short window (compact viewport semantics)', () => {
+    // matches FooterBar's isMobileView: width < 640 OR height < 640
+    window.innerWidth = 1280;
+    window.innerHeight = 500;
+    const { result } = renderHook(() => useMiniPlayerAutoHide(BOOK, 'full', true));
+
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(result.current).toBe(false);
   });
 });

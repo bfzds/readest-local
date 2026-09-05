@@ -5,6 +5,14 @@ import { useReaderStore } from '@/store/readerStore';
 // How long the full card lingers after the toolbar goes away.
 const LINGER_MS = 5000;
 
+// Auto-hide only applies on mobile/compact viewports. Desktop (wide AND tall)
+// has no bottom hover toolbar anymore: once the card fades there is nothing at
+// the bottom to re-summon it, and the speed/voice/sleep sheet on the card goes
+// unreachable with it. Desktop keeps the card for the whole session — the
+// floating Speak button remains the stop control either way.
+const isCompactViewport = () =>
+  typeof window !== 'undefined' && (window.innerWidth < 640 || window.innerHeight < 640);
+
 /**
  * Whether the TTS mini player should be on screen (#5310).
  *
@@ -35,7 +43,12 @@ export const useMiniPlayerAutoHide = (
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
-    if (!mounted || playerStyle === 'minimal' || hoveredBookKey === bookKey) {
+    if (
+      !mounted ||
+      playerStyle === 'minimal' ||
+      hoveredBookKey === bookKey ||
+      !isCompactViewport()
+    ) {
       setVisible(true);
       return;
     }

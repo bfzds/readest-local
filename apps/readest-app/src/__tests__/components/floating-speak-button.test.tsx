@@ -41,8 +41,17 @@ describe('FloatingSpeakButton', () => {
   it('dispatches tts-stop when TTS is on', () => {
     readerStoreState.__ttsEnabled = true;
     render(<FloatingSpeakButton bookKey='book-1' />);
-    fireEvent.click(screen.getByLabelText('Speak'));
+    fireEvent.click(screen.getByLabelText('Stop'));
     expect(dispatchMock).toHaveBeenCalledWith('tts-stop', { bookKey: 'book-1' });
+  });
+
+  it('labels itself as Stop while TTS is playing and Speak when idle', () => {
+    const { rerender } = render(<FloatingSpeakButton bookKey='book-1' />);
+    expect(screen.getByRole('button', { name: 'Speak' })).toBeTruthy();
+    readerStoreState.__ttsEnabled = true;
+    rerender(<FloatingSpeakButton bookKey='book-1' />);
+    expect(screen.getByRole('button', { name: 'Stop' }).getAttribute('title')).toBe('Stop');
+    expect(screen.queryByRole('button', { name: 'Speak' })).toBeNull();
   });
 
   it('does nothing without a mounted view', () => {
