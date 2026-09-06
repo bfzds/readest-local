@@ -74,6 +74,7 @@ import {
   getBreadcrumbs,
   resolveCurrentGroupBy,
 } from './utils/libraryUtils';
+import { resolveImportToast } from './utils/importToast';
 import Spinner from '@/components/Spinner';
 import LibraryHeader from './components/LibraryHeader';
 import Bookshelf from './components/Bookshelf';
@@ -648,7 +649,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         if (gen !== libraryInitGeneration.current) return false;
         try {
           const temp = !settings.autoImportBooksOnOpen;
-          const book = await ingestFile(
+          const result = await ingestFile(
             {
               file,
               books: library,
@@ -656,9 +657,9 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
             },
             { appService, settings },
           );
-          if (book) {
-            library = [...library.filter((b) => b.hash !== book.hash), book];
-            bookIds.push(book.hash);
+          if (result) {
+            library = [...library.filter((b) => b.hash !== result.book.hash), result.book];
+            bookIds.push(result.book.hash);
           }
         } catch (error) {
           console.error('Failed to import book:', file, error);
@@ -989,6 +990,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     const failedImports: Array<{ filename: string; errorMessage: string }> = [];
     const failedPaths: string[] = [];
     const successfulImports: string[] = [];
+    const existingImports: string[] = [];
 
     // Readest's own Books/ prefix is resolved once at app init and persisted
     // in `settings.localBooksDir`. We hand it to `ingestFile` so the in-place
@@ -1023,7 +1025,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         // `externalLibraryFolders` and incorrectly fall back to copy
         // mode. Pulling the latest snapshot from zustand fixes this.
         const liveSettings = useSettingsStore.getState().settings;
-        const book = await ingestFile(
+        const result = await ingestFile(
           {
             file,
             books: library,
@@ -1033,9 +1035,13 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           },
           { appService, settings: liveSettings, appBooksPrefix },
         );
-        if (!book) return null;
-        successfulImports.push(book.title);
-        return book;
+        if (!result) return null;
+        if (result.existed) {
+          existingImports.push(result.book.title);
+        } else {
+          successfulImports.push(result.book.title);
+        }
+        return result.book;
       } catch (error) {
         const filename = typeof file === 'string' ? file : file.name;
         if (typeof file === 'string') failedPaths.push(file);
@@ -1166,17 +1172,29 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     // Surface the success toast when books were imported. In silent (auto-import)
     // mode failures are suppressed, so show success independently of them; in
     // interactive mode keep the original behaviour (only when nothing failed).
-    if (
-      successfulImports.length > 0 &&
-      !saveFailed &&
-      (options.silent || failedImports.length === 0)
-    ) {
+    // Duplicate imports are reported separately ("Already in library") instead
+    // of counting as successes; silent re-scans must never toast that.
+    const importToast = options.silent
+      ? successfulImports.length > 0 && !saveFailed
+        ? {
+            type: 'success' as const,
+            message: _('Successfully imported {{count}} book(s)', {
+              count: successfulImports.length,
+            }),
+          }
+        : null
+      : resolveImportToast({
+          newCount: successfulImports.length,
+          existingCount: existingImports.length,
+          failedCount: failedImports.length,
+          saveFailed,
+          t: _,
+        });
+    if (importToast) {
       eventDispatcher.dispatch('toast', {
-        message: _('Successfully imported {{count}} book(s)', {
-          count: successfulImports.length,
-        }),
-        timeout: 2000,
-        type: 'success',
+        message: importToast.message,
+        timeout: importToast.type === 'info' ? 2500 : 2000,
+        type: importToast.type,
       });
     }
 
@@ -2112,7 +2130,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
               try {
                 const app = await envConfig.getAppService();
                 const settings = useSettingsStore.getState().settings;
-                const book = await ingestFile(
+                const result = await ingestFile(
                   {
                     file: current.file,
                     books: useLibraryStore.getState().library,
@@ -2122,8 +2140,8 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
                   },
                   { appService: app, settings },
                 );
-                if (book) {
-                  await updateBooks(envConfig, [book], { skipSave: true });
+                if (result) {
+                  await updateBooks(envConfig, [result.book], { skipSave: true });
                   const finalLibrary = useLibraryStore.getState().library;
                   await app.saveLibraryBooks(finalLibrary);
                   toastMsg(`《${current.filename}》已按勾选目录导入`);

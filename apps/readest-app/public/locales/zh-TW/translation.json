@@ -30,6 +30,8 @@
   "Edit": "編輯",
   "Excerpts": "摘錄",
   "Failed to import book(s): {{filenames}}": "導入書籍失敗：{{filenames}}",
+  "Already in library": "已在書庫",
+  "Successfully imported {{count}} book(s), {{existing}} already in library": "成功匯入 {{count}} 本書，{{existing}} 本已在書庫",
   "Failed to save library": "儲存書庫失敗，本次變更可能未保存",
   "Font": "字體",
   "Font & Layout": "字體和版面",

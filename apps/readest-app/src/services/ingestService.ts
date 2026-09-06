@@ -151,10 +151,20 @@ function shouldImportInPlace(
  * callers save per item. The shared logic that must NOT diverge — importing,
  * group/tag metadata — lives here.
  */
+export interface IngestFileResult {
+  book: Book;
+  /**
+   * True when the file was already in the library (byFilePath in-place hit —
+   * the same on-disk file at the same path re-imported). Callers use it to
+   * say "already in library" instead of a misleading "successfully imported".
+   */
+  existed: boolean;
+}
+
 export async function ingestFile(
   opts: IngestFileOptions,
   deps: IngestFileDeps,
-): Promise<Book | null> {
+): Promise<IngestFileResult | null> {
   const { appService, settings, appBooksPrefix } = deps;
 
   const inPlaceRoots = settings.externalLibraryFolders ?? [];
@@ -207,7 +217,7 @@ export async function ingestFile(
         existing.sourceTitle = pixivMeta.title;
         if (pixivMeta.author) existing.author = pixivMeta.author;
       }
-      return existing;
+      return { book: existing, existed: true };
     }
   }
 
@@ -251,5 +261,5 @@ export async function ingestFile(
     }
   }
 
-  return book;
+  return { book, existed: false };
 }

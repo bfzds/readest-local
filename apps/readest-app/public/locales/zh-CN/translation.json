@@ -34,6 +34,8 @@
   "Edit": "编辑",
   "Excerpts": "摘录",
   "Failed to import book(s): {{filenames}}": "导入书籍失败：{{filenames}}",
+  "Already in library": "已在书库",
+  "Successfully imported {{count}} book(s), {{existing}} already in library": "成功导入 {{count}} 本书，{{existing}} 本已在书库",
   "Failed to save library": "保存书库失败，本次更改可能未保存",
   "Font": "字体",
   "Font & Layout": "字体和布局",

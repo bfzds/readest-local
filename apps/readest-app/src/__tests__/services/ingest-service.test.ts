@@ -39,14 +39,15 @@ function makeDeps(
 describe('ingestFile', () => {
   test('returns the imported book', async () => {
     const { appService, settings } = makeDeps();
-    const book = await ingestFile({ file: 'book.epub', books: [] }, { appService, settings });
+    const result = await ingestFile({ file: 'book.epub', books: [] }, { appService, settings });
+    const book = result?.book;
     expect(book?.hash).toBe('hash1');
   });
 
   test('returns null when importBook returns null', async () => {
     const { appService, settings } = makeDeps({ importResult: null });
-    const book = await ingestFile({ file: 'book.epub', books: [] }, { appService, settings });
-    expect(book).toBeNull();
+    const result = await ingestFile({ file: 'book.epub', books: [] }, { appService, settings });
+    expect(result).toBeNull();
   });
 
   test('passes the lookup index through to importBook', async () => {
@@ -85,10 +86,11 @@ describe('ingestFile', () => {
 
   test('applies groupId and groupName', async () => {
     const { appService, settings } = makeDeps();
-    const book = await ingestFile(
+    const result = await ingestFile(
       { file: 'book.epub', books: [], groupId: 'g1', groupName: 'Sci-Fi' },
       { appService, settings },
     );
+    const book = result?.book;
     expect(book?.groupId).toBe('g1');
     expect(book?.groupName).toBe('Sci-Fi');
   });
@@ -97,20 +99,22 @@ describe('ingestFile', () => {
     const { appService, settings } = makeDeps({
       importResult: makeBook({ groupId: 'old', groupName: 'Old/Folder' }),
     });
-    const book = await ingestFile(
+    const result = await ingestFile(
       { file: 'book.epub', books: [], groupId: '', groupName: undefined },
       { appService, settings },
     );
+    const book = result?.book;
     expect(book?.groupId).toBe('');
     expect(book?.groupName).toBeUndefined();
   });
 
   test('applies a subject tag and bumps updatedAt', async () => {
     const { appService, settings } = makeDeps();
-    const book = await ingestFile(
+    const result = await ingestFile(
       { file: 'book.epub', books: [], subjectTag: 'scifi' },
       { appService, settings },
     );
+    const book = result?.book;
     expect(book?.tags).toContain('scifi');
     expect(book?.updatedAt).toBeGreaterThan(2000);
   });
@@ -186,7 +190,7 @@ describe('ingestFile', () => {
       byMetaKey: new Map(),
       byFilePath: new Map([[sourcePath.toLowerCase(), existing]]),
     } as unknown as Parameters<typeof ingestFile>[0]['lookupIndex'];
-    const book = await ingestFile(
+    const result = await ingestFile(
       {
         file: sourcePath,
         books: [existing],
@@ -196,7 +200,8 @@ describe('ingestFile', () => {
       },
       { appService, settings },
     );
-    expect(book).toBe(existing);
+    expect(result?.existed).toBe(true);
+    expect(result?.book).toBe(existing);
     expect(importBook).not.toHaveBeenCalled();
     expect(existing.groupId).toBe('manual');
     expect(existing.groupName).toBe('Manual/Group');
@@ -223,11 +228,12 @@ describe('ingestFile', () => {
       byMetaKey: new Map(),
       byFilePath: new Map([[sourcePath.toLowerCase(), existing]]),
     } as unknown as Parameters<typeof ingestFile>[0]['lookupIndex'];
-    const book = await ingestFile(
+    const result = await ingestFile(
       { file: sourcePath, books: [existing], lookupIndex },
       { appService, settings },
     );
-    expect(book).toBe(existing);
+    expect(result?.existed).toBe(true);
+    expect(result?.book).toBe(existing);
     expect(importBook).not.toHaveBeenCalled();
     expect(existing.title).toBe('异世界魔物娘收容');
     expect(existing.sourceTitle).toBe('异世界魔物娘收容');
