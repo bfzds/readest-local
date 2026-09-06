@@ -245,6 +245,9 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
   }, [defaultCJKFont]);
 
   useEffect(() => {
+    // Skip when unchanged: the effect also runs on mount, and saving then
+    // would wipe the Ctrl+wheel zoom anchor just from opening the panel.
+    if (defaultFontSize === viewSettings.defaultFontSize) return;
     saveViewSettings(envConfig, bookKey, 'defaultFontSize', defaultFontSize);
     // Editing the configured default resets any Ctrl+wheel zoom so the live
     // size snaps back to the new default (the zoom anchor).
