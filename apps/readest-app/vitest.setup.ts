@@ -376,6 +376,19 @@ if (typeof window !== 'undefined' && !window.matchMedia) {
     }) as MediaQueryList;
 }
 
+// jsdom does not implement ResizeObserver; components (e.g. TTSMiniPlayer)
+// construct one in a layout effect to re-measure on resize. jsdom never
+// resizes, so a no-op stub that merely records observers is sufficient.
+if (typeof window !== 'undefined' && !('ResizeObserver' in window)) {
+  class ResizeObserverStub {
+    constructor(public callback: ResizeObserverCallback) {}
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+  window.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver;
+}
+
 // jsdom reports these unimplemented methods to its virtual console even when
 // the calling test passes. Tests that need media behavior replace them locally.
 if (typeof HTMLMediaElement !== 'undefined') {
