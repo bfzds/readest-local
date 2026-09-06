@@ -40,6 +40,10 @@ export const usePullToRefresh = (
     const damping = getPlatformDamping();
     const appr = createApprFunction(damping.MAX, damping.k);
     let isLoading = false;
+    // Lets the unmount cleanup remove the per-touch move/end listeners too,
+    // not just touchstart (they used to leak if the component unmounted
+    // mid-gesture or mid-load).
+    let activeTouchCleanup: (() => void) | null = null;
 
     // Disable native bounce on the scroll container so the JS-based
     // pull-to-refresh resistance is visible (especially on iOS WKWebView).
@@ -58,6 +62,10 @@ export const usePullToRefresh = (
 
       el.addEventListener('touchmove', handleTouchMove, { passive: true });
       el.addEventListener('touchend', handleTouchEnd);
+      activeTouchCleanup = () => {
+        el.removeEventListener('touchmove', handleTouchMove);
+        el.removeEventListener('touchend', handleTouchEnd);
+      };
 
       function handleTouchMove(moveEvent: TouchEvent) {
         const el = ref.current;
@@ -138,6 +146,7 @@ export const usePullToRefresh = (
 
         el.removeEventListener('touchmove', handleTouchMove);
         el.removeEventListener('touchend', handleTouchEnd);
+        activeTouchCleanup = null;
 
         const isStage2 = onTriggerStage2 && dy > TRIGGER_THRESHOLD_STAGE2;
         const isStage1 = dy > TRIGGER_THRESHOLD_STAGE1;
@@ -200,6 +209,7 @@ export const usePullToRefresh = (
 
             // User pulled up significantly, reset
             if (pullDelta < -30) {
+              pullCancelled = true;
               for (const wrapper of wrappers) {
                 wrapper.style.transition = 'transform 0.3s ease-out';
                 wrapper.style.transform = 'translateY(0)';
@@ -213,6 +223,7 @@ export const usePullToRefresh = (
           el.addEventListener('touchstart', handleLoadingTouchStart, { passive: true });
           el.addEventListener('touchmove', handleLoadingTouchMove, { passive: true });
 
+          let pullCancelled = false;
           try {
             const triggerFn = isStage2 ? onTriggerStage2 : onTriggerStage1;
             await Promise.resolve(triggerFn());
@@ -220,6 +231,14 @@ export const usePullToRefresh = (
             console.error('Pull to refresh error:', error);
           } finally {
             isLoading = false;
+            // The user's pull-up already reset the visuals; don't fight it
+            // with a competing snap-back. The refresh itself cannot be
+            // un-dispatched, but the UI must stay consistent with the user.
+            if (pullCancelled) {
+              el.removeEventListener('touchstart', handleLoadingTouchStart);
+              el.removeEventListener('touchmove', handleLoadingTouchMove);
+              return;
+            }
             hideLoadingSpinner(parentEl);
             for (const wrapper of wrappers) {
               wrapper.style.transition = 'transform 0.3s ease-out';
@@ -255,6 +274,7 @@ export const usePullToRefresh = (
 
     return () => {
       el.removeEventListener('touchstart', handleTouchStart);
+      activeTouchCleanup?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ref.current]);

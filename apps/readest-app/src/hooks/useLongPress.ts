@@ -162,6 +162,12 @@ export const useLongPress = (
       if (timerRef.current) {
         clearTimeout(timerRef.current);
       }
+      if (pressDelayRef.current) {
+        clearTimeout(pressDelayRef.current);
+      }
+      if (pointerEventTimeoutRef.current) {
+        clearTimeout(pointerEventTimeoutRef.current);
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);

@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 export type DragKey = 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown';
 
@@ -21,6 +21,21 @@ export const useDrag = (
   const lastX = useRef(0);
   const lastY = useRef(0);
   const startTime = useRef(0);
+  // Per-drag teardown handles so an unmount mid-drag can still remove the
+  // listeners, the shield, and the global styles (otherwise the page is left
+  // with a stuck overlay and userSelect/cursor).
+  const shieldRef = useRef<HTMLDivElement | null>(null);
+  const removeListenersRef = useRef<(() => void) | null>(null);
+
+  useEffect(
+    () => () => {
+      removeListenersRef.current?.();
+      shieldRef.current?.remove();
+      document.body.style.userSelect = '';
+      document.documentElement.style.cursor = '';
+    },
+    [],
+  );
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent | React.TouchEvent) => {
@@ -33,6 +48,10 @@ export const useDrag = (
         startY.current = e.clientY;
         startX.current = e.clientX;
       }
+      // Deltas are relative to the LAST position; seed it with this drag's
+      // start so the first move isn't measured against a stale previous drag.
+      lastX.current = startX.current;
+      lastY.current = startY.current;
       startTime.current = performance.now();
 
       document.body.style.userSelect = 'none';
@@ -60,6 +79,7 @@ export const useDrag = (
         pointerEvents: 'auto',
       });
       document.body.appendChild(shield);
+      shieldRef.current = shield;
 
       const handleMove = (event: MouseEvent | TouchEvent) => {
         if (isDragging.current) {
@@ -90,6 +110,8 @@ export const useDrag = (
         isDragging.current = false;
 
         shield.remove();
+        shieldRef.current = null;
+        removeListenersRef.current = null;
         document.body.style.userSelect = '';
         document.documentElement.style.cursor = '';
 
@@ -122,6 +144,14 @@ export const useDrag = (
         window.removeEventListener('touchmove', handleMove);
         window.removeEventListener('touchend', handleEnd);
       };
+
+      const removeListeners = () => {
+        window.removeEventListener('mousemove', handleMove);
+        window.removeEventListener('mouseup', handleEnd);
+        window.removeEventListener('touchmove', handleMove);
+        window.removeEventListener('touchend', handleEnd);
+      };
+      removeListenersRef.current = removeListeners;
 
       window.addEventListener('mousemove', handleMove, { passive: true });
       window.addEventListener('mouseup', handleEnd);

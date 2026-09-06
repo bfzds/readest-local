@@ -52,6 +52,25 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
   const [loading, setLoading] = useState(false);
   const [errorLoading, setErrorLoading] = useState(false);
 
+  // When the book data is not ready yet, show the spinner only after a short
+  // grace period (avoid flashing it for a fast load). This used to live in the
+  // render body as a bare setTimeout — re-queued on every render and running
+  // setState after unmount on close.
+  const firstBookData = bookKeys?.[0] ? getBookData(bookKeys[0]) : undefined;
+  const firstViewSettings = bookKeys?.[0] ? getViewSettings(bookKeys[0]) : undefined;
+  const isBookDataMissing =
+    !bookKeys ||
+    bookKeys.length === 0 ||
+    !firstBookData ||
+    !firstBookData.book ||
+    !firstBookData.bookDoc ||
+    !firstViewSettings;
+  useEffect(() => {
+    if (!isBookDataMissing) return;
+    const timer = setTimeout(() => setLoading(true), 200);
+    return () => clearTimeout(timer);
+  }, [isBookDataMissing]);
+
   useBookShortcuts({ sideBarBookKey, bookKeys });
   useGamepad();
 
@@ -310,7 +329,6 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
   const bookData = getBookData(bookKeys[0]!);
   const viewSettings = getViewSettings(bookKeys[0]!);
   if (!bookData || !bookData.book || !bookData.bookDoc || !viewSettings) {
-    setTimeout(() => setLoading(true), 200);
     return (
       loading &&
       !errorLoading && (
