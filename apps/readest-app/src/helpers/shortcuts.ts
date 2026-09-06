@@ -255,6 +255,11 @@ const DEFAULT_SHORTCUTS = {
     description: _('Go Back'),
     section: 'Navigation',
   },
+  onJumpToPage: {
+    keys: ['ctrl+g', 'cmd+g'],
+    description: _('Jump to Location'),
+    section: 'Navigation',
+  },
   onGoForward: {
     keys: ['shift+ArrowRight', 'shift+l', 'alt+ArrowRight'],
     description: _('Go Forward'),

@@ -10,6 +10,11 @@ interface PageJumpInputProps {
   bookKey: string;
   /** Always show '{current} / {total}' regardless of the progress style. */
   showFraction?: boolean;
+  /** Enter edit mode on mount (Ctrl+G popup flow), page portion pre-selected. */
+  autoEdit?: boolean;
+  /** Fired whenever editing ends (commit, Escape, or blur) — popup hosts use
+   * it to dismiss themselves after a jump or cancel. */
+  onEditEnd?: () => void;
   className?: string;
 }
 
@@ -20,7 +25,13 @@ interface PageJumpInputProps {
  * sizer span reserves the label's width so toggling edit mode never shifts
  * the surrounding layout.
  */
-const PageJumpInput: React.FC<PageJumpInputProps> = ({ bookKey, showFraction, className }) => {
+const PageJumpInput: React.FC<PageJumpInputProps> = ({
+  bookKey,
+  showFraction,
+  autoEdit,
+  onEditEnd,
+  className,
+}) => {
   const _ = useTranslation();
   const { hoveredBookKey, getView, getProgress, getViewSettings } = useReaderStore();
   const { getBookData } = useBookDataStore();
@@ -52,6 +63,17 @@ const PageJumpInput: React.FC<PageJumpInputProps> = ({ bookKey, showFraction, cl
       inputRef.current?.blur();
     }
   }, [hoveredBookKey, bookKey]);
+
+  useEffect(() => {
+    // Popup flow (Ctrl+G): enter edit mode on mount with the page portion
+    // pre-selected, mirroring what a click on the label does.
+    if (!autoEdit) return;
+    setDraft(`${currentLabel} / ${total}`);
+    setSelectLength(currentLabel.length);
+    setEditing(true);
+    inputRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoEdit]);
 
   const { section, pageinfo } = progress || {};
   const pageInfo = bookData?.isFixedLayout ? section : pageinfo;
@@ -94,6 +116,7 @@ const PageJumpInput: React.FC<PageJumpInputProps> = ({ bookKey, showFraction, cl
   const stopEditing = () => {
     setEditing(false);
     inputRef.current?.blur();
+    onEditEnd?.();
   };
 
   const commitDraft = () => {
@@ -135,7 +158,10 @@ const PageJumpInput: React.FC<PageJumpInputProps> = ({ bookKey, showFraction, cl
           setSelectLength(currentLabel.length);
           setEditing(true);
         }}
-        onBlur={() => setEditing(false)}
+        onBlur={() => {
+          setEditing(false);
+          onEditEnd?.();
+        }}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
           // Keep keystrokes away from the reader's page-turn shortcuts and

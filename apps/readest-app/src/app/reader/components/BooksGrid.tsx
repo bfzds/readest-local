@@ -9,6 +9,7 @@ import { useBookProgress } from '@/store/readerProgressStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useTranslation } from '@/hooks/useTranslation';
+import { eventDispatcher } from '@/utils/event';
 import { tauriSetWindowTitle } from '@/utils/window';
 import { useContentInsets } from '../hooks/useContentInsets';
 import SearchResultsNav from './sidebar/SearchResultsNav';
@@ -23,6 +24,7 @@ import TOCFloatingButton from './TOCFloatingButton';
 import SearchFloatingButton from './SearchFloatingButton';
 import FloatingSpeakButton from './FloatingSpeakButton';
 import FooterBar from './footerbar/FooterBar';
+import PageJumpInput from './footerbar/PageJumpInput';
 import ProgressBar from './ProgressBar';
 import BookmarkPullDown from './BookmarkPullDown';
 import Annotator from './annotator/Annotator';
@@ -115,6 +117,7 @@ export const BookCellInner: React.FC<BookCellProps> = ({
   const progress = useBookProgress(bookKey);
   const viewState = useReaderStore((s) => s.viewStates[bookKey]);
   const viewSettings = viewState?.viewSettings ?? null;
+  const _ = useTranslation();
 
   // config / bookData are read imperatively: their relevant fields are
   // written alongside progress (setProgress / saveConfig), so the
@@ -138,6 +141,20 @@ export const BookCellInner: React.FC<BookCellProps> = ({
     (isOpen: boolean) => setDropdownOpenForBook(bookKey, isOpen),
     [bookKey, setDropdownOpenForBook],
   );
+
+  // Ctrl+G popup (Jump to Location): the only precise page-jump entry on
+  // desktop after the hover toolbar was removed. Toggle via the shortcut
+  // event; closes on commit/Escape/backdrop click (PageJumpInput onEditEnd).
+  const [pageJumpOpen, setPageJumpOpen] = useState(false);
+  useEffect(() => {
+    const togglePageJump = (event: CustomEvent) => {
+      if (event.detail?.bookKey === bookKey) setPageJumpOpen((open) => !open);
+    };
+    eventDispatcher.on('toggle-page-jump', togglePageJump);
+    return () => {
+      eventDispatcher.off('toggle-page-jump', togglePageJump);
+    };
+  }, [bookKey]);
 
   if (!book || !config || !bookDoc || !viewSettings || !viewState) return null;
 
@@ -277,6 +294,31 @@ export const BookCellInner: React.FC<BookCellProps> = ({
       <SearchResultsNav bookKey={bookKey} gridInsets={gridInsets} />
       <BooknotesNav bookKey={bookKey} gridInsets={gridInsets} toc={bookDoc.toc || []} />
       <FootnotePopup bookKey={bookKey} bookDoc={bookDoc} />
+      {pageJumpOpen && (
+        <div
+          className='fixed inset-0 z-40'
+          onMouseDown={() => setPageJumpOpen(false)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setPageJumpOpen(false);
+          }}
+        >
+          <div
+            className='eink-bordered bg-base-100/95 absolute bottom-24 left-1/2 -translate-x-1/2 rounded-xl px-4 py-3 shadow-lg'
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <label className='mb-2 block text-xs text-base-content/70'>
+              {_('Jump to Location')}
+            </label>
+            <PageJumpInput
+              bookKey={bookKey}
+              showFraction
+              autoEdit
+              onEditEnd={() => setPageJumpOpen(false)}
+              className='text-base'
+            />
+          </div>
+        </div>
+      )}
       <FooterBar
         bookKey={bookKey}
         bookFormat={book.format}

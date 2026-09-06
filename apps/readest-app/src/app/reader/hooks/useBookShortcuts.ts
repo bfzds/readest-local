@@ -337,6 +337,11 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
     eventDispatcher.dispatch('toggle-bookmark', { bookKey: sideBarBookKey });
   };
 
+  const jumpToPage = () => {
+    if (!sideBarBookKey) return;
+    eventDispatcher.dispatch('toggle-page-jump', { bookKey: sideBarBookKey });
+  };
+
   const toggleParagraphMode = (event?: KeyboardEvent | MessageEvent) => {
     if (!sideBarBookKey) return false;
     if (event instanceof KeyboardEvent && event.repeat) return true;
@@ -446,6 +451,7 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
       onGoRightSection: goRightSection,
       onGoBack: goBack,
       onGoForward: goForward,
+      onJumpToPage: jumpToPage,
       onZoomIn: zoomIn,
       onZoomOut: zoomOut,
       onResetZoom: resetZoom,

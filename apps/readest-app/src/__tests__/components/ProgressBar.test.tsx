@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, cleanup, screen } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { render, cleanup, screen, act } from '@testing-library/react';
 
 const defaultViewSettings = () => ({
   vertical: false,
@@ -14,7 +14,7 @@ const defaultViewSettings = () => ({
 });
 
 const readerStoreState = {
-  getView: () => null,
+  getView: (): unknown => null,
   getViewSettings: defaultViewSettings,
 };
 
@@ -110,5 +110,115 @@ describe('ProgressBar', () => {
       />,
     );
     expect(screen.getByText('第一章')).toBeDefined();
+  });
+});
+
+describe('ProgressBar scrub gesture', () => {
+  const goToFraction = vi.fn();
+  const viewState = { view: null as null | { goToFraction: typeof goToFraction } };
+
+  const pointerEvent = (type: string, x: number, y = 0) =>
+    // jsdom has no PointerEvent constructor; a MouseEvent with the pointer
+    // event's type string is enough for the handler contract (button, clientX).
+    new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0 });
+
+  // Dispatch inside act() so state updates from the handlers (the bubble)
+  // commit synchronously before assertions.
+  const fire = (target: EventTarget, event: Event) => {
+    act(() => {
+      target.dispatchEvent(event);
+    });
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    goToFraction.mockClear();
+    readerStoreState.getView = () =>
+      viewState.view
+        ? (viewState.view as unknown as NonNullable<ReturnType<typeof readerStoreState.getView>>)
+        : null;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    readerStoreState.getView = () => null;
+  });
+
+  const renderStrip = () => {
+    render(
+      <ProgressBar
+        bookKey='book-1'
+        horizontalGap={5}
+        contentInsets={{ left: 20, right: 20, top: 20, bottom: 20 }}
+        gridInsets={{ left: 0, right: 0, top: 0, bottom: 0 }}
+      />,
+    );
+    const strip = screen.getByTestId('progress-strip');
+    strip.getBoundingClientRect = () =>
+      ({
+        left: 0,
+        width: 1000,
+        top: 700,
+        height: 20,
+        right: 1000,
+        bottom: 720,
+        x: 0,
+        y: 700,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    return strip;
+  };
+
+  it('does not scrub when the pointer moves less than the threshold', () => {
+    viewState.view = { goToFraction };
+    const strip = renderStrip();
+    fire(strip, pointerEvent('pointerdown', 500));
+    fire(window, pointerEvent('pointermove', 504));
+    fire(window, pointerEvent('pointerup', 504));
+    expect(goToFraction).not.toHaveBeenCalled();
+  });
+
+  it('scrubs to the pointer fraction and jumps there on release', () => {
+    viewState.view = { goToFraction };
+    const strip = renderStrip();
+    fire(strip, pointerEvent('pointerdown', 500));
+    fire(window, pointerEvent('pointermove', 750));
+    expect(screen.getByRole('status')).toBeDefined();
+    fire(window, pointerEvent('pointerup', 750));
+    expect(goToFraction).toHaveBeenLastCalledWith(0.75);
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('cancels back to the original position on Escape mid-drag', () => {
+    viewState.view = { goToFraction };
+    const strip = renderStrip();
+    fire(strip, pointerEvent('pointerdown', 500));
+    fire(window, pointerEvent('pointermove', 900));
+    fire(window, new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    // leading scrub call + the restore call
+    expect(goToFraction).toHaveBeenCalledTimes(2);
+    expect(goToFraction).toHaveBeenLastCalledWith(0.01);
+    expect(screen.queryByRole('status')).toBeNull();
+    fire(window, pointerEvent('pointerup', 900));
+    expect(goToFraction).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not scrub a vertical layout', () => {
+    readerStoreState.getViewSettings = () => ({ ...defaultViewSettings(), vertical: true });
+    viewState.view = { goToFraction };
+    const strip = renderStrip();
+    fire(strip, pointerEvent('pointerdown', 500));
+    fire(window, pointerEvent('pointermove', 900));
+    fire(window, pointerEvent('pointerup', 900));
+    expect(goToFraction).not.toHaveBeenCalled();
+  });
+
+  it('does not scrub without a mounted view', () => {
+    viewState.view = null;
+    const strip = renderStrip();
+    fire(strip, pointerEvent('pointerdown', 500));
+    fire(window, pointerEvent('pointermove', 900));
+    fire(window, pointerEvent('pointerup', 900));
+    expect(goToFraction).not.toHaveBeenCalled();
   });
 });
