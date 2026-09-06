@@ -187,7 +187,11 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     setSettingsDialogOpen(false);
   };
 
-  // handle activeSettingsItemId: switch to correct panel and scroll to item
+  // handle activeSettingsItemId: switch to correct panel and scroll to item.
+  // The dialog is conditionally mounted and panels mount on first activation,
+  // so the target row may not exist yet when this effect runs — poll for it
+  // (rAF, ~2s deadline) instead of a single timeout that silently misses on
+  // slow first mounts (command-palette deep links landed randomly).
   useEffect(() => {
     if (!activeSettingsItemId) return;
 
@@ -214,8 +218,11 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       }
     }
 
-    // scroll to item after panel renders
-    const timeoutId = setTimeout(() => {
+    let rafId = 0;
+    let frames = 0;
+    let cancelled = false;
+    const tryScroll = () => {
+      if (cancelled) return;
       const element = panelRef.current?.querySelector(
         `[data-setting-id="${activeSettingsItemId}"]`,
       );
@@ -223,11 +230,24 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
         element.classList.add('settings-highlight');
         setTimeout(() => element.classList.remove('settings-highlight'), 2000);
+        setActiveSettingsItemId(null);
+        return;
       }
-      setActiveSettingsItemId(null);
-    }, 100);
+      // ~2s at 60fps: covers dialog mount + first render of a heavy panel;
+      // a miss past the deadline means the id simply has no row.
+      frames += 1;
+      if (frames > 120) {
+        setActiveSettingsItemId(null);
+        return;
+      }
+      rafId = requestAnimationFrame(tryScroll);
+    };
+    rafId = requestAnimationFrame(tryScroll);
 
-    return () => clearTimeout(timeoutId);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(rafId);
+    };
   }, [activeSettingsItemId, activePanel, setActiveSettingsItemId]);
 
   useEffect(() => {
