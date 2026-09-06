@@ -192,6 +192,7 @@
   "No supported files found. Supported formats: {{formats}}": "未找到支持的文件。支持的格式：{{formats}}",
   "Skipped {{count}} unsupported file(s). Supported formats: {{formats}}": "已跳过 {{count}} 个不支持的文件。支持的格式：{{formats}}",
   "Failed to open file selector": "打开文件选择器失败",
+  "Preparing text-to-speech…": "正在准备朗读…",
   "Drop to Import Books": "拖放导入书籍",
   "Custom": "自定义",
   "Custom Theme": "自定义主题",

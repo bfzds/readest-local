@@ -154,6 +154,26 @@ const TTSMiniPlayer = ({
     setPanelTopOffset(
       Math.max(0, Math.round(cell.getBoundingClientRect().bottom - settledTop - safeAreaMargin)),
     );
+    // Panel height is content-driven (progress info loading, font size, the
+    // on-screen keyboard) — re-measure whenever it actually resizes, not just
+    // when the bar/tab flips.
+    const observer = new ResizeObserver(() => {
+      const nextRect = panel.getBoundingClientRect();
+      if (nextRect.height === 0) return;
+      const nextTransform = getComputedStyle(panel).transform;
+      const nextTranslateY =
+        nextTransform && nextTransform !== 'none' ? new DOMMatrixReadOnly(nextTransform).m42 : 0;
+      setPanelTopOffset(
+        Math.max(
+          0,
+          Math.round(
+            cell.getBoundingClientRect().bottom - (nextRect.top - nextTranslateY) - safeAreaMargin,
+          ),
+        ),
+      );
+    });
+    observer.observe(panel);
+    return () => observer.disconnect();
   }, [barVisible, bottomBarTab, bookKey, safeAreaMargin]);
 
   const bottomOffset = viewSettings

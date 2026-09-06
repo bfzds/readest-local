@@ -58,8 +58,15 @@ const TTSControl: React.FC<TTSControlProps> = ({ bookKey, gridInsets }) => {
 
   const handleExpand = () => {
     // The mini player mounts as soon as the session starts; the full sheet
-    // needs initialized clients (voices, timeline), so ignore taps until then.
-    if (!tts.ttsClientsInited) return;
+    // needs initialized clients (voices, timeline), so ignore taps until then
+    // — but say so, instead of leaving a cursor-pointer card that eats taps.
+    if (!tts.ttsClientsInited) {
+      eventDispatcher.dispatch('toast', {
+        message: _('Preparing text-to-speech…'),
+        type: 'info',
+      });
+      return;
+    }
     tts.refreshTtsLang();
     setShowPlayerSheet(true);
   };
