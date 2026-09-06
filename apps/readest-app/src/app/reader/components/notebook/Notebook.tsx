@@ -90,10 +90,15 @@ const Notebook: React.FC = ({}) => {
 
   // Escape goes through the reader's escape stack: the notebook only consumes
   // it while visible, and layers above it (note editor) get first crack.
-  useEscapeHandler('notebook', () => {
-    if (!isNotebookVisible) return false;
-    handleHideNotebook();
-  }, [isNotebookVisible, handleHideNotebook]);
+  useEscapeHandler(
+    'notebook',
+    (): boolean => {
+      if (!isNotebookVisible) return false;
+      handleHideNotebook();
+      return true;
+    },
+    isNotebookVisible,
+  );
 
   useEffect(() => {
     if (isNotebookVisible) {

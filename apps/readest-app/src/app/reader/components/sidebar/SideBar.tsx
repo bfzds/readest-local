@@ -176,10 +176,15 @@ const SideBar = ({}) => {
   // it collapses search (and the sidebar with it); otherwise it hides the
   // sidebar unless pinned. Layers above (notebook, note editor) get first
   // crack because they register on top of the stack.
-  useEscapeHandler('sidebar', () => {
-    if (!isSideBarVisible && !isSearchBarVisible) return false;
-    handleHideSideBar();
-  }, [isSideBarVisible, isSearchBarVisible, handleHideSideBar]);
+  useEscapeHandler(
+    'sidebar',
+    (): boolean => {
+      if (!isSideBarVisible && !isSearchBarVisible) return false;
+      handleHideSideBar();
+      return true;
+    },
+    isSideBarVisible || isSearchBarVisible,
+  );
 
   useShortcuts({ onShowSearchBar: handleShowSearchBar }, [handleShowSearchBar]);
 
