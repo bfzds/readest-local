@@ -166,6 +166,10 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
   }
 
   const scrubEnabled = !isVertical && !!view?.goToFraction && !!pageInfo && pageInfo.total > 0;
+  // A drag that starts and ends on the full-width strip makes the browser fire
+  // a click on release — which would toggle the #5293 dismissed state and hide
+  // the footer info after every scrub. Swallow that one click.
+  const suppressClickRef = useRef(false);
 
   useEffect(() => {
     const DRAG_THRESHOLD = 8;
@@ -203,6 +207,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
     const restoreOrigin = () => {
       const state = scrubStateRef.current;
       if (state?.active) {
+        suppressClickRef.current = true;
         goToFractionRef.current(state.originFraction);
       }
       clearScrub();
@@ -212,6 +217,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
       const state = scrubStateRef.current;
       if (!state) return;
       if (state.active) {
+        suppressClickRef.current = true;
         const raw = xToFraction(e.clientX, state.rect.left, state.rect.width);
         state.fraction = rtlRef.current ? 1 - raw : raw;
         scrubThrottleRef.current?.cancel();
@@ -240,6 +246,11 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
   }, []);
 
   const onStripPointerDown = (e: React.PointerEvent) => {
+    // A fresh press always re-arms the click: the suppression flag only lives
+    // for the click that immediately follows a real scrub release (and if that
+    // release happened off-strip, no click fires — clear it here instead of
+    // swallowing the user's next genuine tap).
+    suppressClickRef.current = false;
     if (!scrubEnabled || e.button !== 0) return;
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     scrubStateRef.current = {
@@ -313,7 +324,17 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
       <div
         aria-hidden='true'
         data-testid='progress-strip'
-        onClick={stripTappable ? () => setDismissed((prev) => !prev) : undefined}
+        onClick={
+          stripTappable
+            ? () => {
+                if (suppressClickRef.current) {
+                  suppressClickRef.current = false;
+                  return;
+                }
+                setDismissed((prev) => !prev);
+              }
+            : undefined
+        }
         onPointerDown={onStripPointerDown}
         className={clsx(
           'progress-strip flex items-center',

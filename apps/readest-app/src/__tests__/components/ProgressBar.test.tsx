@@ -221,4 +221,39 @@ describe('ProgressBar scrub gesture', () => {
     fire(window, pointerEvent('pointerup', 900));
     expect(goToFraction).not.toHaveBeenCalled();
   });
+
+  it('a scrub release does not toggle the #5293 dismissed state', () => {
+    // scrolled + showFooter makes the strip tappable (footerReservesBand)
+    readerStoreState.getViewSettings = () => ({
+      ...defaultViewSettings(),
+      scrolled: true,
+      showFooter: true,
+    });
+    viewState.view = { goToFraction };
+    const strip = renderStrip();
+    fire(strip, pointerEvent('pointerdown', 500));
+    fire(window, pointerEvent('pointermove', 750));
+    fire(window, pointerEvent('pointerup', 750));
+    // a down+up pair that both land on the strip fires a click in real browsers
+    strip.click();
+    expect(strip.className).not.toContain('opacity-0');
+  });
+
+  it('a plain click still toggles the dismissed state after a scrub', () => {
+    readerStoreState.getViewSettings = () => ({
+      ...defaultViewSettings(),
+      scrolled: true,
+      showFooter: true,
+    });
+    viewState.view = { goToFraction };
+    const strip = renderStrip();
+    fire(strip, pointerEvent('pointerdown', 500));
+    fire(window, pointerEvent('pointermove', 750));
+    fire(window, pointerEvent('pointerup', 750));
+    // the next genuine press re-arms the click
+    fire(strip, pointerEvent('pointerdown', 500));
+    fire(window, pointerEvent('pointerup', 500));
+    act(() => strip.click());
+    expect(strip.className).toContain('opacity-0');
+  });
 });
