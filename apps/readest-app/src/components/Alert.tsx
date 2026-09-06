@@ -71,6 +71,7 @@ const Alert: React.FC<{
           <button
             className={clsx('btn btn-sm', confirmButtonClassName, { 'btn-disabled': isProcessing })}
             onClick={() => {
+              if (isProcessing) return;
               setIsProcessing(true);
               onConfirm();
             }}

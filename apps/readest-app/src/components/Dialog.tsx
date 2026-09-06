@@ -107,10 +107,12 @@ const Dialog: React.FC<DialogProps> = ({
     previousActiveElementRef.current = document.activeElement as HTMLElement;
 
     setIsFullHeightInMobile(!snapHeight && isMobile);
+    // Capture the element so cleanup can detach from it even after the ref
+    // has moved on; dialogs that toggle open repeatedly would otherwise
+    // accumulate listeners on the <dialog> element.
+    const dialogElement = dialogRef.current;
     window.addEventListener('keydown', handleKeyDown);
-    if (dialogRef.current) {
-      dialogRef.current.addEventListener('keydown', handleKeyDown);
-    }
+    dialogElement?.addEventListener('keydown', handleKeyDown);
 
     const timer = setTimeout(() => {
       if (dialogRef.current) {
@@ -120,6 +122,7 @@ const Dialog: React.FC<DialogProps> = ({
     return () => {
       clearTimeout(timer);
       window.removeEventListener('keydown', handleKeyDown);
+      dialogElement?.removeEventListener('keydown', handleKeyDown);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
