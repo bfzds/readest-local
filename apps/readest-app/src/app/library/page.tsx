@@ -975,6 +975,10 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     groupId?: string,
     options: { silent?: boolean } = {},
   ): Promise<{ failedPaths: string[] }> => {
+    // Reject concurrent imports: two interleaved batch runs would overwrite
+    // each other's progress and interleave store writes. The auto-import path
+    // already had this guard; the manual paths get it here.
+    if (loading) return { failedPaths: [] };
     setLoading(true);
     try {
       return await runImportBooks(files, groupId, options);
@@ -1388,7 +1392,16 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   const handleImportBooksFromFiles = async () => {
     setIsSelectMode(false);
     selectFiles({ type: 'books', multiple: true }).then((result) => {
-      if (result.files.length === 0 || result.error) return;
+      if (result.error) {
+        // The selector itself failed (platform denial, IPC error) — silence
+        // here reads as a dead button.
+        eventDispatcher.dispatch('toast', {
+          message: _('Failed to open file selector'),
+          type: 'error',
+        });
+        return;
+      }
+      if (result.files.length === 0) return;
       importBooks(result.files, getImportTargetGroupId());
     });
   };
