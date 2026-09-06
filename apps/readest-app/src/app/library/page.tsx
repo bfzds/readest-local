@@ -2042,7 +2042,12 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
             </div>
           </div>
         ) : (
-          <div className='hero drop-zone h-screen items-center justify-center'>
+          <div
+            className={clsx(
+              'hero drop-zone h-screen items-center justify-center',
+              isDragging && 'drag-over',
+            )}
+          >
             <DropIndicator />
             <LibraryEmptyState onImport={setImportMenuAnchor} />
           </div>
