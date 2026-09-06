@@ -16,6 +16,7 @@ import { usePanelResize } from '@/hooks/usePanelResize';
 import { useThemeStore } from '@/store/themeStore';
 import { Overlay } from '@/components/Overlay';
 import useShortcuts from '@/hooks/useShortcuts';
+import { useEscapeHandler } from '@/app/reader/utils/escapeStack';
 import SidebarHeader from './Header';
 import SidebarContent from './Content';
 import BookCard from './BookCard';
@@ -171,10 +172,16 @@ const SideBar = ({}) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handleHideSearchBar]);
 
-  useShortcuts({ onShowSearchBar: handleShowSearchBar, onEscape: handleHideSideBar }, [
-    handleHideSideBar,
-    handleShowSearchBar,
-  ]);
+  // Escape goes through the reader's escape stack. While the search bar is up
+  // it collapses search (and the sidebar with it); otherwise it hides the
+  // sidebar unless pinned. Layers above (notebook, note editor) get first
+  // crack because they register on top of the stack.
+  useEscapeHandler('sidebar', () => {
+    if (!isSideBarVisible && !isSearchBarVisible) return false;
+    handleHideSideBar();
+  }, [isSideBarVisible, isSearchBarVisible, handleHideSideBar]);
+
+  useShortcuts({ onShowSearchBar: handleShowSearchBar }, [handleShowSearchBar]);
 
   const handleSearchResultClick = (cfi: string) => {
     getView(sideBarBookKey)?.goTo(cfi);

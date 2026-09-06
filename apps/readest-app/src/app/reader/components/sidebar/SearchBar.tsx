@@ -374,6 +374,7 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
           type='text'
           value={searchTerm}
           spellCheck={false}
+          data-escape-stack-exempt
           onChange={handleInputChange}
           onKeyDown={(e) => {
             // 兜底：reader 的 useBookShortcuts 已在捕获阶段拦截聚焦时的

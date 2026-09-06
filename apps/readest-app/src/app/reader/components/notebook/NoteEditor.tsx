@@ -6,6 +6,7 @@ import { TextSelection } from '@/utils/sel';
 import { md5Fingerprint } from '@/utils/md5';
 import { BookNote } from '@/types/book';
 import useShortcuts from '@/hooks/useShortcuts';
+import { useEscapeHandler } from '@/app/reader/utils/escapeStack';
 import TextEditor, { TextEditorRef } from '@/components/TextEditor';
 import TextButton from '@/components/TextButton';
 
@@ -95,8 +96,14 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ onSave, onEdit }) => {
         handleSaveNote();
       }
     },
-    onEscape: handleEscape,
   });
+  // Escape while editing cancels the edit — the top layer of the escape stack,
+  // above the notebook panel and the sidebar.
+  useEscapeHandler(
+    'note-editor',
+    handleEscape,
+    Boolean(notebookNewAnnotation || notebookEditAnnotation),
+  );
 
   const canSave = Boolean(note.trim());
 

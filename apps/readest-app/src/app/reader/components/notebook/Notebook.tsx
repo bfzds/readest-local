@@ -21,7 +21,7 @@ import { getPanelTopInset } from '@/utils/insets';
 import { Overlay } from '@/components/Overlay';
 import { saveSysSettings } from '@/helpers/settings';
 import { NOTE_PREFIX } from '@/types/view';
-import useShortcuts from '@/hooks/useShortcuts';
+import { useEscapeHandler } from '@/app/reader/utils/escapeStack';
 import {
   findAnnotationAtCfi,
   removeBookNoteOverlays,
@@ -88,7 +88,12 @@ const Notebook: React.FC = ({}) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isNotebookPinned]);
 
-  useShortcuts({ onEscape: handleHideNotebook }, [handleHideNotebook]);
+  // Escape goes through the reader's escape stack: the notebook only consumes
+  // it while visible, and layers above it (note editor) get first crack.
+  useEscapeHandler('notebook', () => {
+    if (!isNotebookVisible) return false;
+    handleHideNotebook();
+  }, [isNotebookVisible, handleHideNotebook]);
 
   useEffect(() => {
     if (isNotebookVisible) {

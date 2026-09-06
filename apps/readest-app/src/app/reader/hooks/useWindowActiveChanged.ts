@@ -3,6 +3,7 @@
 // event is unreliable, so "active" means "has focus".
 
 import { useEffect, useRef } from 'react';
+import { isTauriAppPlatform } from '@/services/environment';
 
 export type ActiveCallback = (isActive: boolean) => void;
 
@@ -18,10 +19,22 @@ async function activeChangedDesktop(onChange: ActiveCallback): Promise<Cleanup> 
   };
 }
 
+// web 回退（浏览器 UI 调试模式）：无 Tauri runtime 时按本文件头注释的
+// web 语义用 visibilitychange。桌面实现里的 getCurrentWindow() 在浏览器里
+// 会抛 "Cannot read properties of undefined (reading 'metadata')"，被下方
+// .catch 吃成 console.error，在 dev 面板反复报 issue。
+async function activeChangedWeb(onChange: ActiveCallback): Promise<Cleanup> {
+  const handler = () => onChange(document.visibilityState === 'visible');
+  document.addEventListener('visibilitychange', handler);
+  return () => {
+    document.removeEventListener('visibilitychange', handler);
+  };
+}
+
 export function useWindowActiveChanged(callback: ActiveCallback) {
   const onActiveChanged = useRef<ActiveCallback>(callback);
 
-  const subscribe = activeChangedDesktop;
+  const subscribe = isTauriAppPlatform() ? activeChangedDesktop : activeChangedWeb;
 
   useEffect(() => {
     onActiveChanged.current = callback;
