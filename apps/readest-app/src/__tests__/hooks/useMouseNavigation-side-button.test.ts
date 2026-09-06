@@ -26,7 +26,11 @@ describe('side-button back search-bar interlock', () => {
   });
 
   it('keeps the sidebar open when it is pinned', () => {
-    useSidebarStore.setState({ isSearchBarVisible: true, isSideBarPinned: true });
+    useSidebarStore.setState({
+      isSearchBarVisible: true,
+      isSideBarPinned: true,
+      isSideBarVisible: true,
+    });
 
     expect(handleSideButtonBackInterlock()).toBe(true);
     expect(useSidebarStore.getState().isSearchBarVisible).toBe(false);

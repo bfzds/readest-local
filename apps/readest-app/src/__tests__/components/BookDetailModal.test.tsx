@@ -143,7 +143,10 @@ describe('BookDetailModal unsaved-edit guard', () => {
   const openEditMode = async () => {
     const book = makeBook();
     const onClose = vi.fn();
-    render(<BookDetailModal book={book} isOpen onClose={onClose} />);
+    // The edit entry point only renders when a metadata-update handler exists.
+    render(
+      <BookDetailModal book={book} isOpen onClose={onClose} handleBookMetadataUpdate={vi.fn()} />,
+    );
     await waitFor(() => expect(screen.getByTestId('cover')).toBeDefined());
     fireEvent.click(screen.getByTitle('Edit Metadata'));
     return { onClose };
@@ -177,7 +180,9 @@ describe('BookDetailModal unsaved-edit guard', () => {
 
     fireEvent.click(await screen.findByTitle('Remove cover image'));
     fireEvent.keyDown(screen.getByTestId('dialog-mock'), { key: 'Escape' });
-    fireEvent.click(screen.getByText('Cancel').closest('button')!);
+    // 'Cancel' also exists on the edit form; the confirm alert's button is the last one.
+    const cancelButtons = screen.getAllByText('Cancel');
+    fireEvent.click(cancelButtons[cancelButtons.length - 1]!.closest('button')!);
 
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.queryByText('Discard unsaved changes?')).toBeNull();

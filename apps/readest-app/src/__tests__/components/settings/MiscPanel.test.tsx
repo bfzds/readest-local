@@ -55,12 +55,12 @@ describe('MiscPanel unsaved draft reporting', () => {
       onRegisterUnsavedCheck.mock.calls[onRegisterUnsavedCheck.mock.calls.length - 1]![0] as
         | (() => boolean)
         | null;
-    expect(latestChecker()).toBe(false);
+    expect((latestChecker() as () => boolean)()).toBe(false);
 
     // The first textarea is the book (content) stylesheet draft.
     const textarea = screen.getAllByRole('textbox')[0] as HTMLTextAreaElement;
     fireEvent.change(textarea, { target: { value: 'body { color: red }' } });
-    expect(latestChecker()).toBe(true);
+    expect((latestChecker() as () => boolean)()).toBe(true);
 
     cleanup();
     expect(latestChecker()).toBeNull();
