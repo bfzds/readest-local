@@ -275,7 +275,7 @@ describe('ProgressBar scrub gesture', () => {
     expect(handle.className).toContain('opacity-0');
   });
 
-  it('expands the track and shows the handle while the strip is hovered', () => {
+  it('expands the track on hover but keeps the handle for active scrubs', () => {
     render(
       <ProgressBar
         bookKey='book-1'
@@ -289,9 +289,23 @@ describe('ProgressBar scrub gesture', () => {
     fireEvent.mouseEnter(strip);
     const bar = track.firstElementChild as HTMLElement;
     expect(bar.className).toContain('h-[3px]');
+    // hovering alone must not paint an opaque dot over the footer text
     const handle = bar.children[1] as HTMLElement;
-    expect(handle.className).toContain('opacity-80');
+    expect(handle.className).toContain('opacity-0');
     fireEvent.mouseLeave(strip);
     expect((track.firstElementChild as HTMLElement).className).toContain('h-px');
+  });
+
+  it('shows the handle while a scrub is in flight', () => {
+    viewState.view = { goToFraction };
+    const strip = renderStrip();
+    const track = screen.getByTestId('progress-track');
+    const handle = track.firstElementChild!.children[1] as HTMLElement;
+    expect(handle.className).toContain('opacity-0');
+    fire(strip, pointerEvent('pointerdown', 500));
+    fire(window, pointerEvent('pointermove', 750));
+    expect(handle.className).toContain('opacity-100');
+    fire(window, pointerEvent('pointerup', 750));
+    expect(handle.className).toContain('opacity-0');
   });
 });

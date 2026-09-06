@@ -459,16 +459,20 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
             </span>
           )}
         </div>
-        {/* Hairline progress indicator along the bottom edge of the strip:
+        {/* Hairline progress indicator along the bottom of the strip:
             always visible at 1px for static position sense, expands to a
-            track + handle on hover / while scrubbing. Decorative only — the
+            track on hover / while scrubbing. Raised 4px off the strip's
+            bottom edge so the BooksGrid overflow-hidden cannot clip it and
+            it does not glue to the window bezel. The handle appears only
+            while actively scrubbing (an opaque dot parked over the text on
+            mere hover reads as broken footer info). Decorative only — the
             whole strip remains the drag surface, and it fades with the
             dismissed state like the rest of the footer info. */}
         {!isVertical && (
           <div
             data-testid='progress-track'
             aria-hidden='true'
-            className='pointer-events-none absolute inset-x-0 bottom-0'
+            className='pointer-events-none absolute inset-x-0 bottom-1'
           >
             <div
               className={clsx(
@@ -483,8 +487,8 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
               />
               <div
                 className={clsx(
-                  'absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-base-content shadow',
-                  trackActive ? 'opacity-80' : 'opacity-0',
+                  'absolute top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-base-content/70',
+                  scrubBubble ? 'opacity-100' : 'opacity-0',
                   !isEink && 'transition-opacity duration-200',
                 )}
                 style={{ left: `${trackHandleLeft}%` }}
