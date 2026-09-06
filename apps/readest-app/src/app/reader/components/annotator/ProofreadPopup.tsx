@@ -93,7 +93,8 @@ const ProofreadPopup: React.FC<ProofreadPopupProps> = ({
 
       if (scope === 'selection') {
         range.deleteContents();
-        const textNode = document.createTextNode(replacementText);
+        // Keep the inserted text identical to the persisted (trimmed) rule.
+        const textNode = document.createTextNode(replacementText.trim());
         range.insertNode(textNode);
       }
 

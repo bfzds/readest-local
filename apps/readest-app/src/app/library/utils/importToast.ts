@@ -19,8 +19,10 @@ export const resolveImportToast = (counts: {
   // top would be misleading (the books would vanish on restart).
   if (saveFailed) return null;
   if (newCount > 0 && existingCount > 0) {
+    // Partial result: info (not success) so the "{{existing}} already in
+    // library" half is not lost on a green success flash.
     return {
-      type: 'success',
+      type: 'info',
       message: t('Successfully imported {{count}} book(s), {{existing}} already in library', {
         count: newCount,
         existing: existingCount,

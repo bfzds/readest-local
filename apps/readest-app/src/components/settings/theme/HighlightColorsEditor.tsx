@@ -256,7 +256,8 @@ const HighlightColorsEditor: React.FC<HighlightColorsEditorProps> = ({
                 />
                 <button
                   onClick={() => handleDeleteUserColor(hex)}
-                  className='absolute -end-1 -top-1 rounded-full bg-red-500 p-0.5 text-white opacity-0 transition-opacity hover:opacity-100 group-hover:opacity-100'
+                  aria-label={_('Delete')}
+                  className='absolute -end-1 -top-1 rounded-full bg-red-500 p-0.5 text-white opacity-0 transition-opacity hover:opacity-100 group-hover:opacity-100 focus-visible:opacity-100'
                   title={_('Delete')}
                 >
                   <MdClose size={12} />

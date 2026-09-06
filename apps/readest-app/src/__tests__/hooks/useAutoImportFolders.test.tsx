@@ -29,11 +29,16 @@ const settle = async () => {
 };
 
 beforeEach(() => {
+  // 本文件模拟桌面壳（下方 mock 的 @tauri-apps/api/window + vitest.setup 注入
+  // 的 __TAURI_INTERNALS__）。useWindowActiveChanged 现按平台分派：必须声明
+  // 这是 tauri 构建，才会走桌面 focus 路径而不是 web visibilitychange。
+  vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'tauri');
   vi.useFakeTimers();
   focusHandlers.length = 0;
 });
 afterEach(() => {
   cleanup();
+  vi.unstubAllEnvs();
   vi.useRealTimers();
   vi.clearAllMocks();
 });

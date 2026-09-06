@@ -13,10 +13,8 @@ import { useSidebarStore } from '@/store/sidebarStore';
  * keeping behaviour consistent with the on-screen and keyboard navigation.
  *
  * Reader search-bar interlock: while the reader's search bar is visible,
- * "back" dismisses it (instead of switching books); the next "forward" then
- * restores it. This makes the side buttons feel like a dialog dismiss/restore
- * pair without stealing the book-switch gesture — book switching only kicks
- * in when the search bar isn't in this interaction.
+ * "back" collapses it (and the sidebar with it) instead of switching books.
+ * "Forward" has no restore role — it always maps to app-level forward.
  *
  * Guard rails:
  * - Presses inside editable fields are ignored (typing/selection shouldn't

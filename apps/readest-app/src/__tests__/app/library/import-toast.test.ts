@@ -19,7 +19,7 @@ describe('resolveImportToast', () => {
     });
   });
 
-  test('mixed batch reports new and already-in-library counts', () => {
+  test('mixed batch reports new and already-in-library counts as info', () => {
     const spec = resolveImportToast({
       newCount: 1,
       existingCount: 3,
@@ -27,7 +27,9 @@ describe('resolveImportToast', () => {
       saveFailed: false,
       t,
     });
-    expect(spec?.type).toBe('success');
+    // info, not success: the "already in library" half must not read as a
+    // plain success when part of the batch never imported.
+    expect(spec?.type).toBe('info');
     expect(spec?.message).toContain('already in library');
   });
 

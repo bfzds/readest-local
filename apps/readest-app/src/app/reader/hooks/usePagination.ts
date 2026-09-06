@@ -240,12 +240,12 @@ export const usePagination = (
                 (screenX >= centerStartX && screenX <= centerEndX)
               ) {
                 // toggle visibility of the header bar and the footer bar
-                setHoveredBookKey(hoveredBookKey ? null : bookKey);
+                setHoveredBookKey(hoveredBookKey ? '' : bookKey);
                 return;
               }
 
               if (hoveredBookKey) {
-                setHoveredBookKey(null);
+                setHoveredBookKey('');
                 return;
               }
 

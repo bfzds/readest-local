@@ -230,11 +230,12 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
               cut the touch halos short of the 44px target (#5401) —
               `scrollbar-width: none` alone does not remove that strip. */}
           <div className='no-scrollbar flex h-full min-w-0 items-center gap-x-4 overflow-x-auto max-[350px]:gap-x-2'>
-            {isSideBarVisible && (
-              <div className='hidden sm:flex'>
-                <SidebarToggler bookKey={bookKey} />
-              </div>
-            )}
+            {/* Always render the toggler: a sidebar-hidden state used to
+                leave no button to bring it back (unlike the always-on
+                NotebookToggler). */}
+            <div className='hidden sm:flex'>
+              <SidebarToggler bookKey={bookKey} />
+            </div>
             {viewSettings?.showGoToLibraryButton && (
               <button
                 title={_('Go to Library')}
