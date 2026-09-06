@@ -31,11 +31,16 @@ const ColorInput: React.FC<ColorInputProps> = ({
   pickerPosition = 'left',
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (pickerRef.current && !pickerRef.current.contains(event.target as Node)) {
+      // Only close for presses OUTSIDE the whole control. The toggle buttons
+      // live inside the wrapper: an outside-mousedown check that ignored them
+      // would close the picker on mousedown and the button's click would
+      // immediately reopen it — breaking the toggle.
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
         setIsOpen(false);
         // Picker close = "user is done choosing" — emit commit so callers
         // can run auto-save logic (e.g. pin to a Quick Colors palette).
@@ -67,7 +72,7 @@ const ColorInput: React.FC<ColorInputProps> = ({
   };
 
   return (
-    <div className='relative flex items-center gap-1.5'>
+    <div ref={wrapperRef} className='relative flex items-center gap-1.5'>
       <button
         type='button'
         onClick={() => setIsOpen(!isOpen)}

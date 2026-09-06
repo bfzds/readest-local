@@ -57,10 +57,19 @@ const NumberInput: React.FC<NumberInputProps> = ({
 
   const increment = () => commitValue(currentNumericValue + numberStep);
   const decrement = () => commitValue(currentNumericValue - numberStep);
-  const handleOnBlur = () => commitValue(currentNumericValue);
+  // An emptied field means "I changed my mind", not "set it to the minimum" —
+  // restore the prop value instead of clamping NaN→0 into min.
+  const commitDisplay = () => {
+    if (displayValue.trim() === '') {
+      setDisplayValue(String(value));
+      return;
+    }
+    commitValue(currentNumericValue);
+  };
+  const handleOnBlur = commitDisplay;
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    commitValue(currentNumericValue);
+    commitDisplay();
     (document.activeElement as HTMLElement)?.blur();
   };
 

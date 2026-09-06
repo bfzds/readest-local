@@ -87,33 +87,51 @@ const FontDropdown: React.FC<DropdownProps> = ({
   const ITEM_HEIGHT = 40;
   const MAX_HEIGHT = 320;
 
+  // Selecting an option blurs the trigger so the CSS (focus-within) dropdown
+  // collapses instead of staying open under the updated label.
+  const handleSelect = (option: string) => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    onSelect(option);
+  };
+
   const mainListData = useMemo(
     () => ({
       options,
       selected,
-      onSelect,
+      onSelect: handleSelect,
       onGetFontFamily,
       family: family ?? '',
       iconSize,
       appService,
     }),
-    [options, selected, onSelect, onGetFontFamily, family, iconSize, appService],
+    [options, selected, handleSelect, onGetFontFamily, family, iconSize, appService],
   );
 
   const moreListData = useMemo(
     () => ({
       options: moreOptions ?? [],
       selected,
-      onSelect,
+      onSelect: handleSelect,
       onGetFontFamily,
       family: family ?? '',
       iconSize,
     }),
-    [moreOptions, selected, onSelect, onGetFontFamily, family, iconSize],
+    [moreOptions, selected, handleSelect, onGetFontFamily, family, iconSize],
   );
 
   return (
-    <div className='dropdown dropdown-top'>
+    // The daisyUI dropdown opens via focus-within; Escape and post-select blur
+    // drop that focus so the menu actually closes (selecting an item used to
+    // leave the menu hanging open).
+    // biome-ignore lint/a11y/noStaticElementInteractions: dropdown container hosts keyboard escape handling
+    <div
+      className='dropdown dropdown-top'
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          (document.activeElement as HTMLElement | null)?.blur();
+        }
+      }}
+    >
       <button
         tabIndex={0}
         className='btn btn-sm flex items-center px-[10px] font-normal normal-case sm:px-[20px]'
