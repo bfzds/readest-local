@@ -100,8 +100,10 @@ const TTSPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset }
 
   const handleCustomTtsColorsChange = (colors: string[]) => {
     setCustomTtsHighlightColors(colors);
-    settings.globalReadSettings.customTtsHighlightColors = colors;
-    setSettings(settings);
+    setSettings({
+      ...settings,
+      globalReadSettings: { ...settings.globalReadSettings, customTtsHighlightColors: colors },
+    });
     saveSettings(envConfig, settings);
   };
 

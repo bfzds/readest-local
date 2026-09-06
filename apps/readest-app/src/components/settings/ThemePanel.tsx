@@ -343,8 +343,9 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
     removeTexture(textureId);
     const updatedTextures = customTextures.filter((t) => t.id !== textureId);
 
-    settings.customTextures = updatedTextures;
-    setSettings(settings);
+    // New object identity: zustand compares with Object.is, and subscribers
+    // selecting `settings` would miss a same-reference update.
+    setSettings({ ...settings, customTextures: updatedTextures });
 
     if (selectedTextureId === textureId) {
       setSelectedTextureId('none');
@@ -354,15 +355,19 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
 
   const handleCustomHighlightColorsChange = (colors: Record<HighlightColor, string>) => {
     setCustomHighlightColors(colors);
-    settings.globalReadSettings.customHighlightColors = colors;
-    setSettings(settings);
+    setSettings({
+      ...settings,
+      globalReadSettings: { ...settings.globalReadSettings, customHighlightColors: colors },
+    });
     saveSettings(envConfig, settings);
   };
 
   const handleUserHighlightColorsChange = (colors: UserHighlightColor[]) => {
     setUserHighlightColors(colors);
-    settings.globalReadSettings.userHighlightColors = colors;
-    setSettings(settings);
+    setSettings({
+      ...settings,
+      globalReadSettings: { ...settings.globalReadSettings, userHighlightColors: colors },
+    });
     saveSettings(envConfig, settings);
   };
 
@@ -370,8 +375,10 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
     labels: Partial<Record<DefaultHighlightColor, string>>,
   ) => {
     setDefaultHighlightLabels(labels);
-    settings.globalReadSettings.defaultHighlightLabels = labels;
-    setSettings(settings);
+    setSettings({
+      ...settings,
+      globalReadSettings: { ...settings.globalReadSettings, defaultHighlightLabels: labels },
+    });
     saveSettings(envConfig, settings);
   };
 

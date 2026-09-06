@@ -113,8 +113,10 @@ export const saveSysSettings = async <K extends keyof SystemSettings>(
 ) => {
   const { settings, setSettings, saveSettings } = useSettingsStore.getState();
   if (settings[key] !== value) {
-    settings[key] = value;
-    setSettings(settings);
-    await saveSettings(envConfig, settings);
+    // New object identity: zustand compares with Object.is, and subscribers
+    // selecting `settings` would miss a same-reference update.
+    const nextSettings = { ...settings, [key]: value };
+    setSettings(nextSettings);
+    await saveSettings(envConfig, nextSettings);
   }
 };

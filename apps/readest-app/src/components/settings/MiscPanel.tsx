@@ -184,8 +184,7 @@ const MiscPanel: React.FC<SettingsPanelPanelProp> = ({
       else valid.push(p);
     }
     setTxtChapterError(invalid.length > 0 ? invalid.join('\n') : null);
-    settings.txtChapterPatterns = valid;
-    setSettings(settings);
+    setSettings({ ...settings, txtChapterPatterns: valid });
     saveSettings(envConfig, settings);
     setTxtChapterSaved(true);
   };
