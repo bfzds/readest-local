@@ -346,8 +346,12 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
   const resetSearch = useCallback(() => {
     searchControllerRef.current?.abort();
     setSearchResults(bookKey, []);
+    // Reset progress too, or the results panel keeps the stale "finished"
+    // state and shows "No results found" for a query the user merely cleared.
+    setSearchProgress(bookKey, 0);
+    setSearchError(bookKey, null);
     view?.clearSearch();
-  }, [bookKey, view, setSearchResults]);
+  }, [bookKey, view, setSearchResults, setSearchProgress, setSearchError]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleSearchTermChange = useCallback(
