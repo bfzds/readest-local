@@ -19,8 +19,6 @@ const useShortcuts = (actions: KeyActionHandlers, dependencies: React.Dependency
   }, []);
 
   const processKeyEvent = (eventLike: ShortcutEventLike, event: KeyboardEvent | MessageEvent) => {
-    // FIXME: This is a temporary fix to disable Back button navigation
-    if (eventLike.key.toLowerCase() === 'backspace') return true;
     for (const [actionName, actionHandler] of Object.entries(actions)) {
       const shortcutKey = actionName as keyof ShortcutConfig;
       const handler = actionHandler as
@@ -72,6 +70,12 @@ const useShortcuts = (actions: KeyActionHandlers, dependencies: React.Dependency
       event.data.type === 'iframe-keydown'
     ) {
       const { key, ctrlKey, altKey, metaKey, shiftKey } = event.data;
+      // Forwarded iframe keys keep the original "Back button" guard: a
+      // Backspace arriving over postMessage is the remote Back key, never a
+      // typed character — it must not match shortcuts. A NATIVE Backspace
+      // keydown (no such default behavior in desktop webviews, and input
+      // fields are excluded above) participates in shortcut matching normally.
+      if (key.toLowerCase() === 'backspace') return;
       processKeyEvent({ key, ctrlKey, altKey, metaKey, shiftKey }, event);
     }
   };
