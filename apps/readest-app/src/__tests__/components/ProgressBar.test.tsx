@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { render, cleanup, screen, act } from '@testing-library/react';
+import { render, cleanup, screen, act, fireEvent } from '@testing-library/react';
 
 const defaultViewSettings = () => ({
   vertical: false,
@@ -255,5 +255,43 @@ describe('ProgressBar scrub gesture', () => {
     fire(window, pointerEvent('pointerup', 500));
     act(() => strip.click());
     expect(strip.className).toContain('opacity-0');
+  });
+
+  it('renders the hairline track at the current progress position', () => {
+    render(
+      <ProgressBar
+        bookKey='book-1'
+        horizontalGap={5}
+        contentInsets={{ left: 20, right: 20, top: 20, bottom: 20 }}
+        gridInsets={{ left: 0, right: 0, top: 0, bottom: 0 }}
+      />,
+    );
+    const track = screen.getByTestId('progress-track');
+    // pageinfo { current: 0, total: 100 } → 1% fill, collapsed height
+    const fill = track.firstElementChild!.firstElementChild as HTMLElement;
+    expect(fill.style.width).toBe('1%');
+    expect(fill.className).toContain('bg-base-content/35');
+    const handle = track.firstElementChild!.children[1] as HTMLElement;
+    expect(handle.className).toContain('opacity-0');
+  });
+
+  it('expands the track and shows the handle while the strip is hovered', () => {
+    render(
+      <ProgressBar
+        bookKey='book-1'
+        horizontalGap={5}
+        contentInsets={{ left: 20, right: 20, top: 20, bottom: 20 }}
+        gridInsets={{ left: 0, right: 0, top: 0, bottom: 0 }}
+      />,
+    );
+    const strip = screen.getByTestId('progress-strip');
+    const track = screen.getByTestId('progress-track');
+    fireEvent.mouseEnter(strip);
+    const bar = track.firstElementChild as HTMLElement;
+    expect(bar.className).toContain('h-[3px]');
+    const handle = bar.children[1] as HTMLElement;
+    expect(handle.className).toContain('opacity-80');
+    fireEvent.mouseLeave(strip);
+    expect((track.firstElementChild as HTMLElement).className).toContain('h-px');
   });
 });

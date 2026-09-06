@@ -170,6 +170,9 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
   // a click on release — which would toggle the #5293 dismissed state and hide
   // the footer info after every scrub. Swallow that one click.
   const suppressClickRef = useRef(false);
+  // Visual layer: hairline always on, expanding to a track + handle on hover
+  // or while a scrub is in flight. Purely decorative — pointer-events-none.
+  const [scrubHovered, setScrubHovered] = useState(false);
 
   useEffect(() => {
     const DRAG_THRESHOLD = 8;
@@ -276,6 +279,14 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
     'progress-pill eink-bordered pointer-events-auto cursor-pointer rounded-md bg-base-100/85 px-1.5';
   const showStatusInfo = hasTimeInfo || hasBatteryInfo;
 
+  // Scrub visual layer geometry: the fill/handle must match the drag mapping,
+  // which measures x against the strip's own rect (RTL inverts the direction).
+  const trackFraction =
+    pageInfo && pageInfo.total > 0 ? (pageInfo.current + 1) / pageInfo.total : 0;
+  const trackActive = scrubHovered || !!scrubBubble;
+  const trackHandleLeft = viewSettings.rtl ? (1 - trackFraction) * 100 : trackFraction * 100;
+  const trackFillLeft = viewSettings.rtl ? `${(1 - trackFraction) * 100}%` : 0;
+
   return (
     <div
       role='presentation'
@@ -336,8 +347,10 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
             : undefined
         }
         onPointerDown={onStripPointerDown}
+        onMouseEnter={() => setScrubHovered(true)}
+        onMouseLeave={() => setScrubHovered(false)}
         className={clsx(
-          'progress-strip flex items-center',
+          'progress-strip relative flex items-center',
           stripTappable && 'pointer-events-auto cursor-pointer',
           // Scrubbing needs the strip to receive pointer events even where
           // #5293 tap-toggle does not apply (desktop paginated mode).
@@ -446,6 +459,39 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
             </span>
           )}
         </div>
+        {/* Hairline progress indicator along the bottom edge of the strip:
+            always visible at 1px for static position sense, expands to a
+            track + handle on hover / while scrubbing. Decorative only — the
+            whole strip remains the drag surface, and it fades with the
+            dismissed state like the rest of the footer info. */}
+        {!isVertical && (
+          <div
+            data-testid='progress-track'
+            aria-hidden='true'
+            className='pointer-events-none absolute inset-x-0 bottom-0'
+          >
+            <div
+              className={clsx(
+                'relative w-full bg-base-content/15',
+                trackActive ? 'h-[3px]' : 'h-px',
+                !isEink && 'transition-[height] duration-200',
+              )}
+            >
+              <div
+                className='absolute bottom-0 top-0 bg-base-content/35'
+                style={{ width: `${trackFraction * 100}%`, left: trackFillLeft }}
+              />
+              <div
+                className={clsx(
+                  'absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-base-content shadow',
+                  trackActive ? 'opacity-80' : 'opacity-0',
+                  !isEink && 'transition-opacity duration-200',
+                )}
+                style={{ left: `${trackHandleLeft}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
       {/* Scrub position bubble: outside the aria-hidden strip so the live
           region actually announces; fixed-positioned, pointer-transparent. */}
