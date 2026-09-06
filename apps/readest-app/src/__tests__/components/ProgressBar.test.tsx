@@ -184,6 +184,9 @@ describe('ProgressBar scrub gesture', () => {
     fire(strip, pointerEvent('pointerdown', 500));
     fire(window, pointerEvent('pointermove', 750));
     expect(screen.getByRole('status')).toBeDefined();
+    // second move writes the bubble position straight to the DOM
+    fire(window, pointerEvent('pointermove', 750));
+    expect(screen.getByRole('status').style.left).toBe('750px');
     fire(window, pointerEvent('pointerup', 750));
     expect(goToFraction).toHaveBeenLastCalledWith(0.75);
     expect(screen.queryByRole('status')).toBeNull();

@@ -133,7 +133,19 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
   // removed. Hover gives just a resize cursor; the page bubble appears only
   // once the 8px threshold turns the press into a real drag, and Escape
   // restores the pre-drag position.
-  const [scrubBubble, setScrubBubble] = useState<{ x: number; label: string } | null>(null);
+  //
+  // Per-move visual updates (bubble position, bubble text, handle position)
+  // are written STRAIGHT TO THE DOM via refs: a React setState per pointermove
+  // re-renders the whole footer per event and is the jank source. Browsers
+  // already coalesce pointermove to frame rate, so per-event DOM writes are
+  // frame-aligned without an extra rAF layer. React state only gates mount
+  // (bubble) / visibility (handle); the view jump itself is throttled and
+  // skipped while the fraction stays within the same page, so relocations
+  // happen only when they change something.
+  const [scrubActive, setScrubActive] = useState(false);
+  const bubbleRef = useRef<HTMLDivElement | null>(null);
+  const bubbleLabelRef = useRef<HTMLSpanElement | null>(null);
+  const handleRef = useRef<HTMLDivElement | null>(null);
   const scrubStateRef = useRef<{
     startX: number;
     startY: number;
@@ -160,9 +172,19 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
   });
   const rtlRef = useRef(!!viewSettings.rtl);
   rtlRef.current = !!viewSettings.rtl;
+  const handleLeftOfFractionRef = useRef((fraction: number) =>
+    rtlRef.current ? (1 - fraction) * 100 : fraction * 100,
+  );
+  // Mirror of the idle handle position, so a cancelled drag can put the
+  // handle back where React's style prop last placed it.
+  const handleLeftRef = useRef(0);
+  const lastScrubFractionRef = useRef(-1);
   const scrubThrottleRef = useRef<ReturnType<typeof createScrubThrottle> | null>(null);
   if (!scrubThrottleRef.current) {
-    scrubThrottleRef.current = createScrubThrottle((fraction) => goToFractionRef.current(fraction));
+    scrubThrottleRef.current = createScrubThrottle(
+      (fraction) => goToFractionRef.current(fraction),
+      80,
+    );
   }
 
   const scrubEnabled = !isVertical && !!view?.goToFraction && !!pageInfo && pageInfo.total > 0;
@@ -170,18 +192,26 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
   // a click on release — which would toggle the #5293 dismissed state and hide
   // the footer info after every scrub. Swallow that one click.
   const suppressClickRef = useRef(false);
-  // Visual layer: hairline always on, expanding to a track + handle on hover
-  // or while a scrub is in flight. Purely decorative — pointer-events-none.
+  // Visual layer: hairline always on, expanding to a track on hover. Purely
+  // decorative — pointer-events-none.
   const [scrubHovered, setScrubHovered] = useState(false);
 
   useEffect(() => {
     const DRAG_THRESHOLD = 8;
     const BUBBLE_MARGIN = 60;
+    // Fractions within 0.1% of the last applied one can't move the view to a
+    // different page — skip the relocation entirely.
+    const FRACTION_EPSILON = 0.001;
 
     const clearScrub = () => {
       scrubStateRef.current = null;
       scrubThrottleRef.current?.cancel();
-      setScrubBubble(null);
+      setScrubActive(false);
+      // The handle stays mounted: undo our direct style writes so React's
+      // style prop (the idle progress position) shows through again.
+      if (handleRef.current) {
+        handleRef.current.style.left = `${handleLeftRef.current}%`;
+      }
     };
 
     const onPointerMove = (e: PointerEvent) => {
@@ -192,25 +222,40 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
         const dy = e.clientY - state.startY;
         if (dx * dx + dy * dy < DRAG_THRESHOLD * DRAG_THRESHOLD) return;
         state.active = true;
+        lastScrubFractionRef.current = state.originFraction;
+        setScrubActive(true); // mounts the bubble, shows the handle
         e.preventDefault(); // hold off text selection once the drag is real
       }
       const raw = xToFraction(e.clientX, state.rect.left, state.rect.width);
       state.fraction = rtlRef.current ? 1 - raw : raw;
-      scrubThrottleRef.current?.call(state.fraction);
+
+      // Frame-aligned DOM writes — no React render per pointermove.
       const innerWidth = typeof window !== 'undefined' ? window.innerWidth : e.clientX;
-      setScrubBubble({
-        x: Math.min(
-          Math.max(e.clientX, BUBBLE_MARGIN),
-          Math.max(innerWidth - BUBBLE_MARGIN, BUBBLE_MARGIN),
-        ),
-        label: scrubLabelRef.current(state.fraction),
-      });
+      const clampedX = Math.min(
+        Math.max(e.clientX, BUBBLE_MARGIN),
+        Math.max(innerWidth - BUBBLE_MARGIN, BUBBLE_MARGIN),
+      );
+      if (bubbleRef.current) {
+        bubbleRef.current.style.left = `${clampedX}px`;
+      }
+      if (bubbleLabelRef.current) {
+        bubbleLabelRef.current.textContent = scrubLabelRef.current(state.fraction);
+      }
+      if (handleRef.current) {
+        handleRef.current.style.left = `${handleLeftOfFractionRef.current(state.fraction)}%`;
+      }
+
+      if (Math.abs(state.fraction - lastScrubFractionRef.current) > FRACTION_EPSILON) {
+        lastScrubFractionRef.current = state.fraction;
+        scrubThrottleRef.current?.call(state.fraction);
+      }
     };
 
     const restoreOrigin = () => {
       const state = scrubStateRef.current;
       if (state?.active) {
         suppressClickRef.current = true;
+        lastScrubFractionRef.current = state.originFraction;
         goToFractionRef.current(state.originFraction);
       }
       clearScrub();
@@ -283,8 +328,9 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
   // which measures x against the strip's own rect (RTL inverts the direction).
   const trackFraction =
     pageInfo && pageInfo.total > 0 ? (pageInfo.current + 1) / pageInfo.total : 0;
-  const trackActive = scrubHovered || !!scrubBubble;
+  const trackActive = scrubHovered || scrubActive;
   const trackHandleLeft = viewSettings.rtl ? (1 - trackFraction) * 100 : trackFraction * 100;
+  handleLeftRef.current = trackHandleLeft;
   const trackFillLeft = viewSettings.rtl ? `${(1 - trackFraction) * 100}%` : 0;
 
   return (
@@ -486,9 +532,10 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
                 style={{ width: `${trackFraction * 100}%`, left: trackFillLeft }}
               />
               <div
+                ref={handleRef}
                 className={clsx(
                   'absolute top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-base-content/70',
-                  scrubBubble ? 'opacity-100' : 'opacity-0',
+                  scrubActive ? 'opacity-100' : 'opacity-0',
                   !isEink && 'transition-opacity duration-200',
                 )}
                 style={{ left: `${trackHandleLeft}%` }}
@@ -498,15 +545,18 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
         )}
       </div>
       {/* Scrub position bubble: outside the aria-hidden strip so the live
-          region actually announces; fixed-positioned, pointer-transparent. */}
-      {!isVertical && scrubBubble && (
+          region actually announces; fixed-positioned, pointer-transparent.
+          Mount/unmount is state-driven, but position and text are written
+          straight to the DOM per pointermove (see the scrub effect above). */}
+      {!isVertical && scrubActive && (
         <div
+          ref={bubbleRef}
           role='status'
           aria-live='polite'
           className='pointer-events-none z-20 -translate-x-1/2 whitespace-nowrap rounded-md px-2 py-1 text-xs shadow-md eink-bordered bg-base-100/95 text-base-content'
-          style={{ position: 'fixed', left: scrubBubble.x, bottom: 56 }}
+          style={{ position: 'fixed', left: '50%', bottom: 56 }}
         >
-          {scrubBubble.label}
+          <span ref={bubbleLabelRef} />
         </div>
       )}
     </div>
