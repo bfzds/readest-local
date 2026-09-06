@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import React from 'react';
+import React, { useState } from 'react';
 import { MdCheck } from 'react-icons/md';
 import { useEnv } from '@/context/EnvContext';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -10,6 +10,7 @@ import { saveViewSettings } from '@/helpers/settings';
 import { SettingsPanelType } from './SettingsDialog';
 import Menu from '@/components/Menu';
 import MenuItem from '@/components/MenuItem';
+import DeleteConfirmAlert from '@/components/DeleteConfirmAlert';
 
 interface DialogMenuProps {
   bookKey: string;
@@ -33,6 +34,10 @@ const DialogMenu: React.FC<DialogMenuProps> = ({
   const { getAllFonts, removeFont, saveCustomFonts } = useCustomFontStore();
   const viewSettings = getViewSettings(bookKey);
   const isSettingsGlobal = viewSettings?.isGlobal ?? true;
+  // Removing every custom font is irreversible — route it through the same
+  // delete-confirmation affordance the bookshelf uses instead of acting on a
+  // single mis-click.
+  const [showClearFontsConfirm, setShowClearFontsConfirm] = useState(false);
 
   const handleToggleGlobal = () => {
     saveViewSettings(envConfig, bookKey, 'isGlobal', !isSettingsGlobal, true, false);
@@ -50,33 +55,52 @@ const DialogMenu: React.FC<DialogMenuProps> = ({
   };
 
   const handleClearCustomFont = () => {
-    getAllFonts().forEach((font) => {
-      if (removeFont(font.id)) {
-        appService!.deleteFont(font);
-      }
-    });
-    saveCustomFonts(envConfig);
+    setShowClearFontsConfirm(true);
     setIsDropdownOpen?.(false);
   };
 
+  const confirmClearCustomFont = () => {
+    getAllFonts().forEach((font) => {
+      if (removeFont(font.id)) {
+        appService?.deleteFont(font);
+      }
+    });
+    saveCustomFonts(envConfig);
+    setShowClearFontsConfirm(false);
+  };
+
   return (
-    <Menu className={clsx('dialog-menu dropdown-content no-triangle z-20 mt-2 shadow-2xl')}>
-      <MenuItem
-        label={_('Global Settings')}
-        tooltip={isSettingsGlobal ? _('Apply to All Books') : _('Apply to This Book')}
-        disabled={!bookKey}
-        buttonClass='lg:tooltip'
-        Icon={isSettingsGlobal ? MdCheck : null}
-        onClick={handleToggleGlobal}
-      />
-      <MenuItem label={resetLabel || _('Reset Settings')} onClick={handleResetToDefaults} />
-      {activePanel === 'Font' && (
-        <>
-          <MenuItem label={_('Clear Custom Fonts')} onClick={handleClearCustomFont} />
-          <MenuItem label={_('Manage Custom Fonts')} onClick={handleManageCustomFont} />
-        </>
+    <>
+      <Menu className={clsx('dialog-menu dropdown-content no-triangle z-20 mt-2 shadow-2xl')}>
+        <MenuItem
+          label={_('Global Settings')}
+          tooltip={isSettingsGlobal ? _('Apply to All Books') : _('Apply to This Book')}
+          disabled={!bookKey}
+          buttonClass='lg:tooltip'
+          Icon={isSettingsGlobal ? MdCheck : null}
+          onClick={handleToggleGlobal}
+        />
+        <MenuItem label={resetLabel || _('Reset Settings')} onClick={handleResetToDefaults} />
+        {activePanel === 'Font' && (
+          <>
+            <MenuItem label={_('Clear Custom Fonts')} onClick={handleClearCustomFont} />
+            <MenuItem label={_('Manage Custom Fonts')} onClick={handleManageCustomFont} />
+          </>
+        )}
+      </Menu>
+      {showClearFontsConfirm && (
+        <div className='fixed inset-0 z-[130] flex items-center justify-center bg-black/50'>
+          <div className='w-full max-w-md px-4 sm:max-w-lg'>
+            <DeleteConfirmAlert
+              title={_('Clear Custom Fonts')}
+              message={_('Delete all custom fonts? This cannot be undone.')}
+              onCancel={() => setShowClearFontsConfirm(false)}
+              onConfirm={() => confirmClearCustomFont()}
+            />
+          </div>
+        </div>
       )}
-    </Menu>
+    </>
   );
 };
 

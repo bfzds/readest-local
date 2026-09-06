@@ -13,6 +13,7 @@ import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { useKeyDownActions } from '@/hooks/useKeyDownActions';
 import { BOOK_UNGROUPED_ID, BOOK_UNGROUPED_NAME } from '@/services/constants';
 import { buildGroupNameUpdatedAt, getBreadcrumbs } from '../utils/libraryUtils';
+import { eventDispatcher } from '@/utils/event';
 
 interface GroupingModalProps {
   libraryBooks: Book[];
@@ -118,24 +119,40 @@ const GroupingModal: React.FC<GroupingModalProps> = ({
     setIsRenaming(true);
   };
 
+  // Group changes rebuild the book objects immutably: BookCover is memoized
+  // and compares fields off the book, so mutating in place makes the
+  // comparator see no change and the UI shows stale groups (see the same
+  // lesson in library/page.tsx metadata updates).
+  const persistGroupChange = async (updatedBooks: Book[]) => {
+    setLibrary(updatedBooks);
+    try {
+      await appService?.saveLibraryBooks(updatedBooks);
+    } catch (error) {
+      console.error('Failed to save library after group change:', error);
+      eventDispatcher.dispatch('toast', {
+        message: _('Failed to save group changes'),
+        type: 'error',
+      });
+    }
+  };
+
   const handleRemoveFromGroup = () => {
-    selectedBooks.forEach((id) => {
-      for (const book of libraryBooks.filter((book) => book.hash === id || book.groupId === id)) {
+    const now = Date.now();
+    const selected = new Set(selectedBooks);
+    const updatedBooks = libraryBooks.map((book) => {
+      if (selected.has(book.hash) || (book.groupId && selected.has(book.groupId))) {
         if (
-          book &&
           book.groupId &&
           book.groupName &&
           book.groupId !== BOOK_UNGROUPED_ID &&
           book.groupName !== BOOK_UNGROUPED_NAME
         ) {
-          book.groupId = undefined;
-          book.groupName = undefined;
-          book.updatedAt = Date.now();
+          return { ...book, groupId: undefined, groupName: undefined, updatedAt: now };
         }
       }
+      return book;
     });
-    setLibrary([...libraryBooks]);
-    appService?.saveLibraryBooks(libraryBooks);
+    void persistGroupChange(updatedBooks);
     onConfirm();
   };
 
@@ -145,22 +162,21 @@ const GroupingModal: React.FC<GroupingModalProps> = ({
       if (isRenaming && originalGroupName) {
         // Renaming existing group
         const oldGroupName = originalGroupName;
+        const now = Date.now();
 
-        // Update the group name for all books in this group and nested groups
-        libraryBooks.forEach((book) => {
+        // Update the group name for all books in this group and nested groups.
+        const updatedBooks = libraryBooks.map((book) => {
           if (book.groupName === oldGroupName) {
-            book.groupName = groupName;
-            book.groupId = getGroupId(book.groupName);
-            book.updatedAt = Date.now();
-          } else if (book.groupName?.startsWith(oldGroupName + '/')) {
-            book.groupName = book.groupName.replace(oldGroupName, groupName);
-            book.groupId = getGroupId(book.groupName);
-            book.updatedAt = Date.now();
+            return { ...book, groupName, groupId: getGroupId(groupName), updatedAt: now };
           }
+          if (book.groupName?.startsWith(oldGroupName + '/')) {
+            const nextName = book.groupName.replace(oldGroupName, groupName);
+            return { ...book, groupName: nextName, groupId: getGroupId(nextName), updatedAt: now };
+          }
+          return book;
         });
 
-        setLibrary([...libraryBooks]);
-        appService?.saveLibraryBooks(libraryBooks);
+        void persistGroupChange(updatedBooks);
 
         refreshGroups();
         setShowInput(false);
@@ -202,17 +218,21 @@ const GroupingModal: React.FC<GroupingModalProps> = ({
   };
 
   const handleConfirmGrouping = () => {
-    selectedBooks.forEach((id) => {
-      for (const book of libraryBooks.filter((book) => book.hash === id || book.groupId === id)) {
-        if (book && selectedGroup) {
-          book.groupId = selectedGroup.id;
-          book.groupName = selectedGroup.name;
-          book.updatedAt = Date.now();
-        }
+    if (!selectedGroup) return;
+    const now = Date.now();
+    const selected = new Set(selectedBooks);
+    const updatedBooks = libraryBooks.map((book) => {
+      if (selected.has(book.hash) || (book.groupId && selected.has(book.groupId))) {
+        return {
+          ...book,
+          groupId: selectedGroup.id,
+          groupName: selectedGroup.name,
+          updatedAt: now,
+        };
       }
+      return book;
     });
-    setLibrary([...libraryBooks]);
-    appService?.saveLibraryBooks(libraryBooks);
+    void persistGroupChange(updatedBooks);
     onConfirm();
   };
 

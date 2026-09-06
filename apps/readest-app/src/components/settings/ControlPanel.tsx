@@ -7,6 +7,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useResetViewSettings } from '@/hooks/useResetSettings';
 import { useEinkMode } from '@/hooks/useEinkMode';
+import { useKeyDownActions } from '@/hooks/useKeyDownActions';
 import { getStyles } from '@/utils/style';
 import { getMaxInlineSize } from '@/utils/config';
 import { saveSysSettings, saveViewSettings } from '@/helpers/settings';
@@ -82,6 +83,14 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
   const [swipeBrightnessGesture, setSwipeBrightnessGesture] = useState(
     settings.swipeBrightnessGesture,
   );
+
+  // Mirror FontPanel/LangPanel: while the toolbar-customizer sub-page is up,
+  // Esc/Back must return to the Control panel instead of closing the whole
+  // settings dialog.
+  useKeyDownActions({
+    enabled: showToolbarCustomizer,
+    onCancel: () => setShowToolbarCustomizer(false),
+  });
   const [screenWakeLock, setScreenWakeLock] = useState(settings.screenWakeLock);
   const [autohideCursor, setAutohideCursor] = useState(settings.autohideCursor);
   // S-3：书内脚本执行能力已移除，不再提供 "Allow JavaScript" 开关。
