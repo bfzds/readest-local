@@ -15,7 +15,11 @@ import { BoxedList } from './primitives';
 
 type CSSType = 'book' | 'reader';
 
-const MiscPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset }) => {
+const MiscPanel: React.FC<SettingsPanelPanelProp> = ({
+  bookKey,
+  onRegisterReset,
+  onRegisterUnsavedCheck,
+}) => {
   const _ = useTranslation();
   const { envConfig } = useEnv();
   // The app targets desktop only; Android input-focus handling is disabled.
@@ -143,6 +147,15 @@ const MiscPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
   );
   const [txtChapterSaved, setTxtChapterSaved] = useState(true);
   const [txtChapterError, setTxtChapterError] = useState<string | null>(null);
+
+  // Re-register on every render so the checker always closes over the latest
+  // saved flags; the dialog consults it before close / panel switch.
+  useEffect(() => {
+    const hasUnsaved = () =>
+      !draftContentStylesheetSaved || !draftUIStylesheetSaved || !txtChapterSaved;
+    onRegisterUnsavedCheck?.(hasUnsaved);
+    return () => onRegisterUnsavedCheck?.(null);
+  });
 
   const handleTxtChapterChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setTxtChapterDraft(e.target.value);

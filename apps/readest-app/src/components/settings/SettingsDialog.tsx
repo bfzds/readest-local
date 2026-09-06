@@ -25,6 +25,7 @@ import LayoutPanel from './LayoutPanel';
 import ThemePanel from './ThemePanel';
 import Dropdown from '@/components/Dropdown';
 import Dialog from '@/components/Dialog';
+import Alert from '@/components/Alert';
 import DialogMenu from './DialogMenu';
 import ControlPanel from './ControlPanel';
 import LangPanel from './LangPanel';
@@ -44,6 +45,8 @@ export type SettingsPanelType =
 export type SettingsPanelPanelProp = {
   bookKey: string;
   onRegisterReset: (resetFn: () => void) => void;
+  /** Panels with apply-before-exit drafts report an unsaved check; pass null on unmount. */
+  onRegisterUnsavedCheck?: (fn: (() => boolean) | null) => void;
 };
 
 type TabConfig = {
@@ -72,6 +75,13 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const { open: openCommandPalette } = useCommandPalette();
 
   const handleOpenCommandPalette = () => {
+    if (hasUnsavedDrafts()) {
+      requestDiscardConfirm(() => {
+        setSettingsDialogOpen(false);
+        openCommandPalette();
+      });
+      return;
+    }
     openCommandPalette();
     setSettingsDialogOpen(false);
   };
@@ -144,6 +154,15 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   }, []);
 
   const handleSetActivePanel = (tab: SettingsPanelType) => {
+    if (tab !== activePanel && hasUnsavedDrafts()) {
+      // Switching away unmounts the panel and kills its un-applied drafts.
+      requestDiscardConfirm(() => {
+        setActivePanel(tab);
+        setFontPanelView('main-fonts');
+        localStorage.setItem('lastConfigPanel', tab);
+      });
+      return;
+    }
     setActivePanel(tab);
     setFontPanelView('main-fonts');
     localStorage.setItem('lastConfigPanel', tab);
@@ -183,8 +202,43 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     }
   };
 
+  // Panels with apply-before-exit drafts (currently MiscPanel) register a
+  // dirty-checker here; close paths consult it before discarding anything.
+  const unsavedCheckersRef = useRef<Partial<Record<SettingsPanelType, () => boolean>>>({});
+  const registerUnsavedCheck = (panel: SettingsPanelType, fn: (() => boolean) | null) => {
+    if (fn) unsavedCheckersRef.current[panel] = fn;
+    else delete unsavedCheckersRef.current[panel];
+  };
+  const hasUnsavedDrafts = () =>
+    Object.values(unsavedCheckersRef.current).some((fn) => fn?.() === true);
+
+  const [showDraftConfirm, setShowDraftConfirm] = useState(false);
+  const pendingDiscardActionRef = useRef<(() => void) | null>(null);
+  const requestDiscardConfirm = (action: () => void) => {
+    pendingDiscardActionRef.current = action;
+    setShowDraftConfirm(true);
+  };
+
   const handleClose = () => {
     setSettingsDialogOpen(false);
+  };
+
+  // Every close path funnels through here: with un-applied drafts present,
+  // offer a confirm instead of silently discarding them.
+  const attemptClose = () => {
+    if (showDraftConfirm) return;
+    if (hasUnsavedDrafts()) {
+      requestDiscardConfirm(handleClose);
+      return;
+    }
+    handleClose();
+  };
+
+  const handleDiscardDrafts = () => {
+    setShowDraftConfirm(false);
+    const action = pendingDiscardActionRef.current;
+    pendingDiscardActionRef.current = null;
+    action?.();
   };
 
   // handle activeSettingsItemId: switch to correct panel and scroll to item.
@@ -344,7 +398,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         />
       </Dropdown>
       <button
-        onClick={handleClose}
+        onClick={attemptClose}
         aria-label={_('Close')}
         className={'bg-base-300/65 btn btn-ghost btn-circle hidden h-6 min-h-6 w-6 p-0 sm:flex'}
       >
@@ -356,7 +410,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   return (
     <Dialog
       isOpen={true}
-      onClose={handleClose}
+      onClose={attemptClose}
       // Settings sits in the overlay z-index scale (see ModalPortal.tsx) above
       // the RSVP immersive overlay (z-100) so dictionary management opened from
       // inside RSVP shows on top instead of behind it (#3235), and below the
@@ -376,7 +430,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
             <button
               tabIndex={-1}
               aria-label={_('Close')}
-              onClick={handleClose}
+              onClick={attemptClose}
               className={
                 'btn btn-ghost btn-circle absolute left-3 flex h-8 min-h-8 w-8 hover:bg-transparent focus:outline-none'
               }
@@ -483,12 +537,23 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
           <MiscPanel
             bookKey={bookKey}
             onRegisterReset={(fn) => registerResetFunction('Custom', fn)}
+            onRegisterUnsavedCheck={(fn) => registerUnsavedCheck('Custom', fn)}
           />
         )}
         {activePanel === 'Keyboard' && (
           <KeyboardShortcutsPanel
             bookKey={bookKey}
             onRegisterReset={(fn) => registerResetFunction('Keyboard', fn)}
+          />
+        )}
+        {showDraftConfirm && (
+          <Alert
+            title={_('Unsaved Changes')}
+            message={_('Discard unsaved changes?')}
+            confirmLabel={_('Discard')}
+            confirmButtonClassName='btn-error'
+            onCancel={() => setShowDraftConfirm(false)}
+            onConfirm={handleDiscardDrafts}
           />
         )}
       </div>
