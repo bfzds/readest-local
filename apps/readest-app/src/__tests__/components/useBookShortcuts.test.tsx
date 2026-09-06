@@ -261,4 +261,39 @@ describe('useBookShortcuts', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', ctrlKey: true, bubbles: true }));
     expect(dispatchSpy).not.toHaveBeenCalledWith('close-search-bar', {});
   });
+
+  it('onJumpToPage dispatches the popup toggle and reports the key as handled', () => {
+    const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
+    render(<Harness />);
+    const handled = shortcutState.actions?.['onJumpToPage']?.();
+    expect(handled).toBe(true);
+    expect(dispatchSpy).toHaveBeenCalledWith('toggle-page-jump', { bookKey: 'book-1' });
+  });
+
+  it('capture handler intercepts Ctrl+G before the browser find-next accelerator', () => {
+    const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
+    render(<Harness />);
+    const event = new KeyboardEvent('keydown', {
+      key: 'g',
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(event);
+    expect(dispatchSpy).toHaveBeenCalledWith('toggle-page-jump', { bookKey: 'book-1' });
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('capture handler lets Ctrl+G through while typing in an input', () => {
+    const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+    render(<Harness />);
+    const event = new KeyboardEvent('keydown', { key: 'g', ctrlKey: true, bubbles: true });
+    window.dispatchEvent(event);
+    expect(dispatchSpy).not.toHaveBeenCalledWith('toggle-page-jump', { bookKey: 'book-1' });
+    expect(event.defaultPrevented).toBe(false);
+    document.body.removeChild(input);
+  });
 });

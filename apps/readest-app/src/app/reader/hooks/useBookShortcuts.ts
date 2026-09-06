@@ -337,9 +337,12 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
     eventDispatcher.dispatch('toggle-bookmark', { bookKey: sideBarBookKey });
   };
 
+  // Returns true so useShortcuts calls preventDefault: Ctrl+G is a browser
+  // find-next accelerator and must not leak to the WebView's native find bar.
   const jumpToPage = () => {
-    if (!sideBarBookKey) return;
+    if (!sideBarBookKey) return false;
     eventDispatcher.dispatch('toggle-page-jump', { bookKey: sideBarBookKey });
+    return true;
   };
 
   const toggleParagraphMode = (event?: KeyboardEvent | MessageEvent) => {
@@ -411,6 +414,27 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
     window.addEventListener('keydown', onSearchKeyCapture, true);
     return () => window.removeEventListener('keydown', onSearchKeyCapture, true);
   }, []);
+
+  // Ctrl+G（跳页）与 Ctrl+F 同属 WebView2 浏览器加速键（原生查找条的
+  // find-next）：冒泡阶段 preventDefault 拦不住，必须在捕获阶段拦截，
+  // 否则弹页码输入框的同时原生查找条也会被呼出。输入焦点时放行
+  // （文本编辑场景不抢 Ctrl+G）。
+  useEffect(() => {
+    const onPageJumpKeyCapture = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'g') return;
+      const active = document.activeElement as HTMLElement | null;
+      const inputFocused =
+        !!active &&
+        (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+      if (inputFocused) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (!sideBarBookKey) return;
+      eventDispatcher.dispatch('toggle-page-jump', { bookKey: sideBarBookKey });
+    };
+    window.addEventListener('keydown', onPageJumpKeyCapture, true);
+    return () => window.removeEventListener('keydown', onPageJumpKeyCapture, true);
+  }, [sideBarBookKey]);
 
   useShortcuts(
     {
