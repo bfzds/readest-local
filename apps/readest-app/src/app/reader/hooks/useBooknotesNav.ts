@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import * as CFI from 'foliate-js/epubcfi.js';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useReaderStore } from '@/store/readerStore';
@@ -59,6 +59,9 @@ export function useBooknotesNav(bookKey: string, toc: TOCItem[]) {
   // page turn instead of once per booknote — see createCfiLocationMatcher
   // in utils/cfi for the why (hot-path CFI parsing was 16%+ of self time
   // in Android release-build profiles when annotations were dense).
+  // Pure computation: the index write-back lives in the effect below (a side
+  // effect inside useMemo ran on every progress tick and raced the user's
+  // manual next/prev navigation).
   const currentPageResults = useMemo(() => {
     if (!sortedBooknotes.length || !currentLocation) return { firstIndex: -1, lastIndex: -1 };
 
@@ -73,12 +76,20 @@ export function useBooknotesNav(bookKey: string, toc: TOCItem[]) {
         lastIndex = i;
       }
     }
-    if (firstIndex !== -1) {
-      setTimeout(() => setBooknoteIndex(bookKey, firstIndex), 0);
-    }
 
     return { firstIndex, lastIndex };
-  }, [sortedBooknotes, currentLocation, bookKey, setBooknoteIndex]);
+  }, [sortedBooknotes, currentLocation]);
+
+  // A manual next/prev sets a short grace window during which the page-sync
+  // below must not stomp the index the user just chose.
+  const lastManualNavRef = useRef(0);
+
+  useEffect(() => {
+    const { firstIndex } = currentPageResults;
+    if (firstIndex === -1) return;
+    if (Date.now() - lastManualNavRef.current < 500) return;
+    setBooknoteIndex(bookKey, firstIndex);
+  }, [currentPageResults, bookKey, setBooknoteIndex]);
 
   // Navigate to a specific booknote
   const navigateToBooknote = useCallback(
@@ -88,6 +99,7 @@ export function useBooknotesNav(bookKey: string, toc: TOCItem[]) {
 
       const note = sortedBooknotes[index];
       if (note) {
+        lastManualNavRef.current = Date.now();
         setBooknoteIndex(bookKey, index);
         getView(bookKey)?.goTo(note.cfi);
       }

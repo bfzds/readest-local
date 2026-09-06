@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useBookProgress } from '@/store/readerProgressStore';
@@ -40,7 +40,9 @@ export function useSearchNav(bookKey: string) {
   // Find results on the current page.
   // Uses a batched CFI matcher so the location is collapsed only once per
   // page turn instead of once per search hit — see createCfiLocationMatcher
-  // in utils/cfi for the why.
+  // in utils/cfi for the why. Pure computation: the index write-back lives in
+  // the effect below (a side effect inside useMemo ran on every progress tick
+  // and raced the user's manual next/prev navigation).
   const currentPageResults = useMemo(() => {
     if (!flattenedResults.length || !currentLocation) return { firstIndex: -1, lastIndex: -1 };
 
@@ -55,12 +57,20 @@ export function useSearchNav(bookKey: string) {
         lastIndex = i;
       }
     }
-    if (firstIndex !== -1) {
-      setTimeout(() => setSearchResultIndex(bookKey, firstIndex), 0);
-    }
 
     return { firstIndex, lastIndex };
-  }, [flattenedResults, currentLocation, bookKey, setSearchResultIndex]);
+  }, [flattenedResults, currentLocation]);
+
+  // A manual next/prev sets a short grace window during which the page-sync
+  // below must not stomp the index the user just chose.
+  const lastManualNavRef = useRef(0);
+
+  useEffect(() => {
+    const { firstIndex } = currentPageResults;
+    if (firstIndex === -1) return;
+    if (Date.now() - lastManualNavRef.current < 500) return;
+    setSearchResultIndex(bookKey, firstIndex);
+  }, [currentPageResults, bookKey, setSearchResultIndex]);
 
   // Navigate to a specific search result
   const navigateToResult = useCallback(
@@ -70,6 +80,7 @@ export function useSearchNav(bookKey: string) {
 
       const result = flattenedResults[index];
       if (result) {
+        lastManualNavRef.current = Date.now();
         setSearchResultIndex(bookKey, index);
         getView(bookKey)?.goTo(result.cfi);
       }
