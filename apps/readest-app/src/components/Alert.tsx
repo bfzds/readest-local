@@ -13,6 +13,8 @@ const Alert: React.FC<{
   children?: React.ReactNode;
   confirmLabel?: string;
   confirmButtonClassName?: string;
+  /** Grey out (and refuse) the confirm action — e.g. nothing left to delete. */
+  disableConfirm?: boolean;
 }> = ({
   title,
   message,
@@ -21,6 +23,7 @@ const Alert: React.FC<{
   children,
   confirmLabel,
   confirmButtonClassName = 'btn-warning',
+  disableConfirm = false,
 }) => {
   const _ = useTranslation();
   const [isProcessing, setIsProcessing] = React.useState(false);
@@ -69,9 +72,11 @@ const Alert: React.FC<{
             {_('Cancel')}
           </button>
           <button
-            className={clsx('btn btn-sm', confirmButtonClassName, { 'btn-disabled': isProcessing })}
+            className={clsx('btn btn-sm', confirmButtonClassName, {
+              'btn-disabled': isProcessing || disableConfirm,
+            })}
             onClick={() => {
-              if (isProcessing) return;
+              if (isProcessing || disableConfirm) return;
               setIsProcessing(true);
               onConfirm();
             }}

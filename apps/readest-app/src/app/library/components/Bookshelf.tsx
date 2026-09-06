@@ -100,6 +100,8 @@ interface BookshelfProps {
   contentSearch: ContentSearchRequest | null;
   onSearchContents: () => void;
   onSearchProgress?: (value: number | null) => void;
+  /** Called when the user hand-tunes a selection while "select all" is active. */
+  onSelectionManuallyAdjusted?: () => void;
 }
 
 /**
@@ -198,6 +200,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   contentSearch,
   onSearchContents,
   onSearchProgress,
+  onSelectionManuallyAdjusted,
 }) => {
   const _ = useTranslation();
   const router = useRouter();
@@ -539,8 +542,15 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   const toggleSelection = useCallback(
     (id: string) => {
       toggleSelectedBook(id);
+      // Hand-tuning a blanket "select all" makes it a partial selection: drop
+      // the flag so a later bookshelf refresh doesn't re-select what the user
+      // just removed, and so the header stops claiming a full selection.
+      if (isSelectAll) {
+        onSelectionManuallyAdjusted?.();
+      }
     },
-    [toggleSelectedBook],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [toggleSelectedBook, isSelectAll, onSelectionManuallyAdjusted],
   );
 
   const openSelectedBooks = async () => {
@@ -766,10 +776,15 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     setShowDeleteAlert(true);
   };
 
+  // Select-all is EDGE-TRIGGERED: the full selection is applied only when the
+  // flag rises (or select mode is entered fresh). Re-applying it on every
+  // bookshelf change used to silently resurrect books the user had just
+  // deselected, whenever data refreshed (import finished, search, reader close).
+  const prevSelectAllRef = useRef(false);
   useEffect(() => {
     if (isSelectMode) {
       setShowSelectModeActions(true);
-      if (isSelectAll) {
+      if (isSelectAll && !prevSelectAllRef.current) {
         setSelectedBooks(
           currentBookshelfItems.map((item) => ('hash' in item ? item.hash : item.id)),
         );
@@ -777,9 +792,11 @@ const Bookshelf: React.FC<BookshelfProps> = ({
         setSelectedBooks([]);
       }
     } else {
+      prevSelectAllRef.current = false;
       setSelectedBooks([]);
       setShowSelectModeActions(false);
     }
+    prevSelectAllRef.current = isSelectAll;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSelectMode, isSelectAll, isSelectNone, currentBookshelfItems]);
 
@@ -1804,6 +1821,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
               count: getBooksToDelete().length,
             })}
             showPurgeToggle
+            disableConfirm={getBooksToDelete().length === 0 && emptyGroupsToDelete.length === 0}
             onCancel={() => {
               abortDeletionRef.current = true;
               setShowDeleteAlert(false);

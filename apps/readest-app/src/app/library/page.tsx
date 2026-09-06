@@ -180,6 +180,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     checkLastOpenBooks,
     setCheckOpenWithBooks,
     setCheckLastOpenBooks,
+    setSelectedBooks,
   } = useLibraryStore();
   const _ = useTranslation();
   const { selectFiles } = useFileSelector(appService, _);
@@ -206,6 +207,16 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   const [isSelectAll, setIsSelectAll] = useState(false);
   const [isSelectNone, setIsSelectNone] = useState(false);
   const [librarySearchQuery, setLibrarySearchQuery] = useState(searchParams?.get('q') ?? '');
+
+  // A new search invalidates the selection context: books selected under the
+  // previous query may fall out of view and would then be silently dropped
+  // from (or invisibly included in) the bulk delete/group actions.
+  useEffect(() => {
+    setSelectedBooks([]);
+    setIsSelectAll(false);
+    setIsSelectNone(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [librarySearchQuery, setSelectedBooks]);
   const pendingLibrarySearchQueryRef = useRef<string | null>(null);
   const [librarySearchProgress, setLibrarySearchProgress] = useState<number | null>(null);
   const [librarySearchHistory, setLibrarySearchHistory] = useState<string[]>([]);
@@ -388,6 +399,13 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   // https://github.com/readest/readest/issues/3782.
   const handleLibraryNavigation = useCallback(
     (targetGroup: string) => {
+      // The selection is scoped to the view the user made it in; navigating
+      // invalidates that context, so carry nothing over (and never let the
+      // confirm dialogs reference books the user can no longer see).
+      setSelectedBooks([]);
+      setIsSelectAll(false);
+      setIsSelectNone(false);
+
       const params = new URLSearchParams(window.location.search);
       const currentGroup = params.get('group') || '';
 
@@ -2016,6 +2034,10 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
                     ? { query: searchParams?.get('q') ?? '', config: librarySearchConfig }
                     : null
                 }
+                onSelectionManuallyAdjusted={() => {
+                  setIsSelectAll(false);
+                  setIsSelectNone(false);
+                }}
               />
             </div>
           </div>

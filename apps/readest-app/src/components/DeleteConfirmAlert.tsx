@@ -19,9 +19,10 @@ const DeleteConfirmAlert: React.FC<{
   title: string;
   message: string;
   showPurgeToggle?: boolean;
+  disableConfirm?: boolean;
   onCancel: () => void;
   onConfirm: (purgeData: boolean) => void;
-}> = ({ title, message, showPurgeToggle = false, onCancel, onConfirm }) => {
+}> = ({ title, message, showPurgeToggle = false, disableConfirm = false, onCancel, onConfirm }) => {
   const _ = useTranslation();
   const [purgeData, setPurgeData] = useState(false);
 
@@ -31,6 +32,7 @@ const DeleteConfirmAlert: React.FC<{
       message={message}
       confirmLabel={purgeData ? _('Purge & Delete') : _('Delete')}
       confirmButtonClassName={purgeData ? 'btn-error' : 'btn-warning'}
+      disableConfirm={disableConfirm}
       onCancel={onCancel}
       onConfirm={() => onConfirm(purgeData)}
     >
