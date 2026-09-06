@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import React, { useEffect, useRef } from 'react';
+import { MdClose, MdCropSquare, MdRemove } from 'react-icons/md';
 import { useEnv } from '@/context/EnvContext';
 
 import { tauriHandleMinimize, tauriHandleToggleMaximize, tauriHandleClose } from '@/utils/window';
@@ -201,9 +202,7 @@ const WindowButtons: React.FC<WindowButtonsProps> = ({
     >
       {showMinimize && appService?.hasWindowBar && (
         <WindowButton onClick={handleMinimize} label={_('Minimize')} id='titlebar-minimize'>
-          <svg xmlns='http://www.w3.org/2000/svg' width='1em' height='1em' viewBox='0 0 24 24'>
-            <path fill='currentColor' d='M20 14H4v-2h16' />
-          </svg>
+          <MdRemove aria-hidden />
         </WindowButton>
       )}
 
@@ -213,9 +212,7 @@ const WindowButtons: React.FC<WindowButtonsProps> = ({
           label={_('Maximize or Restore')}
           id='titlebar-maximize'
         >
-          <svg xmlns='http://www.w3.org/2000/svg' width='1em' height='1em' viewBox='0 0 24 24'>
-            <path fill='currentColor' d='M4 4h16v16H4zm2 4v10h12V8z' />
-          </svg>
+          <MdCropSquare aria-hidden />
         </WindowButton>
       )}
 
@@ -225,12 +222,7 @@ const WindowButtons: React.FC<WindowButtonsProps> = ({
           label={closeButtonLabel || _('Close')}
           id='titlebar-close'
         >
-          <svg xmlns='http://www.w3.org/2000/svg' width='1em' height='1em' viewBox='0 0 24 24'>
-            <path
-              fill='currentColor'
-              d='M19 6.41L17.59 5L12 10.59L6.41 5L5 6.41L10.59 12L5 17.59L6.41 19L12 13.41L17.59 19L19 17.59L13.41 12z'
-            />
-          </svg>
+          <MdClose aria-hidden />
         </WindowButton>
       )}
     </div>

@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import React, { ReactNode, useEffect, useRef, useState } from 'react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import 'overlayscrollbars/overlayscrollbars.css';
-import { MdArrowBackIosNew, MdArrowForwardIos } from 'react-icons/md';
+import { MdArrowBackIosNew, MdArrowForwardIos, MdClose } from 'react-icons/md';
 import { useEnv } from '@/context/EnvContext';
 import { useDrag } from '@/hooks/useDrag';
 import { useThemeStore } from '@/store/themeStore';
@@ -287,17 +287,7 @@ const Dialog: React.FC<DialogProps> = ({
                   'bg-base-300/65 btn btn-ghost btn-circle ml-auto hidden h-6 min-h-6 w-6 focus:outline-none sm:flex'
                 }
               >
-                <svg
-                  xmlns='http://www.w3.org/2000/svg'
-                  width='1em'
-                  height='1em'
-                  viewBox='0 0 24 24'
-                >
-                  <path
-                    fill='currentColor'
-                    d='M19 6.41L17.59 5L12 10.59L6.41 5L5 6.41L10.59 12L5 17.59L6.41 19L12 13.41L17.59 19L19 17.59L13.41 12z'
-                  />
-                </svg>
+                <MdClose aria-hidden />
               </button>
             </div>
           )}

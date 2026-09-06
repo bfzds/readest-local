@@ -26,7 +26,7 @@ const SetStatusAlert: React.FC<SetStatusAlertProps> = ({
       label: _('Mark as Unread'),
       status: 'unread' as ReadingStatus,
       className:
-        'not-eink:bg-amber-500/15 not-eink:text-amber-600 dark:not-eink:text-amber-400 not-eink:border-amber-500/20 eink-bordered',
+        'not-eink:bg-amber-500/15 not-eink:text-amber-600 theme-dark:not-eink:text-amber-400 not-eink:border-amber-500/20 eink-bordered',
     },
     {
       label: _('Mark as Finished'),
@@ -38,7 +38,7 @@ const SetStatusAlert: React.FC<SetStatusAlertProps> = ({
       label: _('Mark as On hold'),
       status: 'abandoned' as ReadingStatus,
       className:
-        'not-eink:bg-slate-500/15 not-eink:text-slate-600 dark:not-eink:text-slate-300 not-eink:border-slate-500/20 eink-bordered',
+        'not-eink:bg-slate-500/15 not-eink:text-slate-600 theme-dark:not-eink:text-slate-300 not-eink:border-slate-500/20 eink-bordered',
     },
     {
       label: _('Clear Status'),

@@ -966,7 +966,6 @@ const FoliateViewer: React.FC<{
         <TableViewer
           gridInsets={gridInsets}
           html={selectedTableHtml}
-          isDarkMode={isDarkMode}
           onClose={() => setSelectedTableHtml(null)}
         />
       )}

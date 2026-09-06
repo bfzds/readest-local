@@ -12,7 +12,7 @@ import { Position, TextSelection } from '@/utils/sel';
 import { isPunctuationOnly, isWholeWord } from '@/utils/word';
 import AdwaitaSelect from '@/components/settings/primitives/AdwaitaSelect';
 import Popup from '@/components/Popup';
-import { Toggle } from '@/components/primitives/toggle';
+import { Toggle } from '@/components/Toggle';
 import { useThemeStore } from '@/store/themeStore';
 
 // Light themes need the knob track inverted against the popup's base-300

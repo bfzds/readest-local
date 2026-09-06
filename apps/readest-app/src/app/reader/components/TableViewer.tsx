@@ -8,7 +8,6 @@ import ZoomControls from './ZoomControls';
 interface TableViewerProps {
   gridInsets: Insets;
   html: string | null;
-  isDarkMode: boolean;
   onClose: () => void;
 }
 
@@ -16,7 +15,7 @@ const MIN_SCALE = 0.5;
 const MAX_SCALE = 4;
 const ZOOM_SPEED = 0.1;
 
-const TableViewer: React.FC<TableViewerProps> = ({ gridInsets, html, isDarkMode, onClose }) => {
+const TableViewer: React.FC<TableViewerProps> = ({ gridInsets, html, onClose }) => {
   const _ = useTranslation();
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -207,7 +206,7 @@ const TableViewer: React.FC<TableViewerProps> = ({ gridInsets, html, isDarkMode,
         <div
           role='presentation'
           ref={contentRef}
-          className='table-viewer-content max-h-full max-w-full transform-gpu select-none overflow-auto rounded-lg shadow-2xl'
+          className='table-viewer-content max-h-full max-w-full transform-gpu select-none overflow-auto rounded-lg bg-base-100 text-base-content shadow-2xl'
           onClick={handleContentClick}
           onMouseDown={handleContentMouseDown}
           onMouseMove={handleContentMouseMove}
@@ -217,8 +216,6 @@ const TableViewer: React.FC<TableViewerProps> = ({ gridInsets, html, isDarkMode,
             transform: `scale(${scale}) translate(${position.x / scale}px, ${position.y / scale}px)`,
             transition: 'transform 0.05s ease-out',
             cursor: cursorStyle,
-            backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff',
-            color: isDarkMode ? '#ffffff' : '#000000',
             padding: '24px',
           }}
           dangerouslySetInnerHTML={{ __html: html }}
@@ -237,15 +234,15 @@ const TableViewer: React.FC<TableViewerProps> = ({ gridInsets, html, isDarkMode,
       <style jsx>{`
         .table-viewer-content :global(table) {
           border-collapse: collapse;
-          border: 1px solid ${isDarkMode ? '#444444' : '#cccccc'};
+          border: 1px solid oklch(var(--b3));
         }
         .table-viewer-content :global(td),
         .table-viewer-content :global(th) {
-          border: 1px solid ${isDarkMode ? '#444444' : '#cccccc'};
+          border: 1px solid oklch(var(--b3));
           padding: 8px 12px;
         }
         .table-viewer-content :global(th) {
-          background-color: ${isDarkMode ? '#2a2a2a' : '#f5f5f5'};
+          background-color: oklch(var(--b2));
           font-weight: 600;
         }
       `}</style>

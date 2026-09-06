@@ -25,13 +25,14 @@ import {
   IoVolumeMediumOutline,
   IoLockClosed,
 } from 'react-icons/io5';
+import { FiChevronDown, FiMenu } from 'react-icons/fi';
 import { useTranslation } from '@/hooks/useTranslation';
 import { getPopupPosition, Position } from '@/utils/sel';
 import { Overlay } from '@/components/Overlay';
 import DictionarySheet from '@/app/reader/components/annotator/DictionarySheet';
 import DictionaryPopup from '@/app/reader/components/annotator/DictionaryPopup';
 import TTSFollowIndicator, { TtsSyncStatus } from '@/app/reader/components/tts/TTSFollowIndicator';
-import { Toggle } from '@/components/primitives/toggle';
+import { Toggle } from '@/components/Toggle';
 import AdwaitaSelect from '@/components/settings/primitives/AdwaitaSelect';
 
 interface FlatChapter {
@@ -728,15 +729,7 @@ const RSVPOverlay: React.FC<RSVPOverlayProps> = ({
             <span className='min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-left'>
               {getCurrentChapterLabel()}
             </span>
-            <svg
-              viewBox='0 0 24 24'
-              fill='none'
-              stroke='currentColor'
-              strokeWidth='2.5'
-              className='h-3.5 w-3.5 shrink-0 opacity-50'
-            >
-              <path d='M6 9l6 6 6-6' />
-            </svg>
+            <FiChevronDown className='h-3.5 w-3.5 shrink-0 opacity-50' aria-hidden />
           </button>
           {showChapterDropdown && (
             <>
@@ -781,15 +774,7 @@ const RSVPOverlay: React.FC<RSVPOverlayProps> = ({
             >
               <IoLockClosed className='h-3.5 w-3.5 shrink-0 opacity-70' aria-hidden='true' />
               <span className='font-medium'>{_('Audio pace')}</span>
-              <svg
-                viewBox='0 0 24 24'
-                fill='none'
-                stroke='currentColor'
-                strokeWidth='2.5'
-                className='ms-0.5 h-3 w-3 shrink-0 opacity-50'
-              >
-                <path d='M6 9l6 6 6-6' />
-              </svg>
+              <FiChevronDown className='ms-0.5 h-3 w-3 shrink-0 opacity-50' aria-hidden />
             </button>
           ) : (
             <button
@@ -800,15 +785,7 @@ const RSVPOverlay: React.FC<RSVPOverlayProps> = ({
             >
               <span className='font-semibold'>{state.wpm}</span>
               <span className='ms-0.5 text-xs opacity-50'>WPM</span>
-              <svg
-                viewBox='0 0 24 24'
-                fill='none'
-                stroke='currentColor'
-                strokeWidth='2.5'
-                className='ms-0.5 h-3 w-3 shrink-0 opacity-50'
-              >
-                <path d='M6 9l6 6 6-6' />
-              </svg>
+              <FiChevronDown className='ms-0.5 h-3 w-3 shrink-0 opacity-50' aria-hidden />
             </button>
           )}
           {showWpmDropdown && !ttsDriven && (
@@ -893,17 +870,7 @@ const RSVPOverlay: React.FC<RSVPOverlayProps> = ({
           aria-expanded={!contextCollapsed}
           aria-label={contextCollapsed ? _('Show context') : _('Hide context')}
         >
-          <svg
-            width='14'
-            height='14'
-            viewBox='0 0 24 24'
-            fill='none'
-            stroke='currentColor'
-            strokeWidth='2'
-            className='md:h-4 md:w-4'
-          >
-            <path d='M4 6h16M4 12h16M4 18h10' />
-          </svg>
+          <FiMenu className='h-3.5 w-3.5 md:h-4 md:w-4' aria-hidden />
           <span className='flex-1 text-left'>{_('Context')}</span>
           <IoChevronDown
             className={clsx(

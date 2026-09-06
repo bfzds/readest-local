@@ -32,7 +32,7 @@ import { BoxedList, NavigationRow, SettingLabel, SettingsRow } from './primitive
 import NumberInput from './NumberInput';
 import FontDropdown from './FontDropDown';
 import CustomFonts from './CustomFonts';
-import { Toggle } from '../primitives/toggle';
+import { Toggle } from '@/components/Toggle';
 
 const genCJKFontsList = (sysFonts: string[]) => {
   return Array.from(new Set([...sysFonts, ...CJK_SERIF_FONTS, ...CJK_SANS_SERIF_FONTS]))

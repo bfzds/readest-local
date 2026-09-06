@@ -13,6 +13,7 @@ import { describe, it, expect } from 'vitest';
  *   101  RSVP immersive controls (start dialog / hint chip)
  *   110  Settings app dialog (raised above RSVP for dictionary management)
  *   120  modal / command-palette layer (ModalPortal, CommandPalette)
+ *   125  atmosphere ambient video overlay (globals.css, tints modals but not toasts)
  *   130  toast / alert
  *   200  security lock screen (AppLockScreen)
  *
@@ -44,6 +45,10 @@ const RSVP_CONTROLS = firstZ(
 );
 const TOAST = firstZ(read('src/components/Toast.tsx'), /toast z-\[(\d+)\]/);
 const APP_LOCK = firstZ(read('src/components/AppLockScreen.tsx'), /z-\[(\d+)\]/);
+const ATMOSPHERE = firstZ(
+  read('src/styles/globals.css'),
+  /#atmosphere-overlay[^}]*z-index:\s*(\d+)/s,
+);
 
 describe('overlay z-index scale', () => {
   it('renders a modal (e.g. Add OPDS Catalog) above the Settings dialog', () => {
@@ -76,8 +81,24 @@ describe('overlay z-index scale', () => {
     expect(APP_LOCK).toBeGreaterThan(TOAST);
   });
 
+  it('tints modals with the atmosphere overlay but keeps toasts and the lock screen crisp', () => {
+    // Regression: the atmosphere overlay sat at z-index 999, outside the scale,
+    // multiply-blending a gray tint over every toast and alert below it.
+    expect(ATMOSPHERE).toBeGreaterThan(MODAL);
+    expect(TOAST).toBeGreaterThan(ATMOSPHERE);
+    expect(APP_LOCK).toBeGreaterThan(ATMOSPHERE);
+  });
+
   it('uses a compact scale with no four-digit z-index', () => {
-    for (const value of [RSVP_OVERLAY, RSVP_CONTROLS, SETTINGS, MODAL, TOAST, APP_LOCK]) {
+    for (const value of [
+      RSVP_OVERLAY,
+      RSVP_CONTROLS,
+      SETTINGS,
+      MODAL,
+      ATMOSPHERE,
+      TOAST,
+      APP_LOCK,
+    ]) {
       expect(value).toBeLessThan(1000);
     }
   });

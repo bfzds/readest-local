@@ -957,7 +957,10 @@ html[data-nav-direction='back'] ::view-transition-new(root) {
   }
 }
 
-/* Atmosphere overlay */
+/* Atmosphere overlay
+   Sits inside the coordinated z-index scale (see __tests__/styles/zIndexScale.test.ts):
+   above modals (120) so the ambient tint also covers dialogs, but below the
+   toast/alert layer (130) and the lock screen (200) so notifications stay crisp. */
 #atmosphere-overlay {
   position: fixed;
   inset: 0;
@@ -967,7 +970,7 @@ html[data-nav-direction='back'] ::view-transition-new(root) {
   object-position: top;
   mix-blend-mode: multiply;
   pointer-events: none;
-  z-index: 999;
+  z-index: 125;
   opacity: 0;
   transition: opacity 700ms var(--ease-out, ease-out);
 }
