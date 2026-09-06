@@ -231,26 +231,26 @@ export const usePullToRefresh = (
             console.error('Pull to refresh error:', error);
           } finally {
             isLoading = false;
-            // The user's pull-up already reset the visuals; don't fight it
-            // with a competing snap-back. The refresh itself cannot be
-            // un-dispatched, but the UI must stay consistent with the user.
             if (pullCancelled) {
+              // The user's pull-up already reset the visuals; don't fight it
+              // with a competing snap-back. The refresh itself cannot be
+              // un-dispatched, but the UI must stay consistent with the user.
               el.removeEventListener('touchstart', handleLoadingTouchStart);
               el.removeEventListener('touchmove', handleLoadingTouchMove);
-              return;
-            }
-            hideLoadingSpinner(parentEl);
-            for (const wrapper of wrappers) {
-              wrapper.style.transition = 'transform 0.3s ease-out';
-              wrapper.style.transform = 'translateY(0)';
-            }
-            setTimeout(() => {
+            } else {
+              hideLoadingSpinner(parentEl);
               for (const wrapper of wrappers) {
-                wrapper.style.transition = '';
+                wrapper.style.transition = 'transform 0.3s ease-out';
+                wrapper.style.transform = 'translateY(0)';
               }
-            }, 300);
-            el.removeEventListener('touchstart', handleLoadingTouchStart);
-            el.removeEventListener('touchmove', handleLoadingTouchMove);
+              setTimeout(() => {
+                for (const wrapper of wrappers) {
+                  wrapper.style.transition = '';
+                }
+              }, 300);
+              el.removeEventListener('touchstart', handleLoadingTouchStart);
+              el.removeEventListener('touchmove', handleLoadingTouchMove);
+            }
           }
         } else {
           hideLoadingSpinner(parentEl);
