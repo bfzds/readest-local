@@ -285,12 +285,9 @@ export const usePagination = (
           } else if (deltaX > 0) {
             viewPagination(viewRef.current, viewSettings, 'right');
           }
-        } else if (msg.data.type === 'iframe-mouseup') {
-          if (msg.data.button === 3) {
-            viewRef.current?.history.back();
-          } else if (msg.data.button === 4) {
-            viewRef.current?.history.forward();
-          }
+          // Note: mouse side-buttons are NOT handled here. Their mouseup is
+          // swallowed in handleMouseup; navigation runs once via the mousedown
+          // forward (iframe-side-button → useIframeEvents → library-nav-back).
         }
       }
     } else if (msg instanceof CustomEvent) {

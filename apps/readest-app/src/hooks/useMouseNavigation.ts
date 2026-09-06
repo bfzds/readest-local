@@ -24,6 +24,23 @@ import { useSidebarStore } from '@/store/sidebarStore';
  * - A press while the primary button is still held (mid drag/reorder) is
  *   ignored to avoid mis-triggering navigation during drag interactions.
  */
+/**
+ * Shared side-button "back" interlock: while the reader search bar is visible,
+ * back collapses it (and the sidebar with it) instead of switching books.
+ * Used by both the window-level mousedown path and the iframe-forwarded press.
+ * Returns true when the back press was consumed by the search-bar dismissal.
+ */
+export const handleSideButtonBackInterlock = (): boolean => {
+  const { isSearchBarVisible, setSearchBarVisible, isSideBarPinned, setSideBarVisible } =
+    useSidebarStore.getState();
+  if (isSearchBarVisible) {
+    setSearchBarVisible(false);
+    if (!isSideBarPinned) setSideBarVisible(false);
+    return true;
+  }
+  return false;
+};
+
 export const useMouseNavigation = () => {
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
@@ -38,14 +55,10 @@ export const useMouseNavigation = () => {
       // Stop the host's default side-button history navigation so the gesture
       // maps to exactly one app-level action.
       e.preventDefault();
-      const { isSearchBarVisible, setSearchBarVisible, isSideBarPinned, setSideBarVisible } =
-        useSidebarStore.getState();
       if (e.button === 3) {
         // Search bar open → dismiss it (not switch books) and close the
         // sidebar unless pinned, so the reader comes back rather than the TOC.
-        if (isSearchBarVisible) {
-          setSearchBarVisible(false);
-          if (!isSideBarPinned) setSideBarVisible(false);
+        if (handleSideButtonBackInterlock()) {
           return;
         }
         eventDispatcher.dispatch('library-nav-back');

@@ -355,9 +355,12 @@ export const handleMousemove = (bookKey: string, event: MouseEvent) => {
 
 export const handleMouseup = (bookKey: string, event: MouseEvent) => {
   isMouseDown = false;
-  // we will handle mouse back and forward buttons ourselves
+  // Side-buttons (3/4) are app-level navigation, driven ONCE via the mousedown
+  // forward (handleMouseDown → iframe-side-button). Don't also forward their
+  // mouseup, or usePagination would run a second, competing action.
   if ([3, 4].includes(event.button)) {
     event.preventDefault();
+    return;
   }
   window.postMessage(
     {

@@ -8,6 +8,7 @@ import { saveViewSettings } from '@/helpers/settings';
 import { getEffectiveFontSize } from '@/utils/style';
 import { throttle } from '@/utils/throttle';
 import { createWheelGestureDetector } from '@/app/reader/utils/wheelGesture';
+import { handleSideButtonBackInterlock } from '@/hooks/useMouseNavigation';
 import {
   beginLayeredTurnTouch,
   cancelLayeredTurnTouch,
@@ -91,9 +92,15 @@ export const useMouseEvent = (
       if (msg.data && msg.data.bookKey === bookKey) {
         if (msg.data.type === 'iframe-side-button') {
           // Reading iframe forwarded a mouse side-button press (see
-          // handleMouseDown) — map it to app-level back/forward navigation.
-          if (msg.data.button === 3) eventDispatcher.dispatch('library-nav-back');
-          else eventDispatcher.dispatch('library-nav-forward');
+          // handleMouseDown) — map it to app-level back/forward navigation,
+          // with the same search-bar interlock as the window-level path.
+          if (msg.data.button === 3) {
+            if (!handleSideButtonBackInterlock()) {
+              eventDispatcher.dispatch('library-nav-back');
+            }
+          } else {
+            eventDispatcher.dispatch('library-nav-forward');
+          }
         } else if (msg.data.type === 'iframe-wheel') {
           if (msg.data.ctrlKey) {
             // Ctrl+wheel adjusts the body font size, not a page-turn gesture —
