@@ -72,7 +72,7 @@ describe('iframe mouseup side-button suppression', () => {
   it('still forwards ordinary button mouseups', () => {
     handleMouseup('book-1', mouseupEvent(0));
     expect(window.postMessage).toHaveBeenCalledTimes(1);
-    expect((window.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0].type).toBe(
+    expect((window.postMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0].type).toBe(
       'iframe-mouseup',
     );
   });

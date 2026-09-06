@@ -52,7 +52,7 @@ describe('MiscPanel unsaved draft reporting', () => {
     );
 
     const latestChecker = () =>
-      onRegisterUnsavedCheck.mock.calls[onRegisterUnsavedCheck.mock.calls.length - 1][0] as
+      onRegisterUnsavedCheck.mock.calls[onRegisterUnsavedCheck.mock.calls.length - 1]![0] as
         | (() => boolean)
         | null;
     expect(latestChecker()).toBe(false);
