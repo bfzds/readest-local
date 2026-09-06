@@ -60,18 +60,23 @@ const Dialog: React.FC<DialogProps> = ({
   const [isRtl] = useState(() => getDirFromUILanguage() === 'rtl');
   const dialogRef = useRef<HTMLDialogElement>(null);
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
+  // The keydown listener is bound once per open with a closure; route it
+  // through a ref so it always calls the latest onClose (consumers like
+  // BookDetailModal branch on current state inside their close handler).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const iconSize22 = useResponsiveSize(22);
   const isMobile = window.innerWidth < 640 || window.innerHeight < 640;
 
   const handleKeyDown = (event: KeyboardEvent | CustomEvent) => {
     if (event instanceof CustomEvent) {
       if (event.detail.keyName === 'Back') {
-        onClose();
+        onCloseRef.current();
         return true;
       }
     } else {
       if (event.key === 'Escape') {
-        onClose();
+        onCloseRef.current();
       } else if (event.key === 'Tab' && dialogRef.current) {
         // 焦点陷阱：Tab/Shift+Tab 在对话框可聚焦元素间循环，不逃逸到背景页。
         const focusables = dialogRef.current.querySelectorAll<HTMLElement>(

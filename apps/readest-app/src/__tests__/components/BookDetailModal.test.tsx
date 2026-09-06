@@ -64,11 +64,30 @@ vi.mock('next/image', () => ({
   default: (props: Record<string, unknown>) => <img {...props} />,
 }));
 
-// Chrome we don't exercise — keep imports cheap and side-effect free.
+// Chrome we don't exercise — keep imports cheap and side-effect free. The mock
+// forwards Escape to onClose so close-attempt flows stay testable.
 vi.mock('@/components/Dialog', () => ({
   __esModule: true,
-  default: ({ children, isOpen }: { children: React.ReactNode; isOpen: boolean }) =>
-    isOpen ? <div>{children}</div> : null,
+  default: ({
+    children,
+    isOpen,
+    onClose,
+  }: {
+    children: React.ReactNode;
+    isOpen: boolean;
+    onClose: () => void;
+  }) =>
+    isOpen ? (
+      // biome-ignore lint/a11y/noStaticElementInteractions: test mock
+      <div
+        data-testid='dialog-mock'
+        onKeyDown={(e: React.KeyboardEvent) => {
+          if (e.key === 'Escape') onClose();
+        }}
+      >
+        {children}
+      </div>
+    ) : null,
 }));
 vi.mock('@/components/metadata/SourceSelector', () => ({ __esModule: true, default: () => null }));
 vi.mock('@/components/Spinner', () => ({ __esModule: true, default: () => null }));
@@ -117,5 +136,50 @@ describe('BookDetailModal cover refresh after save', () => {
       expect(screen.getByTestId('cover').getAttribute('src')).not.toBe('old-cover');
     });
     expect(screen.getByTestId('cover').getAttribute('src')).toBe('_blank');
+  });
+});
+
+describe('BookDetailModal unsaved-edit guard', () => {
+  const openEditMode = async () => {
+    const book = makeBook();
+    const onClose = vi.fn();
+    render(<BookDetailModal book={book} isOpen onClose={onClose} />);
+    await waitFor(() => expect(screen.getByTestId('cover')).toBeDefined());
+    fireEvent.click(screen.getByTitle('Edit Metadata'));
+    return { onClose };
+  };
+
+  it('closes immediately on Esc when not editing or unchanged', async () => {
+    const { onClose } = await openEditMode();
+
+    fireEvent.keyDown(screen.getByTestId('dialog-mock'), { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Discard unsaved changes?')).toBeNull();
+  });
+
+  it('offers a confirm on Esc while editing with unsaved changes', async () => {
+    const { onClose } = await openEditMode();
+
+    // Make the draft dirty, then press Esc.
+    fireEvent.click(await screen.findByTitle('Remove cover image'));
+    fireEvent.keyDown(screen.getByTestId('dialog-mock'), { key: 'Escape' });
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText('Discard unsaved changes?')).toBeDefined();
+
+    // Discard closes the modal for real.
+    fireEvent.click(screen.getByText('Discard').closest('button')!);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps editing when the confirm is cancelled', async () => {
+    const { onClose } = await openEditMode();
+
+    fireEvent.click(await screen.findByTitle('Remove cover image'));
+    fireEvent.keyDown(screen.getByTestId('dialog-mock'), { key: 'Escape' });
+    fireEvent.click(screen.getByText('Cancel').closest('button')!);
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByText('Discard unsaved changes?')).toBeNull();
   });
 });

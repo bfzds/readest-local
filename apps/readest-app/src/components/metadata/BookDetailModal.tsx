@@ -9,6 +9,7 @@ import { eventDispatcher } from '@/utils/event';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useMetadataEdit } from './useMetadataEdit';
 import Dialog from '@/components/Dialog';
+import Alert from '@/components/Alert';
 import BookDetailView from './BookDetailView';
 import BookDetailEdit from './BookDetailEdit';
 import Spinner from '../Spinner';
@@ -38,6 +39,7 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
   const [editMode, setEditMode] = useState(false);
   const [bookMeta, setBookMeta] = useState<BookMetadata | null>(null);
   const [bookTags, setBookTags] = useState<string[]>(book.tags ?? []);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [fileSize, setFileSize] = useState<number | null>(null);
   // The parent owns the `book` prop and does not re-pass it after a metadata
   // save, so the details view tracks the saved book locally to refresh its
@@ -84,7 +86,31 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
   const handleClose = () => {
     setBookMeta(null);
     setEditMode(false);
+    setShowDiscardConfirm(false);
     onClose();
+  };
+
+  // Esc / overlay / close button all funnel through here: while editing with
+  // unsaved changes they must offer a confirm instead of silently discarding.
+  const attemptClose = () => {
+    if (showDiscardConfirm) return;
+    if (editMode && isDirty()) {
+      setShowDiscardConfirm(true);
+      return;
+    }
+    handleClose();
+  };
+
+  const isDirty = () => {
+    if (!editedMeta || !bookMeta) return false;
+    if (JSON.stringify(editedTags) !== JSON.stringify(bookTags)) return true;
+    return JSON.stringify(editedMeta) !== JSON.stringify(bookMeta);
+  };
+
+  const handleDiscardChanges = () => {
+    resetToOriginal();
+    setEditMode(false);
+    handleClose();
   };
 
   const handleEditMetadata = () => {
@@ -143,7 +169,7 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
         <Dialog
           title={editMode ? _('Edit Metadata') : _('Book Details')}
           isOpen={isOpen}
-          onClose={handleClose}
+          onClose={attemptClose}
           boxClassName={clsx(
             editMode ? 'sm:min-w-[600px] sm:max-w-[600px]' : 'sm:min-w-[480px] sm:max-w-[480px]',
             'sm:h-auto sm:max-h-[90%]',
@@ -186,6 +212,17 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
           <div className='fixed inset-0 z-50 flex items-center justify-center'>
             <Spinner loading />
           </div>
+        )}
+
+        {showDiscardConfirm && (
+          <Alert
+            title={_('Unsaved Changes')}
+            message={_('Discard unsaved changes?')}
+            confirmLabel={_('Discard')}
+            confirmButtonClassName='btn-error'
+            onCancel={() => setShowDiscardConfirm(false)}
+            onConfirm={handleDiscardChanges}
+          />
         )}
       </div>
     </>

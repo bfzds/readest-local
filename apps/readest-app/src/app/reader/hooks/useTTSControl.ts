@@ -757,6 +757,9 @@ export const useTTSControl = ({ bookKey, onRequestHidePanel }: UseTTSControlProp
       ttsControllerRef.current = null;
       setTtsController(null);
       setIsPlaying(false);
+      // Reset the paused flag too, or it lingers into the next session and
+      // makes the play/pause toggle start in the wrong half of its machine.
+      setIsPaused(false);
       emitPlaybackState('stopped');
       onRequestHidePanel?.();
       setShowIndicator(false);
@@ -825,7 +828,9 @@ export const useTTSControl = ({ bookKey, onRequestHidePanel }: UseTTSControlProp
         }
       }
 
-      if (!ttsFromIndex) {
+      // null means "no explicit index requested"; 0 is a legitimate section
+      // index (the first chapter) and must not be replaced by progress.index.
+      if (ttsFromIndex === null) {
         ttsFromIndex = progress.index;
       }
 
@@ -870,6 +875,10 @@ export const useTTSControl = ({ bookKey, onRequestHidePanel }: UseTTSControlProp
         // starting. The catch handler rolls both back if the start fails.
         setShowIndicator(true);
         setIsPlaying(true);
+        // A fresh start must not inherit a stale paused flag from a previous
+        // session, or the play/pause toggle starts in the wrong half of its
+        // state machine.
+        setIsPaused(false);
         const ttsController = new TTSController(
           appService,
           view,
@@ -935,30 +944,35 @@ export const useTTSControl = ({ bookKey, onRequestHidePanel }: UseTTSControlProp
               : ttsFromRange
                 ? view.tts?.from(ttsFromRange)
                 : view.tts?.start();
-        if (ssml) {
-          const lang = parseSSMLLang(ssml, primaryLang) || 'en';
-          setIsPlaying(true);
-          emitPlaybackState('playing');
-          setTtsLang(lang);
-
-          ttsController.setLang(lang);
-          ttsController.setRate(viewSettings.ttsRate);
-          ttsController.setSentenceGap(viewSettings.ttsSentenceGap ?? DEFAULT_SENTENCE_GAP_SEC);
-          ttsController.setParagraphGap(viewSettings.ttsParagraphGap ?? DEFAULT_PARAGRAPH_GAP_SEC);
-          // Narrating a selection is an ordinary session started at that point,
-          // so it must not be treated as a one-shot utterance that stops the
-          // session the moment the first clip ends.
-          ttsController.speak(ssml, oneTime && !narrateSelection, () => handleStop(bookKey));
-          ttsController.setTargetLang(getTTSTargetLang() || '');
-        } else {
-          // Nothing to speak: roll back the optimistic playing state.
-          setIsPlaying(false);
+        if (!ssml) {
+          // Nothing to speak (empty chapter / engine returned no content):
+          // abort the start entirely. Rolling back only the playing flag used
+          // to leave the mini player mounted with a play button that could
+          // never do anything and TTS stuck "enabled".
+          setTtsClientsInitialized(true);
+          await handleStop(bookKey);
+          return;
         }
+        const lang = parseSSMLLang(ssml, primaryLang) || 'en';
+        setIsPlaying(true);
+        emitPlaybackState('playing');
+        setTtsLang(lang);
+
+        ttsController.setLang(lang);
+        ttsController.setRate(viewSettings.ttsRate);
+        ttsController.setSentenceGap(viewSettings.ttsSentenceGap ?? DEFAULT_SENTENCE_GAP_SEC);
+        ttsController.setParagraphGap(viewSettings.ttsParagraphGap ?? DEFAULT_PARAGRAPH_GAP_SEC);
+        // Narrating a selection is an ordinary session started at that point,
+        // so it must not be treated as a one-shot utterance that stops the
+        // session the moment the first clip ends.
+        ttsController.speak(ssml, oneTime && !narrateSelection, () => handleStop(bookKey));
+        ttsController.setTargetLang(getTTSTargetLang() || '');
         setTtsClientsInitialized(true);
         setTTSEnabled(bookKey, true);
       } catch (error) {
         setShowIndicator(false);
         setIsPlaying(false);
+        setIsPaused(false);
         eventDispatcher.dispatch('toast', {
           message: _('TTS not supported for this document'),
           type: 'error',

@@ -366,6 +366,77 @@ describe('useTTSControl reading a selection aloud', () => {
   });
 });
 
+// An explicit `index: 0` (first chapter) used to fall into the `!ttsFromIndex`
+// falsy branch and get replaced by progress.index, producing a CFI anchored in
+// the wrong section.
+describe('useTTSControl starting from section index 0', () => {
+  beforeEach(() => {
+    ttsControllerInstances.length = 0;
+    pendingInitResolvers.length = 0;
+    narrationState.active = false;
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('treats an explicit index 0 as a valid start, not a missing one', async () => {
+    mockProgress.index = 1;
+    mockProgress.range = null;
+    mockViewSettings.ttsLocation = null;
+    render(<Harness />);
+    const range = new Range();
+    await act(async () => {
+      const p = eventDispatcher.dispatch('tts-speak', { bookKey: 'book-1', range, index: 0 });
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+      while (pendingInitResolvers.length > 0) pendingInitResolvers.shift()!();
+      await p;
+    });
+
+    // The CFI must be anchored in section 0 (the requested index), not in the
+    // section the reader happened to be on (progress.index = 1).
+    expect(mockView.getCFI).toHaveBeenCalledWith(0, range);
+    expect(mockViewSettings.ttsLocation).toBe('cfi');
+    mockProgress.index = 0;
+  });
+});
+
+// When the engine has nothing to read (empty chapter), aborting the start used
+// to roll back only isPlaying — the mini player stayed mounted with a play
+// button that could never do anything and TTS stayed "enabled".
+describe('useTTSControl empty-chapter abort', () => {
+  beforeEach(() => {
+    ttsControllerInstances.length = 0;
+    pendingInitResolvers.length = 0;
+    narrationState.active = false;
+  });
+
+  afterEach(() => {
+    mockView.tts.start.mockReturnValue('<speak>hello</speak>');
+    cleanup();
+  });
+
+  it('aborts the start completely when there is nothing to speak', async () => {
+    mockView.tts.start.mockReturnValue('');
+    mockProgress.index = 0;
+    render(<Harness />);
+    await act(async () => {
+      const p = eventDispatcher.dispatch('tts-speak', { bookKey: 'book-1' });
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+      while (pendingInitResolvers.length > 0) pendingInitResolvers.shift()!();
+      await p;
+    });
+
+    // handleStop ran: the controller was shut down and TTS flipped back to
+    // disabled, so no half-alive session lingers behind the UI.
+    const controller = ttsControllerInstances[0] as unknown as {
+      shutdown: ReturnType<typeof vi.fn>;
+    };
+    expect(controller.shutdown).toHaveBeenCalled();
+    expect(getSetTTSEnabledMock()).toHaveBeenLastCalledWith('book-1', false);
+  });
+});
+
 // Following the voice onto the next page moves the view past the *start* of the
 // sentence being read, which is what ttsLocation records. Judged on that alone
 // the reader looks like they navigated away, so the back-to-position prompt
