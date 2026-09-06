@@ -146,6 +146,9 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
   const bubbleRef = useRef<HTMLDivElement | null>(null);
   const bubbleLabelRef = useRef<HTMLSpanElement | null>(null);
   const handleRef = useRef<HTMLDivElement | null>(null);
+  const fillRef = useRef<HTMLDivElement | null>(null);
+  const fillWidthRef = useRef(0);
+  const fillLeftRef = useRef(0);
   const scrubStateRef = useRef<{
     startX: number;
     startY: number;
@@ -207,10 +210,14 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
       scrubStateRef.current = null;
       scrubThrottleRef.current?.cancel();
       setScrubActive(false);
-      // The handle stays mounted: undo our direct style writes so React's
-      // style prop (the idle progress position) shows through again.
+      // The handle and fill stay mounted: undo our direct style writes so
+      // React's style props (the idle progress geometry) show through again.
       if (handleRef.current) {
         handleRef.current.style.left = `${handleLeftRef.current}%`;
+      }
+      if (fillRef.current) {
+        fillRef.current.style.width = `${fillWidthRef.current}%`;
+        fillRef.current.style.left = fillLeftRef.current === 0 ? '0' : `${fillLeftRef.current}%`;
       }
     };
 
@@ -243,6 +250,14 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
       }
       if (handleRef.current) {
         handleRef.current.style.left = `${handleLeftOfFractionRef.current(state.fraction)}%`;
+      }
+      // The fill rides WITH the pointer during a scrub (standard scrub
+      // behavior): if it stayed on the view's applied position it would trail
+      // the handle behind on fast drags — the "ghosting" artifact.
+      if (fillRef.current) {
+        const fillPct = handleLeftOfFractionRef.current(state.fraction);
+        fillRef.current.style.width = `${rtlRef.current ? 100 - fillPct : fillPct}%`;
+        fillRef.current.style.left = rtlRef.current ? `${fillPct}%` : '0';
       }
 
       if (Math.abs(state.fraction - lastScrubFractionRef.current) > FRACTION_EPSILON) {
@@ -332,6 +347,10 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
   const trackHandleLeft = viewSettings.rtl ? (1 - trackFraction) * 100 : trackFraction * 100;
   handleLeftRef.current = trackHandleLeft;
   const trackFillLeft = viewSettings.rtl ? `${(1 - trackFraction) * 100}%` : 0;
+  // Mirror of the idle fill geometry for the same post-scrub reset as the
+  // handle's — the scrub drag writes both directly to the DOM.
+  fillWidthRef.current = trackFraction * 100;
+  fillLeftRef.current = viewSettings.rtl ? (1 - trackFraction) * 100 : 0;
 
   return (
     <div
@@ -528,6 +547,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
               )}
             >
               <div
+                ref={fillRef}
                 className='absolute bottom-0 top-0 bg-base-content/35'
                 style={{ width: `${trackFraction * 100}%`, left: trackFillLeft }}
               />
