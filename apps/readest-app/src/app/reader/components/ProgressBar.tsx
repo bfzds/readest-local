@@ -149,6 +149,9 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
   const fillRef = useRef<HTMLDivElement | null>(null);
   const fillWidthRef = useRef(0);
   const fillLeftRef = useRef(0);
+  // Pointer fraction while a scrub is in flight: the rendered style reads this
+  // during re-renders so React and the ref writes agree on the same position.
+  const scrubFractionRef = useRef(0);
   const scrubStateRef = useRef<{
     startX: number;
     startY: number;
@@ -235,6 +238,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
       }
       const raw = xToFraction(e.clientX, state.rect.left, state.rect.width);
       state.fraction = rtlRef.current ? 1 - raw : raw;
+      scrubFractionRef.current = state.fraction;
 
       // Frame-aligned DOM writes — no React render per pointermove.
       const innerWidth = typeof window !== 'undefined' ? window.innerWidth : e.clientX;
@@ -341,16 +345,27 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
 
   // Scrub visual layer geometry: the fill/handle must match the drag mapping,
   // which measures x against the strip's own rect (RTL inverts the direction).
+  //
+  // While a scrub is active the rendered style must come from the POINTER
+  // fraction, not the view's applied position: every throttled relocation
+  // updates the progress store and re-renders this component, and a
+  // view-position style prop would clobber our ref-written pointer-following
+  // geometry mid-drag — the visible "ghosting" where the fill/handle snap
+  // backward on every relocation.
   const trackFraction =
     pageInfo && pageInfo.total > 0 ? (pageInfo.current + 1) / pageInfo.total : 0;
+  const renderFraction = scrubActive ? scrubFractionRef.current : trackFraction;
   const trackActive = scrubHovered || scrubActive;
-  const trackHandleLeft = viewSettings.rtl ? (1 - trackFraction) * 100 : trackFraction * 100;
-  handleLeftRef.current = trackHandleLeft;
-  const trackFillLeft = viewSettings.rtl ? `${(1 - trackFraction) * 100}%` : 0;
-  // Mirror of the idle fill geometry for the same post-scrub reset as the
-  // handle's — the scrub drag writes both directly to the DOM.
+  // Idle geometry (view position) — the refs mirror it so a cancelled or
+  // finished scrub can reset the direct-written styles back to it.
+  const idleHandleLeft = viewSettings.rtl ? (1 - trackFraction) * 100 : trackFraction * 100;
+  handleLeftRef.current = idleHandleLeft;
   fillWidthRef.current = trackFraction * 100;
   fillLeftRef.current = viewSettings.rtl ? (1 - trackFraction) * 100 : 0;
+  // Rendered geometry — pointer position while scrubbing, view position idle.
+  const trackHandleLeft = viewSettings.rtl ? (1 - renderFraction) * 100 : renderFraction * 100;
+  const trackFillLeft = viewSettings.rtl ? `${(1 - renderFraction) * 100}%` : 0;
+  const trackFillWidth = renderFraction * 100;
 
   return (
     <div
@@ -549,7 +564,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
               <div
                 ref={fillRef}
                 className='absolute bottom-0 top-0 bg-base-content/35'
-                style={{ width: `${trackFraction * 100}%`, left: trackFillLeft }}
+                style={{ width: `${trackFillWidth}%`, left: trackFillLeft }}
               />
               <div
                 ref={handleRef}
