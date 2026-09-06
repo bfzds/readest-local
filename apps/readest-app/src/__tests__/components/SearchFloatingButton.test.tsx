@@ -35,11 +35,14 @@ describe('SearchFloatingButton', () => {
     expect(sidebar.setSearchBarVisible).toHaveBeenCalledWith(true);
   });
 
-  it('is hidden while the sidebar is open for the same book', () => {
+  it('stays visible while the sidebar is open; clicking opens the search bar in place', () => {
+    // 规格变更（用户决策）：两颗悬浮按钮常驻，不再在侧栏展开时卸载。
     sidebar.sideBarBookKey = 'book-1';
     sidebar.isSideBarVisible = true;
     render(<SearchFloatingButton bookKey='book-1' />);
-    expect(screen.queryByLabelText('Search')).toBeNull();
+    fireEvent.click(screen.getByLabelText('Search'));
+    expect(sidebar.setSearchBarVisible).toHaveBeenCalledWith(true);
+    expect(sidebar.setSideBarVisible).not.toHaveBeenCalledWith(false);
   });
 
   it('sits above the TOC button on the same vertical line', () => {

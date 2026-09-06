@@ -6,13 +6,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 
 const SearchFloatingButton: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const _ = useTranslation();
-  const {
-    sideBarBookKey,
-    isSideBarVisible,
-    setSideBarBookKey,
-    setSideBarVisible,
-    setSearchBarVisible,
-  } = useSidebarStore();
+  const { setSideBarBookKey, setSideBarVisible, setSearchBarVisible } = useSidebarStore();
   const { getConfig, setConfig } = useBookDataStore();
 
   const handleOpenSearch = useCallback(() => {
@@ -25,7 +19,9 @@ const SearchFloatingButton: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     setSearchBarVisible(true);
   }, [bookKey, getConfig, setConfig, setSideBarBookKey, setSideBarVisible, setSearchBarVisible]);
 
-  if (sideBarBookKey === bookKey && isSideBarVisible) return null;
+  // 用户决策：按钮常驻（不再在侧栏展开时卸载）。侧栏已展开时点击 = 在
+  // 展开的侧栏里打开搜索栏；收起时点击 = 打开侧栏并显示搜索栏。两条路径
+  // 都走 handleOpenSearch，无需分支。
 
   return (
     <button

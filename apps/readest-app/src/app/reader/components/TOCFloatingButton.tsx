@@ -18,7 +18,15 @@ const TOCFloatingButton: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const { getConfig, setConfig } = useBookDataStore();
   const { setHoveredBookKey, getView } = useReaderStore();
 
+  const isSidebarOpenForBook = sideBarBookKey === bookKey && isSideBarVisible;
+
   const handleOpenTOC = useCallback(() => {
+    // 切换语义（用户决策：两颗悬浮按钮常驻）：侧栏已为本书展开时，点击 =
+    // 收起侧栏。直接返回，不进入下方打开流程把刚收起的侧栏又打开。
+    if (sideBarBookKey === bookKey && isSideBarVisible) {
+      setSideBarVisible(false);
+      return;
+    }
     setHoveredBookKey(bookKey);
     const config = getConfig(bookKey);
     if (config?.viewSettings) {
@@ -36,6 +44,8 @@ const TOCFloatingButton: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     setSideBarVisible(true);
   }, [
     bookKey,
+    sideBarBookKey,
+    isSideBarVisible,
     getConfig,
     setConfig,
     setSideBarBookKey,
@@ -46,13 +56,15 @@ const TOCFloatingButton: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     setHoveredBookKey,
   ]);
 
-  if (sideBarBookKey === bookKey && isSideBarVisible) return null;
+  // label 必须说明即将发生的动作（与 FloatingSpeakButton 的约定一致）：
+  // 侧栏展开时这颗按钮的动作是收起。
+  const label = isSidebarOpenForBook ? _('Close') : _('Table of Contents');
 
   return (
     <button
       type='button'
-      aria-label={_('Table of Contents')}
-      title={_('Table of Contents')}
+      aria-label={label}
+      title={label}
       onClick={handleOpenTOC}
       className='absolute bottom-24 right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-base-100/90 text-base-content shadow-lg backdrop-blur-sm transition-transform active:scale-95 sm:bottom-16'
     >
