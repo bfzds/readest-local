@@ -117,6 +117,18 @@ describe('SearchBar', () => {
     expect(mocks.searchLibraryBooks.mock.calls[0]![3].sectionIndex).toBe(4);
   });
 
+  // The library scan caps each book at 500 matches; in-book search must not
+  // inherit that cap and silently stop at 500 results (ported from upstream
+  // #5728; local additionally lifts the SF global 2000 cap).
+  it('searches the book without a result cap', async () => {
+    mocks.progress = null;
+    await renderBar();
+
+    const options = mocks.searchLibraryBooks.mock.calls[0]![3];
+    expect(options.maxResultsPerBook).toBe(Infinity);
+    expect(options.maxTotalResults).toBe(Infinity);
+  });
+
   it('does not focus the input when the search bar opens', () => {
     sidebarMocks.searchBarFocusToken = 0;
     const { container } = render(
