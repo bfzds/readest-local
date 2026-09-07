@@ -102,6 +102,16 @@ export interface LibrarySearchOptions {
   // Restrict matching to one section (reader "current chapter" scope). Index
   // population is never restricted: a live scan still writes every section.
   sectionIndex?: number;
+  // Per-book match budget. A library-wide sweep keeps the default cap so one
+  // book cannot flood the shared results list; reader in-book search passes
+  // Infinity because there the one book's matches are the entire result set.
+  // (Ported from upstream #5728; maxTotalResults covers the local SF2 global
+  // sweep cap that upstream does not have.)
+  maxResultsPerBook?: number;
+  // Global match budget across all books in one sweep. Defaults to
+  // MAX_TOTAL_SEARCH_RESULTS to protect library-wide state/render; in-book
+  // search (single book) passes Infinity together with maxResultsPerBook.
+  maxTotalResults?: number;
 }
 
 const DEFAULT_CONFIG: LibrarySearchConfig = {
@@ -491,6 +501,8 @@ export async function* searchLibraryBooks(
 ): AsyncGenerator<LibrarySearchEvent> {
   const config: LibrarySearchConfig = { ...DEFAULT_CONFIG, ...options.config, scope: 'book' };
   const { signal } = options;
+  const maxResultsPerBook = options.maxResultsPerBook ?? MAX_BOOK_SEARCH_RESULTS;
+  const maxTotalResults = options.maxTotalResults ?? MAX_TOTAL_SEARCH_RESULTS;
   let searchedBooks = 0;
   let skippedBooks = 0;
   let erroredBooks = 0;
@@ -620,10 +632,7 @@ export async function* searchLibraryBooks(
     if (!usesSearchWorker) {
       const outcomes: SectionMatchOutcome[] = [];
       for (const section of batch) {
-        const remaining = Math.min(
-          MAX_BOOK_SEARCH_RESULTS - bookMatches,
-          MAX_TOTAL_SEARCH_RESULTS - totalMatches,
-        );
+        const remaining = Math.min(maxResultsPerBook - bookMatches, maxTotalResults - totalMatches);
         outcomes.push(
           remaining <= 0
             ? { matches: [], truncated: true }
@@ -638,10 +647,7 @@ export async function* searchLibraryBooks(
       }
       return outcomes;
     }
-    const remaining = Math.min(
-      MAX_BOOK_SEARCH_RESULTS - bookMatches,
-      MAX_TOTAL_SEARCH_RESULTS - totalMatches,
-    );
+    const remaining = Math.min(maxResultsPerBook - bookMatches, maxTotalResults - totalMatches);
     if (remaining <= 0) return batch.map(() => ({ matches: [], truncated: true }));
     const sharedPayload = {
       query,
@@ -769,8 +775,8 @@ export async function* searchLibraryBooks(
           if (signal?.aborted) return;
           // 批次起点快速退出检查；真正的逐 section 预算在内层循环合并前重算。
           const batchRemaining = Math.min(
-            MAX_BOOK_SEARCH_RESULTS - bookMatches,
-            MAX_TOTAL_SEARCH_RESULTS - totalMatches,
+            maxResultsPerBook - bookMatches,
+            maxTotalResults - totalMatches,
           );
           if (batchRemaining <= 0) {
             bookTruncated = true;
@@ -792,8 +798,8 @@ export async function* searchLibraryBooks(
             // Task1：每节合并前重算剩余预算 —— worker 共享预算是第一层限制，
             // service 逐 section 重算是最终硬边界；预算耗尽才中断循环。
             const remaining = Math.min(
-              MAX_BOOK_SEARCH_RESULTS - bookMatches,
-              MAX_TOTAL_SEARCH_RESULTS - totalMatches,
+              maxResultsPerBook - bookMatches,
+              maxTotalResults - totalMatches,
             );
             if (remaining <= 0) {
               bookTruncated = true;
@@ -944,8 +950,8 @@ export async function* searchLibraryBooks(
             if (outcome.truncated) bookTruncated = true;
             // Task5：live 汇总同样按当前剩余预算硬截断。
             const remainingNow = Math.min(
-              MAX_BOOK_SEARCH_RESULTS - bookMatches,
-              MAX_TOTAL_SEARCH_RESULTS - totalMatches,
+              maxResultsPerBook - bookMatches,
+              maxTotalResults - totalMatches,
             );
             const capped = remainingNow > 0 ? outcome.matches.slice(0, remainingNow) : [];
             if (capped.length) {
@@ -958,10 +964,7 @@ export async function* searchLibraryBooks(
                 subitems,
               });
             }
-            if (
-              bookMatches >= MAX_BOOK_SEARCH_RESULTS ||
-              totalMatches >= MAX_TOTAL_SEARCH_RESULTS
-            ) {
+            if (bookMatches >= maxResultsPerBook || totalMatches >= maxTotalResults) {
               bookTruncated = true;
               break;
             }
@@ -989,8 +992,8 @@ export async function* searchLibraryBooks(
                   }
                 }
                 const remaining = Math.min(
-                  MAX_BOOK_SEARCH_RESULTS - bookMatches,
-                  MAX_TOTAL_SEARCH_RESULTS - totalMatches,
+                  maxResultsPerBook - bookMatches,
+                  maxTotalResults - totalMatches,
                 );
                 if (options.sectionIndex != null && options.sectionIndex !== sectionIndex) {
                   // Scoped search: this section is only extracted for the index.
