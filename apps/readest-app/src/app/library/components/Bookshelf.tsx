@@ -43,6 +43,10 @@ import {
   expandBookshelfSelection,
   findGroupById,
   getBookSortValue,
+  getGroupNewBookCounts,
+  findGroupRenameCollision,
+  renameGroupInLibrary,
+  renamePersistentGroupNames,
   getGroupSortValue,
   compareSortValues,
   resolveEffectivePrimarySort,
@@ -87,6 +91,8 @@ export interface ContentSearchRequest {
 
 interface BookshelfProps {
   libraryBooks: Book[];
+  /** 书本 hash 集合：导入自动归组后"前往查看"时短暂高亮的书。 */
+  highlightedBookHashes: ReadonlySet<string>;
   isSelectMode: boolean;
   isSelectAll: boolean;
   isSelectNone: boolean;
@@ -187,6 +193,7 @@ const LIST_VIRTUOSO_COMPONENTS: Components<unknown, BookshelfListContext> = {
 
 const Bookshelf: React.FC<BookshelfProps> = ({
   libraryBooks,
+  highlightedBookHashes,
   isSelectMode,
   isSelectAll,
   isSelectNone,
@@ -207,6 +214,12 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   const searchParams = useSearchParams();
   const { envConfig, appService } = useEnv();
   const { settings, setSettings, saveSettings } = useSettingsStore();
+  // 分组"新书"角标：晚于该分组上次访问时间导入、从未打开且在窗口期内的书，
+  // 按分组 id（组名指纹）计数，含祖先分组聚合。
+  const groupNewBookCounts = useMemo(
+    () => getGroupNewBookCounts(libraryBooks, settings.groupLastVisitedAt),
+    [libraryBooks, settings.groupLastVisitedAt],
+  );
   const { safeAreaInsets } = useThemeStore();
 
   const groupId = searchParams?.get('group') || '';
@@ -1001,6 +1014,86 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   };
   const isDev = process.env.NODE_ENV === 'development';
 
+  // 重命名空分组时同步重标持久名/锚点（有书的分组也会走到这里，把残留的
+  // 空组记录一并改掉，避免旧路径在下次重启时复活出幽灵空组）。
+  const syncPersistentGroupRename = useCallback(
+    (oldName: string, newName: string): boolean => {
+      const live = useSettingsStore.getState().settings;
+      const custom = live.libraryCustomGroups ?? [];
+      const persisted = useLibraryStore.getState().persistentGroupNames ?? [];
+      const names = Array.from(new Set([...persisted, ...custom]));
+      const { relabeled, changed } = renamePersistentGroupNames(names, oldName, newName);
+      if (!changed) return false;
+      useLibraryStore.getState().removePersistentGroups(Array.from(relabeled.keys()));
+      for (const next of relabeled.values()) {
+        useLibraryStore.getState().addPersistentGroup(next);
+      }
+      const nextCustom = custom.map((g) => relabeled.get(g) ?? g);
+      const nextOrder = relabelAnchorMap(live.libraryEmptyGroupOrder, relabeled);
+      if (nextCustom !== custom || nextOrder) {
+        const nextSettings = nextOrder
+          ? { ...live, libraryCustomGroups: nextCustom, libraryEmptyGroupOrder: nextOrder }
+          : { ...live, libraryCustomGroups: nextCustom };
+        setSettings(nextSettings);
+        void saveSettings(envConfig, nextSettings);
+      }
+      return true;
+    },
+    [envConfig, setSettings, saveSettings],
+  );
+
+  // 分组改名（右键菜单入口）：重写书上的 groupName/groupId（含嵌套子分组）、
+  // 同步持久空组记录，并在当前视图正停留在被改名的分组里时跟着跳到新路径。
+  // 定义在 renderBookshelfItem 之前——后者是 useCallback，deps 数组在渲染期
+  // 求值，引用后置声明会触发 TDZ。
+  const handleGroupRename = async (oldName: string, newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === oldName) return;
+    // 重名保护：目标路径下已有别的分组时会静默合并两组——中止并提示。
+    // 分组名可能来自书（组映射）、手动建的空组（持久名 / libraryCustomGroups），
+    // 三处都要查。
+    const store = useLibraryStore.getState();
+    const collision = findGroupRenameCollision(
+      [
+        ...store.getGroups().map((g) => g.name),
+        ...(store.persistentGroupNames ?? []),
+        ...(useSettingsStore.getState().settings.libraryCustomGroups ?? []),
+      ],
+      oldName,
+      trimmed,
+    );
+    if (collision) {
+      eventDispatcher.dispatch('toast', {
+        type: 'warning',
+        message: _('A group with this name already exists'),
+      });
+      return;
+    }
+    const { updated, changed } = renameGroupInLibrary(libraryBooks, oldName, trimmed);
+    const persistentChanged = syncPersistentGroupRename(oldName, trimmed);
+    if (changed) {
+      useLibraryStore.getState().setLibrary(updated);
+      try {
+        await appService?.saveLibraryBooks(updated);
+      } catch (error) {
+        console.error('Failed to save library after group rename:', error);
+        eventDispatcher.dispatch('toast', {
+          message: _('Failed to save group changes'),
+          type: 'error',
+        });
+      }
+    } else if (!persistentChanged) {
+      return;
+    }
+    // URL 上的 group 参数持有旧 id：视图正停留在被改名的分组（或其子分组）
+    // 时跳到对应的新路径，否则书架会因解析不到组名而变空。
+    if (manualGroupName === oldName || manualGroupName?.startsWith(oldName + '/')) {
+      const nextPath =
+        manualGroupName === oldName ? trimmed : trimmed + manualGroupName.slice(oldName.length);
+      handleLibraryNavigation(getGroupId(nextPath) ?? '');
+    }
+  };
+
   const renderBookshelfItem = useCallback(
     (index: number) => {
       if (isGridMode && index === sortedBookshelfItems.length) {
@@ -1040,6 +1133,8 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           coverFit={coverFit as LibraryCoverFitType}
           isSelectMode={isSelectMode}
           itemSelected={itemSelected}
+          isHighlighted={'hash' in item && highlightedBookHashes.has(item.hash)}
+          newBookCount={'books' in item ? (groupNewBookCounts.get(item.id) ?? 0) : 0}
           toggleSelection={toggleSelection}
           handleGroupBooks={groupSelectedBooks}
           handleBookDelete={handleBookDelete}
@@ -1048,6 +1143,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           handleShowDetailsBook={handleShowDetailsBook}
           handleLibraryNavigation={handleLibraryNavigation}
           handleUpdateReadingStatus={handleUpdateReadingStatus}
+          handleGroupRename={handleGroupRename}
           onDeleteGroupCommit={commitDeleteGroup}
           showTimeRemaining={showTimeRemaining}
         />
@@ -1070,7 +1166,10 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       handleShowDetailsBook,
       handleLibraryNavigation,
       handleUpdateReadingStatus,
+      handleGroupRename,
       showTimeRemaining,
+      highlightedBookHashes,
+      groupNewBookCounts,
     ],
   );
 

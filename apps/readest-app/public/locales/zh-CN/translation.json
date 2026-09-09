@@ -2041,5 +2041,10 @@
   "Delete Group": "删除分组",
   "This will delete {{count}} book(s) in this group.": "将删除该分组中的 {{count}} 本书。",
   "This is an empty group and will be removed.": "这是空分组，将被移除。",
-  "Shared with {{action}}": "与 {{action}} 共用"
+  "Shared with {{action}}": "与 {{action}} 共用",
+  "Moved into group \"{{group}}\": {{titles}}": "已归入「{{group}}」分组：{{titles}}",
+  "View": "前往查看",
+  "Undo": "撤销",
+  "{{count}} new book(s)_other": "{{count}} 本新书",
+  "Failed to save group changes": "保存分组修改失败"
 }

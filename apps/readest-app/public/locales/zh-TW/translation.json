@@ -2041,5 +2041,10 @@
   "Delete all custom fonts? This cannot be undone.": "刪除全部自訂字體？此操作無法復原。",
   "Unsaved Changes": "未儲存的修改",
   "Discard unsaved changes?": "放棄未儲存的修改？",
-  "Discard": "放棄修改"
+  "Discard": "放棄修改",
+  "Moved into group \"{{group}}\": {{titles}}": "已歸入「{{group}}」分組：{{titles}}",
+  "View": "前往查看",
+  "Undo": "撤銷",
+  "{{count}} new book(s)_other": "{{count}} 本新書",
+  "Failed to save group changes": "儲存分組修改失敗"
 }

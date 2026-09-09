@@ -14,9 +14,17 @@ interface GroupItemProps {
   group: BooksGroup;
   isSelectMode: boolean;
   groupSelected: boolean;
+  /** 分组内"新书"数（晚于上次访问导入且从未打开），>0 时渲染角标。 */
+  newBookCount?: number;
 }
 
-const GroupItem: React.FC<GroupItemProps> = ({ mode, group, isSelectMode, groupSelected }) => {
+const GroupItem: React.FC<GroupItemProps> = ({
+  mode,
+  group,
+  isSelectMode,
+  groupSelected,
+  newBookCount = 0,
+}) => {
   const _ = useTranslation();
   const { appService } = useEnv();
   const { settings } = useSettingsStore();
@@ -94,6 +102,19 @@ const GroupItem: React.FC<GroupItemProps> = ({ mode, group, isSelectMode, groupS
     e.preventDefault();
     e.stopPropagation();
   };
+
+  const badge = (className?: string) =>
+    newBookCount > 0 ? (
+      <div
+        className={clsx(
+          'bg-red-500 text-white flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs font-bold shadow',
+          className,
+        )}
+        title={_('{{count}} new book(s)', { count: newBookCount })}
+      >
+        {newBookCount > 99 ? '99+' : newBookCount}
+      </div>
+    ) : null;
 
   const handleLeftArrowClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -205,9 +226,13 @@ const GroupItem: React.FC<GroupItemProps> = ({ mode, group, isSelectMode, groupS
             </div>
           )}
         </div>
+        {mode === 'grid' && badge('absolute right-1 top-1 z-10')}
         {mode === 'list' && (
-          <div className='text-base-content/75 w-28 min-w-24 max-w-40 overflow-hidden text-ellipsis text-base font-semibold'>
-            {group.displayName}
+          <div className='text-base-content/75 flex w-28 min-w-24 max-w-40 items-center gap-1 overflow-hidden text-base font-semibold'>
+            <span className='min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap'>
+              {group.displayName}
+            </span>
+            {badge()}
           </div>
         )}
         {groupSelected && (

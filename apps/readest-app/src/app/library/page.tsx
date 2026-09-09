@@ -43,7 +43,7 @@ import { useUICSS } from '@/hooks/useUICSS';
 import { useAutoImportFolders } from './hooks/useAutoImportFolders';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useBackgroundTexture } from '@/hooks/useBackgroundTexture';
-import { getLibraryViewSettings } from '@/helpers/settings';
+import { getLibraryViewSettings, saveSysSettings } from '@/helpers/settings';
 import { useReadingWidget } from '@/hooks/useReadingWidget';
 import { useKeyDownActions } from '@/hooks/useKeyDownActions';
 import { SelectedFile, useFileSelector } from '@/hooks/useFileSelector';
@@ -75,6 +75,12 @@ import {
   resolveCurrentGroupBy,
 } from './utils/libraryUtils';
 import { resolveImportToast } from './utils/importToast';
+import {
+  AuthorGroupedImport,
+  buildAuthorGroupedToastSpec,
+  collectGroupNames,
+  findAuthorGroupMatch,
+} from './utils/authorGrouping';
 import Spinner from '@/components/Spinner';
 import LibraryHeader from './components/LibraryHeader';
 import Bookshelf from './components/Bookshelf';
@@ -235,6 +241,16 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   const librarySearchConfigRef = useRef(librarySearchConfig);
   const [showDetailsBook, setShowDetailsBook] = useState<Book | null>(null);
   const [failedImportsModal, setFailedImportsModal] = useState<FailedImport[] | null>(null);
+  // 导入被自动归组后"前往查看"时短暂高亮的目标书（几秒后自动清除）。
+  const [highlightedBookHashes, setHighlightedBookHashes] = useState<Set<string>>(new Set());
+  const highlightClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const highlightBooks = useCallback((hashes: string[]) => {
+    setHighlightedBookHashes(new Set(hashes));
+    if (highlightClearTimerRef.current) clearTimeout(highlightClearTimerRef.current);
+    highlightClearTimerRef.current = setTimeout(() => {
+      setHighlightedBookHashes(new Set());
+    }, 6000);
+  }, []);
   // "Import from folder" dialog state. Held as a small object rather
   // than a boolean because we need a default starting directory to seed
   // the path field, and we want the dialog to remain mounted long
@@ -452,6 +468,16 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         params.delete('from');
       }
 
+      // 进入文件夹分组即视为"看过"：清除该分组的新书角标（晚于此刻导入的
+      // 书才重新计数）。键与角标计算一致——分组 id（组名指纹）。
+      if (targetGroup) {
+        const nextVisited = {
+          ...(useSettingsStore.getState().settings.groupLastVisitedAt ?? {}),
+          [targetGroup]: Date.now(),
+        };
+        void saveSysSettings(envConfig, 'groupLastVisitedAt', nextVisited);
+      }
+
       navigateToLibrary(router, params.toString());
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -625,7 +651,10 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
 
   const handleImportBookFiles = useCallback(async (event: CustomEvent) => {
     const selectedFiles: SelectedFile[] = event.detail.files;
-    const groupId: string = event.detail.groupId || '';
+    // 顶层拖拽的 groupId 是 ''（仅表示"当前视图在顶层"），归一成 undefined
+    // 走推导模式，让按作者自动归组等逐文件逻辑有机会生效；'' 是 tri-state
+    // 里"明确放根目录"，会把这些逻辑全部短路。
+    const groupId: string | undefined = event.detail.groupId || undefined;
     if (selectedFiles.length === 0) return;
     await importBooks(selectedFiles, groupId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -970,6 +999,31 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     }
   }, [libraryBooks, searchParams, settings, getGroupName]);
 
+  /**
+   * 撤销导入时的按作者自动归组：把本批被归组的书移回根目录。只回滚仍然
+   * 停在自动分配分组里的书——用户若已手动重新归组，就不动它。
+   */
+  const undoAuthorGrouping = async (entries: AuthorGroupedImport[]) => {
+    const { library } = useLibraryStore.getState();
+    const now = Date.now();
+    const reverted: Book[] = [];
+    for (const entry of entries) {
+      const book = library.find((b) => b.hash === entry.hash);
+      if (book && !book.deletedAt && book.groupId === entry.groupId) {
+        reverted.push({
+          ...book,
+          groupId: undefined,
+          groupName: undefined,
+          updatedAt: now,
+          metadataUpdatedAt: now,
+        });
+      }
+    }
+    if (reverted.length > 0) {
+      await updateBooks(envConfig, reverted);
+    }
+  };
+
   const importBooks = async (
     files: SelectedFile[],
     groupId?: string,
@@ -999,6 +1053,15 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     let processedFiles = 0;
     setImportProgress({ done: 0, total: totalFiles });
     const { library } = useLibraryStore.getState();
+    // 导入前已在库中的书 hash：按作者归组只作用于"真正新进来的书"，
+    // byHash/byFilePath 命中的重复导入不重新归组（不惊动既有的手动分组）。
+    const knownHashes = new Set(library.map((book) => book.hash));
+    // 现存分组名快照（含嵌套祖先与手动建的空组），供按作者匹配；本批
+    // 归组产生的新分组名会随时补进集合，让同批后续文件也能命中。
+    const existingGroupNames = new Set(
+      collectGroupNames(library, useLibraryStore.getState().persistentGroupNames ?? []),
+    );
+    const authorGroupedImports: AuthorGroupedImport[] = [];
     // Build the lookup index ONCE per import batch so each book lookup is
     // O(1) instead of O(n) over the existing library. importBook also keeps
     // the index updated as new books are appended, so subsequent files in
@@ -1063,7 +1126,34 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         } else {
           successfulImports.push(result.book.title);
         }
-        return result.book;
+        // 按作者自动归组：仅当用户没有明确指定目标分组、目录导入也没推导出
+        // 分组（书本来会落在根目录）、且这本书是真正新导入时才生效。优先级：
+        // 用户显式选择 > 目录结构推导 > 作者匹配。盖 metadataUpdatedAt 时钟，
+        // 否则多端同步时旧的元数据编辑会赢，把这个分组改动冲掉（同 #5438）。
+        const book = result.book;
+        if (
+          groupId === undefined &&
+          !resolvedGroupName &&
+          !knownHashes.has(book.hash) &&
+          book.author
+        ) {
+          const matchedGroupName = findAuthorGroupMatch(book.author, [...existingGroupNames]);
+          if (matchedGroupName) {
+            const now = Date.now();
+            book.groupId = useLibraryStore.getState().getGroupId(matchedGroupName);
+            book.groupName = matchedGroupName;
+            book.updatedAt = now;
+            book.metadataUpdatedAt = now;
+            existingGroupNames.add(matchedGroupName);
+            authorGroupedImports.push({
+              hash: book.hash,
+              title: book.title,
+              groupId: book.groupId!,
+              groupName: matchedGroupName,
+            });
+          }
+        }
+        return book;
       } catch (error) {
         const filename = typeof file === 'string' ? file : file.name;
         if (typeof file === 'string') failedPaths.push(file);
@@ -1212,7 +1302,43 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           saveFailed,
           t: _,
         });
-    if (importToast) {
+    // 有书被自动归组时，toast 升级为带去向的版本（逐分组列出书名），并附
+    // "前往查看"（单分组时）与"撤销"操作；基础计数行保留在最上面。
+    const groupedToastSpec =
+      authorGroupedImports.length > 0 && !saveFailed
+        ? buildAuthorGroupedToastSpec(
+            importToast?.message ?? '',
+            authorGroupedImports,
+            (group, titles) =>
+              _('Moved into group "{{group}}": {{titles}}', {
+                group,
+                titles: listFormater(false).format(titles),
+              }),
+          )
+        : null;
+    if (groupedToastSpec) {
+      const actions = [];
+      if (groupedToastSpec.groupIds.length === 1) {
+        const targetGroupId = groupedToastSpec.groupIds[0]!;
+        actions.push({
+          label: _('View'),
+          onClick: () => {
+            handleLibraryNavigation(targetGroupId);
+            highlightBooks(authorGroupedImports.map((entry) => entry.hash));
+          },
+        });
+      }
+      actions.push({
+        label: _('Undo'),
+        onClick: () => undoAuthorGrouping(authorGroupedImports),
+      });
+      eventDispatcher.dispatch('toast', {
+        message: groupedToastSpec.message,
+        timeout: 8000,
+        type: importToast?.type ?? 'success',
+        actions,
+      });
+    } else if (importToast) {
       eventDispatcher.dispatch('toast', {
         message: importToast.message,
         timeout: importToast.type === 'info' ? 2500 : 2000,
@@ -1385,8 +1511,11 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   const getImportTargetGroupId = () => {
     const group = searchParams?.get('group') || '';
     // Import into the current folder group whenever the view is inside one,
-    // regardless of the display dimension chosen for it.
-    return group && getGroupName(group) ? group : '';
+    // regardless of the display dimension chosen for it. At the top level
+    // return undefined — the "derive" tri-state — rather than '': an explicit
+    // empty string would pin books to the root and block author-based
+    // auto-grouping, while undefined lets the per-file resolution run.
+    return group && getGroupName(group) ? group : undefined;
   };
 
   const handleImportBooksFromFiles = async () => {
@@ -2030,6 +2159,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
               <DropIndicator />
               <Bookshelf
                 libraryBooks={libraryBooks}
+                highlightedBookHashes={highlightedBookHashes}
                 isSelectMode={isSelectMode}
                 isSelectAll={isSelectAll}
                 isSelectNone={isSelectNone}

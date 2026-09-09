@@ -483,6 +483,12 @@ export interface SystemSettings {
   metadataSeriesCollapsed: boolean;
   metadataOthersCollapsed: boolean;
   metadataDescriptionCollapsed: boolean;
+  /**
+   * 分组上次访问时间（键 = 分组 id，即组名的 MD5 指纹）。驱动分组块上的
+   * "新书"角标：晚于该时间导入且从未打开的书计入角标，进入分组即清除。
+   * 设备本地，不参与同步。
+   */
+  groupLastVisitedAt?: Record<string, number>;
   lastSyncedAtBooks: number;
   lastSyncedAtConfigs: number;
   lastSyncedAtNotes: number;

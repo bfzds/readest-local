@@ -19,6 +19,8 @@ interface BookItemProps {
   coverFit: LibraryCoverFitType;
   isSelectMode: boolean;
   bookSelected: boolean;
+  /** 导入自动归组后"前往查看"时短暂高亮。 */
+  isHighlighted?: boolean;
   showBookDetailsModal: (book: Book) => void;
   handleBookPurge: (book: Book, syncBooks?: boolean) => Promise<boolean>;
   showTimeRemaining: boolean;
@@ -30,6 +32,7 @@ const BookItem: React.FC<BookItemProps> = ({
   coverFit,
   isSelectMode,
   bookSelected,
+  isHighlighted = false,
   showBookDetailsModal,
   handleBookPurge,
   showTimeRemaining,
@@ -78,6 +81,7 @@ const BookItem: React.FC<BookItemProps> = ({
           'bookitem-main relative flex justify-center overflow-hidden rounded',
           !fitCoverInGrid && 'aspect-[28/41]',
           coverFit === 'crop' && 'shadow-md',
+          isHighlighted && 'ring-2 ring-blue-500 ring-offset-2 ring-offset-base-100',
           mode === 'grid' && 'items-end',
           mode === 'list' && 'min-w-20 items-center',
         )}

@@ -144,5 +144,11 @@
   "Shared with {{action}}": "Shared with {{action}}",
   "Allow JavaScript": "Allow JavaScript",
   "Enable only if you trust the file.": "Enable only if you trust the file.",
-  "TXT Chapter Pattern": "TXT Chapter Pattern"
+  "TXT Chapter Pattern": "TXT Chapter Pattern",
+  "Moved into group \"{{group}}\": {{titles}}": "Moved into group \"{{group}}\": {{titles}}",
+  "View": "View",
+  "Undo": "Undo",
+  "{{count}} new book(s)_one": "{{count}} new book",
+  "{{count}} new book(s)_other": "{{count}} new books",
+  "Failed to save group changes": "Failed to save group changes"
 }

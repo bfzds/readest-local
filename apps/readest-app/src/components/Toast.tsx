@@ -6,6 +6,11 @@ import { eventDispatcher } from '@/utils/event';
 
 export type ToastType = 'info' | 'success' | 'warning' | 'error';
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 interface ActiveToast {
   // Monotonic id: identical consecutive messages must re-arm the timer (and
   // restart the fade-in) rather than being swallowed by same-value state.
@@ -15,6 +20,7 @@ interface ActiveToast {
   timeout: number;
   messageClass: string;
   callback: (() => void) | null;
+  actions: ToastAction[];
 }
 
 export const Toast = () => {
@@ -67,7 +73,14 @@ export const Toast = () => {
   }, [toast]);
 
   const handleShowToast = async (event: CustomEvent) => {
-    const { message, type = 'info', timeout, className = '', callback = null } = event.detail;
+    const {
+      message,
+      type = 'info',
+      timeout,
+      className = '',
+      callback = null,
+      actions,
+    } = event.detail;
     idRef.current += 1;
     setToast({
       id: idRef.current,
@@ -76,6 +89,12 @@ export const Toast = () => {
       timeout: timeout || 5000,
       messageClass: className,
       callback: typeof callback === 'function' ? callback : null,
+      actions: Array.isArray(actions)
+        ? actions.filter(
+            (action: ToastAction) =>
+              action && typeof action.onClick === 'function' && typeof action.label === 'string',
+          )
+        : [],
     });
   };
 
@@ -143,6 +162,25 @@ export const Toast = () => {
               </React.Fragment>
             ))}
           </span>
+
+          {/* Action buttons (e.g. "View" / "Undo" on import toasts) */}
+          {(toast.actions ?? []).map((action) => (
+            <button
+              key={action.label}
+              onClick={() => {
+                action.onClick();
+                handleDismiss();
+              }}
+              className={clsx(
+                'flex-shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-sm font-semibold transition-colors',
+                toast.type === 'info'
+                  ? 'border border-base-content/30 hover:bg-base-300'
+                  : 'bg-white/20 hover:bg-white/35 active:bg-white/40',
+              )}
+            >
+              {action.label}
+            </button>
+          ))}
 
           {/* Close button */}
           <button

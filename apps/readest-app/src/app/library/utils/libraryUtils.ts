@@ -1134,6 +1134,93 @@ export const relabelPersistentGroups = (
 };
 
 /**
+ * 把分组（连同其全部嵌套子分组）改名为 `newName`：重写每本书的
+ * `groupName`/`groupId`，嵌套路径 `oldName/...` 同步改为 `newName/...`，并
+ * 盖 `updatedAt` + `metadataUpdatedAt`（分组归属属于元数据合并范畴，不盖
+ * 时钟会被多端同步的旧编辑冲掉，见 #5438）。与 GroupingModal 的改名一致，
+ * 不做重名合并检查。`changed=false` 表示名字无变化或没有书受影响（纯空组）。
+ */
+export const renameGroupInLibrary = (
+  library: Book[],
+  oldName: string,
+  newName: string,
+): { updated: Book[]; changed: boolean } => {
+  const trimmed = newName.trim();
+  if (!trimmed || trimmed === oldName) return { updated: library, changed: false };
+  const hasMembers = library.some(
+    (b) => b.groupName === oldName || b.groupName?.startsWith(oldName + '/'),
+  );
+  // 无书受影响（纯空组）：返回原引用，调用方可据此跳过落库并保持 memo 比较稳定。
+  if (!hasMembers) return { updated: library, changed: false };
+  const now = Date.now();
+  const updated = library.map((book) => {
+    if (book.groupName === oldName) {
+      return {
+        ...book,
+        groupName: trimmed,
+        groupId: md5Fingerprint(trimmed),
+        updatedAt: now,
+        metadataUpdatedAt: now,
+      };
+    }
+    if (book.groupName?.startsWith(oldName + '/')) {
+      const nextName = trimmed + book.groupName.slice(oldName.length);
+      return {
+        ...book,
+        groupName: nextName,
+        groupId: md5Fingerprint(nextName),
+        updatedAt: now,
+        metadataUpdatedAt: now,
+      };
+    }
+    return book;
+  });
+  return { updated, changed: true };
+};
+
+/**
+ * {@link relabelPersistentGroups} 的纯改名版（拖拽移动是 `target/source`
+ * 拼接语义，改名是原位替换前缀，两者不能混用）。用于重命名空分组——
+ * 它们没有书，路径只存在于 `persistentGroupNames` / `libraryCustomGroups`。
+ */
+export const renamePersistentGroupNames = (
+  names: readonly string[],
+  oldName: string,
+  newName: string,
+): { relabeled: Map<string, string>; changed: boolean } => {
+  const relabeled = new Map<string, string>();
+  const trimmed = newName.trim();
+  if (!trimmed || trimmed === oldName) return { relabeled, changed: false };
+  for (const name of names) {
+    if (name === oldName) relabeled.set(name, trimmed);
+    else if (name.startsWith(oldName + '/'))
+      relabeled.set(name, trimmed + name.slice(oldName.length));
+  }
+  return { relabeled, changed: relabeled.size > 0 };
+};
+
+/**
+ * 分组改名的重名保护：目标名字或任一嵌套目标路径（`newName/...`）已存在、
+ * 且不属于被改名的子树时，改名会造成两组静默合并——返回撞名的那个现有
+ * 分组名，调用方据此中止并提示；无冲突返回 null。被改名子树自己的路径
+ * （`oldName` 及 `oldName/...`）不算冲突，它们会被一并重写。
+ */
+export const findGroupRenameCollision = (
+  existingNames: readonly string[],
+  oldName: string,
+  newName: string,
+): string | null => {
+  const trimmed = newName.trim();
+  if (!trimmed || trimmed === oldName) return null;
+  const inRenamedSubtree = (name: string) => name === oldName || name.startsWith(oldName + '/');
+  for (const name of existingNames) {
+    if (inRenamedSubtree(name)) continue;
+    if (name === trimmed || name.startsWith(trimmed + '/')) return name;
+  }
+  return null;
+};
+
+/**
  * Swap two units of a shelf layer in place — the drag model the user expects
  * ("drag 1 onto 4 to get 4,2,3,1"), where the units trade positions regardless
  * of whether the pointer landed on the top or bottom half. Reassigns the
@@ -1303,4 +1390,38 @@ export const relabelAnchorMap = (
     }
   }
   return next;
+};
+
+/**
+ * 分组"新书"角标。判定是无状态的（不存每个分组的已读队列）：
+ * 一本书算"新"当且仅当——未删除、有 groupName、从未打开过（progress 只在
+ * 首次打开时写入）、导入时间在窗口期内、且晚于该分组上次访问时间。
+ * 访问时间由 handleLibraryNavigation 在进入分组时写入
+ * settings.groupLastVisitedAt（键为分组 id = 组名指纹），进入即清除角标；
+ * 窗口兜底保证从没访问过的分组不会把历史旧书全部标成新书。
+ * 计数同时滚到各级祖先分组（父分组聚合子分组的新书）。
+ */
+export const NEW_BOOK_BADGE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+
+export const getGroupNewBookCounts = (
+  books: Book[],
+  lastVisitedAt: Record<string, number> = {},
+  now: number = Date.now(),
+): Map<string, number> => {
+  const counts = new Map<string, number>();
+  for (const book of books) {
+    if (book.deletedAt || !book.groupName) continue;
+    if (book.progress) continue;
+    if (now - book.createdAt > NEW_BOOK_BADGE_WINDOW_MS) continue;
+    const visited = lastVisitedAt[md5Fingerprint(book.groupName)] ?? 0;
+    if (book.createdAt <= visited) continue;
+    let prefix = book.groupName;
+    while (prefix) {
+      const id = md5Fingerprint(prefix);
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+      const slashIndex = prefix.lastIndexOf('/');
+      prefix = slashIndex > 0 ? prefix.slice(0, slashIndex) : '';
+    }
+  }
+  return counts;
 };

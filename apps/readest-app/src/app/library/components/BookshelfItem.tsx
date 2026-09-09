@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { memo, useCallback, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useEnv } from '@/context/EnvContext';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -21,6 +21,7 @@ import BookItem from './BookItem';
 import GroupItem from './GroupItem';
 import BookContextMenuPopup, { type BookContextMenuItem } from './BookContextMenuPopup';
 import { useOpenBook } from '../hooks/useOpenBook';
+import { useKeyDownActions } from '@/hooks/useKeyDownActions';
 import { MdDelete } from 'react-icons/md';
 
 export const generateBookshelfItems = (
@@ -90,6 +91,10 @@ interface BookshelfItemProps {
   coverFit: LibraryCoverFitType;
   isSelectMode: boolean;
   itemSelected: boolean;
+  /** 导入自动归组后"前往查看"时短暂高亮（仅书本条目）。 */
+  isHighlighted?: boolean;
+  /** 该分组内的新书数（分组条目专用），>0 时渲染角标。 */
+  newBookCount?: number;
   toggleSelection: (hash: string) => void;
   handleGroupBooks: () => void;
   handleBookDelete: (book: Book, syncBooks?: boolean) => Promise<boolean>;
@@ -98,6 +103,8 @@ interface BookshelfItemProps {
   handleShowDetailsBook: (book: Book) => void;
   handleLibraryNavigation: (targetGroup: string) => void;
   handleUpdateReadingStatus: (book: Book, status: ReadingStatus | undefined) => void;
+  /** 分组改名（右键菜单入口），由 Bookshelf 落库并处理持久空组/导航。 */
+  handleGroupRename?: (oldName: string, newName: string) => void | Promise<void>;
   showTimeRemaining: boolean;
   // Two-step group delete: first click arms the button (it turns red), the
   // second click commits the deletion.
@@ -110,6 +117,8 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
   coverFit,
   isSelectMode,
   itemSelected,
+  isHighlighted = false,
+  newBookCount = 0,
   toggleSelection,
   handleGroupBooks,
   handleBookPurge,
@@ -117,6 +126,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
   handleShowDetailsBook,
   handleLibraryNavigation,
   handleUpdateReadingStatus,
+  handleGroupRename,
   showTimeRemaining,
   onDeleteGroupCommit,
 }) => {
@@ -125,6 +135,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
   const { settings } = useSettingsStore();
   const { openBook } = useOpenBook();
   const [deleteArmed, setDeleteArmed] = useState(false);
+  const [showRenameDialog, setShowRenameDialog] = useState(false);
 
   const showBookDetailsModal = useCallback(async (book: Book) => {
     handleShowDetailsBook(book);
@@ -246,6 +257,12 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
             toggleSelection(group.id);
           }
           handleGroupBooks();
+        },
+      },
+      {
+        text: _('Rename Group'),
+        action: async () => {
+          setShowRenameDialog(true);
         },
       },
       {
@@ -381,6 +398,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
               coverFit={coverFit}
               isSelectMode={isSelectMode}
               bookSelected={itemSelected}
+              isHighlighted={isHighlighted}
               showBookDetailsModal={showBookDetailsModal}
               handleBookPurge={handleBookPurge}
               showTimeRemaining={showTimeRemaining}
@@ -391,6 +409,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
               group={item}
               isSelectMode={isSelectMode}
               groupSelected={itemSelected}
+              newBookCount={newBookCount}
             />
           )}
         </div>
@@ -425,6 +444,82 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
           onClose={() => setInAppMenuPosition(null)}
         />
       )}
+      {showRenameDialog && !('format' in item) && (
+        <GroupRenameDialog
+          groupName={(item as BooksGroup).name}
+          onCancel={() => setShowRenameDialog(false)}
+          onConfirm={(newName) => {
+            setShowRenameDialog(false);
+            void handleGroupRename?.((item as BooksGroup).name, newName);
+          }}
+        />
+      )}
+    </div>
+  );
+};
+
+/**
+ * 分组改名对话框：预填完整分组路径（含父级），回车保存、Escape 取消。
+ * 实际落库由 Bookshelf.handleGroupRename 完成（书 + 持久空组 + 导航）。
+ */
+const GroupRenameDialog: React.FC<{
+  groupName: string;
+  onCancel: () => void;
+  onConfirm: (newName: string) => void;
+}> = ({ groupName, onCancel, onConfirm }) => {
+  const _ = useTranslation();
+  const [name, setName] = useState(groupName);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const divRef = useKeyDownActions({
+    onCancel,
+    onConfirm: () => {
+      if (name.trim()) onConfirm(name);
+    },
+  });
+  useEffect(() => {
+    inputRef.current?.select();
+  }, []);
+
+  return (
+    <div className='fixed inset-0 z-[140] flex items-center justify-center'>
+      <div
+        ref={divRef}
+        className='modal-box bg-base-100 max-h-[85%] w-[95%] max-w-[440px] overflow-y-auto rounded-2xl p-6 shadow-xl'
+      >
+        <h2 className='text-center text-lg font-bold'>{_('Rename Group')}</h2>
+        <input
+          type='text'
+          ref={inputRef}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              if (name.trim()) onConfirm(name);
+            }
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              onCancel();
+            }
+            e.stopPropagation();
+          }}
+          className='input input-ghost border-base-300 mt-4 w-full border px-2 text-base !outline-none sm:text-sm'
+        />
+        <div className='mt-6 flex justify-end gap-x-8 p-2'>
+          <button onClick={onCancel} className='flex items-center'>
+            {_('Cancel')}
+          </button>
+          <button
+            onClick={() => name.trim() && onConfirm(name)}
+            className={clsx(
+              'flex items-center text-primary',
+              !name.trim() && 'btn-disabled opacity-50',
+            )}
+          >
+            {_('Save')}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
