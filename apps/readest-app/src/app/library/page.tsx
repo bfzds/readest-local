@@ -169,6 +169,12 @@ type TxtGuideItem = {
   filename: string;
   groupId?: string;
   groupName?: string;
+  /**
+   * true = 书已按段落兜底切分导入成功（规则一条标题都没匹配上），引导
+   * 仅为"重切改进"；取消保留现有导入。false（缺省）= 导入硬失败（如空
+   * 文件），取消即放弃导入。
+   */
+  fallbackImported?: boolean;
 };
 
 const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchParams | null }) => {
@@ -1152,6 +1158,20 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
               groupName: matchedGroupName,
             });
           }
+        }
+        // TXT 规则一条标题都没匹配上时，转换器按段落兜底切分（书已入库、
+        // 但目录只是"1/2/3"序号）。弹引导让用户勾选标题行生成临时规则重切
+        // （重切结果按 metaHash 并回同一本书）；取消则保留兜底导入。库中
+        // 已有的重复导入不重复打扰。
+        if (result.txtFallbackFile && !knownHashes.has(book.hash)) {
+          const importFilename = typeof file === 'string' ? file : file.name;
+          txtGuideQueueRef.current.push({
+            file: result.txtFallbackFile,
+            filename: getFilename(importFilename),
+            groupId: resolvedGroupId,
+            groupName: resolvedGroupName,
+            fallbackImported: true,
+          });
         }
         return book;
       } catch (error) {
@@ -2280,6 +2300,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         <TxtChapterGuideDialog
           file={guideItem.file}
           filename={guideItem.filename}
+          fallbackImported={guideItem.fallbackImported}
           onCancel={() => {
             setGuideItem(null);
             if (txtGuideQueueRef.current.length > 0) {
@@ -2314,7 +2335,18 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
                   await updateBooks(envConfig, [result.book], { skipSave: true });
                   const finalLibrary = useLibraryStore.getState().library;
                   await app.saveLibraryBooks(finalLibrary);
-                  toastMsg(`《${current.filename}》已按勾选目录导入`);
+                  if (result.txtFallbackFile) {
+                    // 勾选生成的规则重切后仍一条标题都没匹配上：转换器再次
+                    // 走段落兜底。不再次弹引导（避免循环），如实提示保留。
+                    toastMsg(
+                      `《${current.filename}》勾选的行未能识别出章节，已保留按段落分章的结果`,
+                      'error',
+                    );
+                  } else {
+                    toastMsg(
+                      `《${current.filename}》已按勾选目录${current.fallbackImported ? '重新切分' : '导入'}`,
+                    );
+                  }
                 } else {
                   toastMsg(`《${current.filename}》仍未识别出章节，已放弃`, 'error');
                 }

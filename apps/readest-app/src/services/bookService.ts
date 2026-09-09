@@ -456,10 +456,18 @@ export async function importBook(
           // TXT→EPUB 转换走已有 worker 链路（120s 超时 + 失败回退主线程）。
           // 此前主线程同步 convert 无超时：病态章节正则在引擎上灾难性回溯
           // 会永久冻结 UI，只能杀进程。
-          ({ file: fileobj } = await convertTxtToEpubWithFallback({
+          const originalTxtFile = fileobj;
+          const { file: convertedFile, usedFallback } = await convertTxtToEpubWithFallback({
             file: fileobj,
             chapterPatterns: options.chapterPatterns,
-          }));
+          });
+          fileobj = convertedFile;
+          // 规则一条标题都没匹配上、章节由段落兜底切出时通知调用方（书库
+          // 据此弹「目录识别失败」引导）。回调先记下原始 TXT，导入结果返回
+          // 后由调用方决定是否引导——这里只负责汇报，不改变导入结果。
+          if (usedFallback) {
+            options.onTxtChapterFallback?.(originalTxtFile);
+          }
         }
       }
       if (fileobj && fileobj.size === 0) {

@@ -85,6 +85,12 @@ export interface ImportBookOptions {
    * TxtToEpubConverter，帮助目录识别不完善的多本合集/自制 TXT。
    */
   chapterPatterns?: string[];
+  /**
+   * TXT 导入时内置/自定义规则一条标题都没匹配上、章节由段落兜底切出
+   * （usedFallback）时触发，参数是尚未转换的原始 TXT File。调用方可据此
+   * 弹出「目录识别失败」引导，让用户勾选标题行重切；不设则静默保留兜底结果。
+   */
+  onTxtChapterFallback?: (file: File) => void;
 }
 
 export interface Book {

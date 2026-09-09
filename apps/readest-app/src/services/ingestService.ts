@@ -159,6 +159,13 @@ export interface IngestFileResult {
    * say "already in library" instead of a misleading "successfully imported".
    */
   existed: boolean;
+  /**
+   * 仅 TXT：内置/自定义规则一条标题都没匹配上、章节由段落兜底切出时，
+   * 携带原始 TXT File（file 字段是 File 对象时即其本身；路径字符串时是
+   * 读回的内容）。调用方可据此弹出「目录识别失败」引导，让用户勾选
+   * 标题行生成临时规则重切。
+   */
+  txtFallbackFile?: File;
 }
 
 export async function ingestFile(
@@ -221,10 +228,17 @@ export async function ingestFile(
     }
   }
 
+  // TXT 段落兜底切分时 bookService 会回调原始 TXT File（见
+  // ImportBookOptions.onTxtChapterFallback）；带回给调用方决定是否引导重切。
+  let txtFallbackFile: File | undefined;
+
   const book = await appService.importBook(opts.file, opts.books, {
     lookupIndex: opts.lookupIndex,
     transient: opts.transient,
     inPlace,
+    onTxtChapterFallback: (file) => {
+      txtFallbackFile = file;
+    },
     // 章节识别规则：本次临时规则（opts.chapterPatterns，目录识别失败引导重切
     // 时带）优先，再叠加全局 settings.txtChapterPatterns。均非空才透传。
     ...(opts.chapterPatterns?.length || settings.txtChapterPatterns?.length
@@ -261,5 +275,5 @@ export async function ingestFile(
     }
   }
 
-  return { book, existed: false };
+  return { book, existed: false, txtFallbackFile };
 }

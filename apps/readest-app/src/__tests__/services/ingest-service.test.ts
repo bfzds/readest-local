@@ -54,11 +54,36 @@ describe('ingestFile', () => {
     const { appService, settings, importBook } = makeDeps();
     const lookupIndex = { byHash: new Map(), byMetaHash: new Map() } as never;
     await ingestFile({ file: 'book.epub', books: [], lookupIndex }, { appService, settings });
-    expect(importBook).toHaveBeenCalledWith('book.epub', [], {
+    expect(importBook.mock.calls[0]![2]).toMatchObject({
       lookupIndex,
       transient: undefined,
       inPlace: false,
     });
+  });
+
+  test('TXT 段落兜底时经回调带回原始文件', async () => {
+    const originalTxt = new File(['第一章'], 'book.txt');
+    const importBook = vi.fn().mockImplementation(async (_file, _books, options) => {
+      options.onTxtChapterFallback?.(originalTxt);
+      return makeBook();
+    });
+    const appService = {
+      importBook,
+      osPlatform: 'linux' as OsPlatform,
+    } as unknown as AppService;
+
+    const result = await ingestFile(
+      { file: 'book.txt', books: [] },
+      { appService, settings: {} as SystemSettings },
+    );
+
+    expect(result?.txtFallbackFile).toBe(originalTxt);
+  });
+
+  test('非兜底导入不携带 txtFallbackFile', async () => {
+    const { appService, settings } = makeDeps();
+    const result = await ingestFile({ file: 'book.epub', books: [] }, { appService, settings });
+    expect(result?.txtFallbackFile).toBeUndefined();
   });
 
   test('临时章节规则与全局规则合并，临时优先', async () => {
@@ -122,7 +147,7 @@ describe('ingestFile', () => {
   test('passes the transient flag through to importBook', async () => {
     const { appService, settings, importBook } = makeDeps();
     await ingestFile({ file: 'book.epub', books: [], transient: true }, { appService, settings });
-    expect(importBook).toHaveBeenCalledWith('book.epub', [], {
+    expect(importBook.mock.calls[0]![2]).toMatchObject({
       lookupIndex: undefined,
       transient: true,
       inPlace: false,

@@ -17,6 +17,8 @@ export interface TxtConverterWorkerSuccess {
     bookTitle: string;
     chapterCount: number;
     language: string;
+    /** 规则一条都没匹配上、章节由段落兜底切出时为 true（见 ConversionResult）。 */
+    usedFallback: boolean;
   };
 }
 

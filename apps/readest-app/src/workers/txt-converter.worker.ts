@@ -23,6 +23,7 @@ workerContext.onmessage = async (event: MessageEvent<TxtConverterWorkerRequest>)
         bookTitle: result.bookTitle,
         chapterCount: result.chapterCount,
         language: result.language,
+        usedFallback: result.usedFallback,
       },
     };
     workerContext.postMessage(response, [epubBuffer]);

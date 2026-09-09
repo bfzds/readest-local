@@ -1,7 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 
-import { TxtToEpubConverter, extractTxtFilenameMetadata } from '@/utils/txt';
+import {
+  TxtToEpubConverter,
+  buildChapterPatternFromSamples,
+  extractTxtFilenameMetadata,
+} from '@/utils/txt';
 
 type TestChapter = {
   title: string;
@@ -22,8 +26,14 @@ type TxtConverterPrivateAPI = {
 };
 
 type TxtConverterFlowPrivateAPI = TxtConverterPrivateAPI & {
-  convert(options: { file: File; author?: string; language?: string }): Promise<{
+  convert(options: {
+    file: File;
+    author?: string;
+    language?: string;
+    chapterPatterns?: string[];
+  }): Promise<{
     chapterCount: number;
+    usedFallback: boolean;
   }>;
   extractChapters(
     txtContent: string,
@@ -423,6 +433,77 @@ describe('scene-break dividers do not pollute the TOC (issue #4063)', () => {
 
     expect(chapters.length).toBe(1);
     expect(chapters[0]!.title).toContain('第15章');
+  });
+});
+
+describe('usedFallback：规则未命中时报告兜底切分（目录识别引导入口）', () => {
+  it('reports usedFallback=true when no rule matches and chapters are paragraph chunks', async () => {
+    const converter = new TxtToEpubConverter() as unknown as TxtConverterFlowPrivateAPI;
+    converter.detectEncoding = () => 'utf-8';
+    converter.createEpub = async () => new Blob();
+    const paragraphs = Array.from({ length: 250 }, (_, i) => `段落${i + 1}`).join('\n');
+    const file = new File([paragraphs], 'sample.txt');
+
+    const result = await converter.convert({ file });
+
+    expect(result.chapterCount).toBeGreaterThan(1);
+    expect(result.usedFallback).toBe(true);
+  });
+
+  it('reports usedFallback=false when real chapter headings are detected', async () => {
+    const converter = new TxtToEpubConverter() as unknown as TxtConverterFlowPrivateAPI;
+    converter.detectEncoding = () => 'utf-8';
+    converter.createEpub = async () => new Blob();
+    const text = [
+      '第一章 开端',
+      '这是第一章的正文内容。',
+      '第二章 发展',
+      '这是第二章的正文内容。',
+    ].join('\n');
+    const file = new File([text], 'sample.txt');
+
+    const result = await converter.convert({ file });
+
+    expect(result.usedFallback).toBe(false);
+  });
+
+  it('guide re-cut: 勾选【一】式候选行生成的规则可重切出真实章节', async () => {
+    const converter = new TxtToEpubConverter() as unknown as TxtConverterFlowPrivateAPI;
+    converter.detectEncoding = () => 'utf-8';
+    converter.createEpub = async () => new Blob();
+    const body = (tag: string) =>
+      Array.from({ length: 30 }, (_, i) => `${tag}的第${i + 1}段正文内容，讲述故事的发展。`).join(
+        '\n',
+      );
+    const text = [
+      '【一】开端',
+      body('开端'),
+      '【二】发展',
+      body('发展'),
+      '【三】高潮',
+      body('高潮'),
+      '【四】结局',
+      body('结局'),
+    ].join('\n');
+
+    // 无规则时内置规则不命中 → 段落兜底（引导入口）
+    const before = await converter.convert({ file: new File([text], 'sample.txt') });
+    expect(before.usedFallback).toBe(true);
+
+    // 引导勾选候选行 → 生成临时规则 → 重切后为检测出的 4 个章节
+    const pattern = buildChapterPatternFromSamples([
+      '【一】开端',
+      '【二】发展',
+      '【三】高潮',
+      '【四】结局',
+    ]);
+    expect(pattern).toBeTruthy();
+    const after = await converter.convert({
+      file: new File([text], 'sample.txt'),
+      chapterPatterns: [pattern!],
+    });
+    expect(after.usedFallback).toBe(false);
+    expect(after.chapterCount).toBe(4);
   });
 });
 

@@ -11,6 +11,11 @@ type TxtChapterGuideDialogProps = {
   filename: string;
   onConfirm: (pattern: string, appliedCount: number) => void;
   onCancel: () => void;
+  /**
+   * true = 书已按段落兜底切分导入成功，引导用于重切改进：取消保留现状。
+   * false = 导入硬失败（未入库），取消即放弃导入。
+   */
+  fallbackImported?: boolean;
 };
 
 // 目录识别失败引导：展示源文里的候选标题行，用户勾选哪行是章节标题，据此
@@ -20,6 +25,7 @@ const TxtChapterGuideDialog = ({
   filename,
   onConfirm,
   onCancel,
+  fallbackImported = false,
 }: TxtChapterGuideDialogProps) => {
   const [candidates, setCandidates] = useState<string[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -66,6 +72,9 @@ const TxtChapterGuideDialog = ({
           没能从《{filename}》中自动识别出章节标题。请从下面这些候选行中，勾选出
           <span className='text-base-content font-medium'>每一章的标题行</span>
           （勾选得越全，生成规则越准）。
+          {fallbackImported && (
+            <>目前已按每 100 个段落自动分章导入，勾选后将以新规则重新切分；取消则保留现状。</>
+          )}
         </p>
 
         {loading ? (
@@ -103,7 +112,7 @@ const TxtChapterGuideDialog = ({
 
         <div className='mt-1 flex justify-end gap-2 pb-2'>
           <button type='button' className='btn btn-ghost btn-sm' onClick={onCancel}>
-            取消并放弃导入
+            {fallbackImported ? '取消（保留当前导入）' : '取消并放弃导入'}
           </button>
           <button
             type='button'

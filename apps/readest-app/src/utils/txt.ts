@@ -404,6 +404,12 @@ export interface ConversionResult {
   bookTitle: string;
   chapterCount: number;
   language: string;
+  /**
+   * true = 内置/自定义规则一条标题都没匹配上，章节是按段落兜底切出来的
+   * （标题为序号）。调用方可据此弹出「目录识别失败」引导，让用户勾选
+   * 标题行生成规则重切；false = 至少匹配到一个真实标题行。
+   */
+  usedFallback: boolean;
 }
 
 const zipWriteOptions = {
@@ -500,6 +506,7 @@ export class TxtToEpubConverter {
       bookTitle,
       chapterCount: chapters.length,
       language,
+      usedFallback: chapters.length > 0 && chapters.every((chapter) => !chapter.detected),
     };
   }
 
@@ -570,6 +577,7 @@ export class TxtToEpubConverter {
       bookTitle,
       chapterCount: chapters.length,
       language,
+      usedFallback: chapters.length > 0 && chapters.every((chapter) => !chapter.detected),
     };
   }
 
