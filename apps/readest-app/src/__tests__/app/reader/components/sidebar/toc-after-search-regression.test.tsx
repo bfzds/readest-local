@@ -146,4 +146,40 @@ describe('TOC after in-book search (regression)', () => {
     // 4. Expect the TOC panel, not the stale search panel, to be shown.
     expect(screen.getByTestId('sidebar-content')).toBeTruthy();
   });
+
+  it('keeps the TOC when the search bar opens with an empty-term reset (no flash-away)', () => {
+    // First-Ctrl+F regression: opening the search bar mounts SearchBar, whose
+    // empty-term effect resets the search state to results=[] + progress 0.
+    // An empty array is truthy, so the old `searchResults ?` condition handed
+    // the content area to SearchResults — which renders nothing for an
+    // in-flight empty search — and the just-shown TOC flashed away. The TOC
+    // must survive until a real search has something to show.
+    const sb = () => useSidebarStore.getState();
+    sb().setSideBarBookKey('book-1');
+    sb().setSideBarVisible(true);
+
+    render(
+      <>
+        <TOCFloatingButton bookKey='book-1' />
+        <SideBar />
+      </>,
+    );
+    expect(screen.getByTestId('sidebar-content')).toBeTruthy();
+
+    // Ctrl+F opens the search bar; the mount effect's empty-term reset lands.
+    act(() => {
+      sb().setSearchBarVisible(true);
+      sb().setSearchResults('book-1', []);
+      sb().setSearchProgress('book-1', 0);
+    });
+    expect(screen.getByTestId('sidebar-content')).toBeTruthy();
+    expect(screen.queryByTestId('search-results')).toBeNull();
+
+    // A completed search with no hits DOES take over ("No results found").
+    act(() => {
+      sb().setSearchProgress('book-1', 1);
+    });
+    expect(screen.getByTestId('search-results')).toBeTruthy();
+    expect(screen.queryByTestId('sidebar-content')).toBeNull();
+  });
 });

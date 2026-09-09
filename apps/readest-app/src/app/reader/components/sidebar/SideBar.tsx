@@ -37,7 +37,12 @@ const SideBar = ({}) => {
   const { isSearchBarVisible, setSearchBarVisible, requestSearchBarFocus, resetSearchBarFocus } =
     useSidebarStore();
   const searchNavState = sideBarBookKey ? getSearchNavState(sideBarBookKey) : null;
-  const { searchTerm = '', searchResults = null } = searchNavState || {};
+  const {
+    searchTerm = '',
+    searchResults = null,
+    searchProgress = 1,
+    searchError = null,
+  } = searchNavState || {};
   const getBookData = useBookDataStore((s) => s.getBookData);
   const getConfig = useBookDataStore((s) => s.getConfig);
   const { getView, getViewSettings } = useReaderStore();
@@ -204,6 +209,17 @@ const SideBar = ({}) => {
   // On the annotations tab the header search icon drives the annotation
   // search in the toolbar instead of the in-book text search.
   const isAnnotationsTab = getConfig(sideBarBookKey)?.viewSettings?.sideBarTab === 'annotations';
+  // 结果面板只有在"真有内容可显示"时才接管内容区：非空结果，或一次已完成的
+  // 搜索（No results 反馈）。SearchBar 挂载时空词 reset 会把状态写成
+  // results=[] + progress 0 —— [] 是 truthy，若仅凭 searchResults 判断就会
+  // 渲染出什么都不画的 SearchResults（内部 return null），把 Ctrl+F 刚打开
+  // 的目录闪掉（首次 Ctrl+F 目录闪现后消失的根因）。搜索出错的反馈留在
+  // 搜索栏内联显示，目录不被清空。
+  const showResultsPanel =
+    isSearchBarVisible &&
+    !isAnnotationsTab &&
+    !!searchResults &&
+    (searchResults.length > 0 || (searchProgress >= 1 && !searchError));
 
   return isSideBarVisible ? (
     <>
@@ -300,7 +316,7 @@ const SideBar = ({}) => {
             <BookCard book={book} />
           </div>
         </div>
-        {isSearchBarVisible && !isAnnotationsTab && searchResults ? (
+        {showResultsPanel ? (
           <SearchResults
             bookKey={sideBarBookKey!}
             results={searchResults}

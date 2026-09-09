@@ -100,16 +100,9 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
   setSideBarWidth: (width: string) => set({ sideBarWidth: width }),
   toggleSideBar: () => set((state) => ({ isSideBarVisible: !state.isSideBarVisible })),
   toggleSideBarPin: () => set((state) => ({ isSideBarPinned: !state.isSideBarPinned })),
-  // [DEBUG-cf42] temporary trace wrappers to find who hides the sidebar/search bar
-  setSideBarVisible: (visible: boolean) => {
-    console.trace(`[DEBUG-cf42] setSideBarVisible(${visible})`);
-    set({ isSideBarVisible: visible });
-  },
+  setSideBarVisible: (visible: boolean) => set({ isSideBarVisible: visible }),
   setSideBarPin: (pinned: boolean) => set({ isSideBarPinned: pinned }),
-  setSearchBarVisible: (visible: boolean) => {
-    console.trace(`[DEBUG-cf42] setSearchBarVisible(${visible})`);
-    set({ isSearchBarVisible: visible });
-  },
+  setSearchBarVisible: (visible: boolean) => set({ isSearchBarVisible: visible }),
   requestSearchBarFocus: () =>
     set((state) => ({ searchBarFocusToken: state.searchBarFocusToken + 1 })),
   resetSearchBarFocus: () => set({ searchBarFocusToken: 0 }),

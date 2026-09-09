@@ -117,10 +117,23 @@ describe('ProgressBar scrub gesture', () => {
   const goToFraction = vi.fn();
   const viewState = { view: null as null | { goToFraction: typeof goToFraction } };
 
+  // jsdom has no PointerEvent constructor; a MouseEvent with the pointer
+  // event's type string is enough for the handler contract (button, clientX,
+  // buttons). buttons mirrors real pointer events: 1 while the primary
+  // button is held (down/move), 0 once released (up) — the scrub activation
+  // checks it to reject hover-driven "drags".
   const pointerEvent = (type: string, x: number, y = 0) =>
-    // jsdom has no PointerEvent constructor; a MouseEvent with the pointer
-    // event's type string is enough for the handler contract (button, clientX).
-    new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0 });
+    new MouseEvent(type, {
+      bubbles: true,
+      clientX: x,
+      clientY: y,
+      button: 0,
+      buttons: type === 'pointerup' ? 0 : 1,
+    });
+
+  // A bare hover move: no button held.
+  const hoverMove = (x: number) =>
+    new MouseEvent('pointermove', { bubbles: true, clientX: x, clientY: 0, button: 0, buttons: 0 });
 
   // Dispatch inside act() so state updates from the handlers (the bubble)
   // commit synchronously before assertions.
@@ -310,5 +323,31 @@ describe('ProgressBar scrub gesture', () => {
     expect(handle.className).toContain('opacity-100');
     fire(window, pointerEvent('pointerup', 750));
     expect(handle.className).toContain('opacity-0');
+  });
+
+  it('a hover after a lost pointerup never starts a scrub', () => {
+    // Hover-drag regression: a press on the strip arms the scrub state; if
+    // its pointerup is lost (released outside the window), a later hover
+    // crossing the 8px threshold must NOT activate the drag.
+    viewState.view = { goToFraction };
+    const strip = renderStrip();
+    fire(strip, pointerEvent('pointerdown', 500));
+    // pointerup never arrives; a bare hover strays well past the threshold
+    fire(window, hoverMove(800));
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(goToFraction).not.toHaveBeenCalled();
+  });
+
+  it('ends an active scrub when the button disappears without a pointerup', () => {
+    viewState.view = { goToFraction };
+    const strip = renderStrip();
+    fire(strip, pointerEvent('pointerdown', 500));
+    fire(window, pointerEvent('pointermove', 750));
+    expect(screen.getByRole('status')).toBeDefined();
+    // Button released mid-drag but pointerup lost; the next hover move
+    // carries buttons=0 and must finish the scrub at its last fraction.
+    fire(window, hoverMove(900));
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(goToFraction).toHaveBeenLastCalledWith(0.75);
   });
 });

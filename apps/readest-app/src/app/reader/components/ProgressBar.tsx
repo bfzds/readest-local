@@ -227,6 +227,22 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
     const onPointerMove = (e: PointerEvent) => {
       const state = scrubStateRef.current;
       if (!state) return;
+      // The primary button must still be held. A press whose pointerup was
+      // lost (released outside the window, window deactivated mid-press)
+      // leaks the armed state; without this guard a later hover straying
+      // past the 8px threshold activates a "drag" with no button pressed —
+      // the hover-scrub misfire.
+      if (!(e.buttons & 1)) {
+        if (state.active) {
+          // The button vanished mid-drag without a delivered pointerup:
+          // finish at the last fraction, mirroring onPointerUp.
+          suppressClickRef.current = true;
+          scrubThrottleRef.current?.cancel();
+          goToFractionRef.current(state.fraction);
+        }
+        clearScrub();
+        return;
+      }
       if (!state.active) {
         const dx = e.clientX - state.startX;
         const dy = e.clientY - state.startY;
@@ -319,6 +335,15 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
     // swallowing the user's next genuine tap).
     suppressClickRef.current = false;
     if (!scrubEnabled || e.button !== 0) return;
+    // Capture the pointer for the whole press so the release is delivered
+    // even outside the window — a lost pointerup leaks the armed scrub state
+    // (see the buttons guard in onPointerMove). Captured events keep
+    // bubbling to the window listeners, so the drag logic is unchanged.
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    } catch {
+      // Synthetic events (tests) have no active pointer to capture.
+    }
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     scrubStateRef.current = {
       startX: e.clientX,
