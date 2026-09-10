@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildElementCfi, isCfiAddressable } from '@/services/nav/elementCfi';
 
-const SECTION_CFI = 'epubcfi(/6/4!)';
+const SECTION_CFI = 'epubcfi(/6/4)';
 
 describe('elementCfi', () => {
   it('body 的严格后代可寻址，元素 CFI 以 section CFI 为前缀', () => {
@@ -13,7 +13,8 @@ describe('elementCfi', () => {
     const p = doc.getElementById('a')!;
     expect(isCfiAddressable(p)).toBe(true);
     const cfi = buildElementCfi(SECTION_CFI, p);
-    expect(cfi.startsWith(SECTION_CFI)).toBe(true);
+    expect(cfi.startsWith('epubcfi(/6/4!')).toBe(true);
+    expect(cfi).not.toBe(SECTION_CFI);
   });
 
   it('body 本身与脱离 body 的元素回退 section CFI', () => {

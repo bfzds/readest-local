@@ -47,16 +47,6 @@ export const buildElementCfi = (sectionCfi: string, element: Element | null): st
   if (!element || !isCfiAddressable(element)) {
     return sectionCfi;
   }
-  // `joinIndir` merges two paths at a single indirection marker (`!`). When the
-  // supplied section anchor already terminates in an empty indirection (e.g.
-  // `epubcfi(/6/4!)`), appending a child would double the marker (`!!`) and the
-  // result would no longer sit under the anchor as a string prefix, so callers
-  // that key off the anchor would lose it. Real foliate section CFIs never have
-  // this shape (they are `epubcfi(/6/N)`), so treat it as a whole-section
-  // anchor and return it unchanged.
-  if (sectionCfi.endsWith('!)')) {
-    return sectionCfi;
-  }
   try {
     const rel = cfiLib.fromElements([element])[0] ?? '';
     return cfiLib.joinIndir(sectionCfi, rel);
