@@ -6,7 +6,6 @@ import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useTranslation } from '@/hooks/useTranslation';
-import { shouldOfferSynthesis } from '@/services/virtualToc/synthesis';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import 'overlayscrollbars/overlayscrollbars.css';
 
@@ -119,14 +118,17 @@ const SidebarContent: React.FC<{
 
 export default SidebarContent;
 
-// 目录为空/缺失时的面板内容：能合成虚拟目录（可重排且有多个正文 section）时给出
-// 「从正文生成目录」入口，否则退化为「无目录」文案。用 shouldOfferSynthesis 而不是
-// 复刻其判定，保证 UI 入口与 Task 5 的合成入口始终一致（synthesizeSectionToc 自身
-// 没有 fixed-layout 守卫，调用点必须先过这道判定）。
+// 目录为空/缺失时的面板内容：只要这本书有正文可扫（可重排、至少 1 个 section）就给出
+// 「从正文生成目录」入口，否则退化为「无目录」文案。这里**不能**用 shouldOfferSynthesis：
+// 它的语义是「按文件分章这条捷径是否适用」（要求可读 section > 1），而正则扫描单
+// section 的书正是本功能的主战场（如单 HTML 的长篇网络小说）。shouldOfferSynthesis
+// 仍在 Task 7 弹窗里把守 synthesizeSectionToc 的调用点（R6）。
 const VirtualTocEmptyState = ({ bookKey, bookDoc }: { bookKey: string; bookDoc: BookDoc }) => {
   const _ = useTranslation();
   const [open, setOpen] = useState(false);
-  if (!shouldOfferSynthesis(bookDoc)) {
+  const eligible =
+    bookDoc.rendition?.layout !== 'pre-paginated' && (bookDoc.sections?.length ?? 0) > 0;
+  if (!eligible) {
     return <div className='text-base-content/60 p-4 text-sm'>{_('No TOC')}</div>;
   }
   return (

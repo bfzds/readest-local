@@ -91,6 +91,11 @@ describe('侧栏 TOC 空态', () => {
     expect(screen.getByText('No TOC')).toBeTruthy();
   });
 
+  it('单 section 的书仍显示生成入口（从正文正则扫描的主战场）', () => {
+    render(<Content {...makeProps([], { sections: [{ id: 's1' }] })} />);
+    expect(screen.getByRole('button', { name: GENERATE_ENTRY })).toBeTruthy();
+  });
+
   it('空目录时不渲染章节导航，避免空态与导航同时出现', () => {
     render(<Content {...makeProps([])} />);
     expect(screen.queryByTestId('toc-chapter-nav')).toBeNull();
