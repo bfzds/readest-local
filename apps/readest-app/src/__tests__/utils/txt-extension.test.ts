@@ -8,9 +8,9 @@ import {
   buildChapterPatternFromSamples,
   extractTxtChapterCandidates,
 } from '@/utils/txt';
+import { buildChapterRegexps } from '@/utils/chapterRules';
 
 type Api = {
-  createChapterRegexps(language: string, extraPatterns?: string[]): RegExp[];
   computeMaxLength(segment: string): number;
   extractChaptersFromSegment(
     segment: string,
@@ -74,34 +74,33 @@ describe('方向① 章节判定阈值动态化', () => {
 
 describe('方向② 章节规则可扩展（规则表化）', () => {
   it('中文仍返回两条正则且首条含 i、u 标志', () => {
-    const api = getApi();
-    const rs = api.createChapterRegexps('zh');
+    const rs = buildChapterRegexps('zh');
     expect(rs.length).toBe(2);
     expect(rs[0]!.flags).toContain('i');
     expect(rs[0]!.flags).toContain('u');
   });
 
   it('英文仍返回两条正则', () => {
-    expect(getApi().createChapterRegexps('en').length).toBe(2);
+    expect(buildChapterRegexps('en').length).toBe(2);
   });
 
   it('非专用语言回退到通用规则（两条）', () => {
-    expect(getApi().createChapterRegexps('fr').length).toBe(2);
-    expect(getApi().createChapterRegexps('de').length).toBe(2);
+    expect(buildChapterRegexps('fr').length).toBe(2);
+    expect(buildChapterRegexps('de').length).toBe(2);
   });
 
   it('新增日文规则：匹配 第X話', () => {
-    expect(anyRegexMatches(getApi().createChapterRegexps('ja'), '\n第一話：开幕\n')).toBe(true);
+    expect(anyRegexMatches(buildChapterRegexps('ja'), '\n第一話：开幕\n')).toBe(true);
   });
 
   it('新增韩文规则：匹配 제X장', () => {
-    expect(anyRegexMatches(getApi().createChapterRegexps('ko'), '\n제1장 서막\n')).toBe(true);
+    expect(anyRegexMatches(buildChapterRegexps('ko'), '\n제1장 서막\n')).toBe(true);
   });
 });
 
 describe('方向③ 用户自定义章节规则', () => {
   it('用户规则注入到规则链最前', () => {
-    const rs = getApi().createChapterRegexps('zh', [USER_PATTERN]);
+    const rs = buildChapterRegexps('zh', [USER_PATTERN]);
     const re = new RegExp(rs[0]!.source, rs[0]!.flags.replace(/[gy]/g, ''));
     expect(re.test('\n§3 标题\n')).toBe(true);
   });
@@ -121,7 +120,7 @@ describe('方向③ 用户自定义章节规则', () => {
   });
 
   it('非法用户规则被安全忽略，不影响内置规则', () => {
-    const rs = getApi().createChapterRegexps('zh', ['(unclosed']);
+    const rs = buildChapterRegexps('zh', ['(unclosed']);
     expect(rs.length).toBe(2);
   });
 });
@@ -177,19 +176,17 @@ describe('validateChapterPattern（ReDoS 守门）', () => {
 
 describe('zh 章节标题带【】包裹', () => {
   it('【第X章、标题（视角）】可识别', () => {
-    expect(
-      anyRegexMatches(getApi().createChapterRegexps('zh'), '\n【第十章、下山（吕凡视角）】\n'),
-    ).toBe(true);
+    expect(anyRegexMatches(buildChapterRegexps('zh'), '\n【第十章、下山（吕凡视角）】\n')).toBe(
+      true,
+    );
   });
 
   it('【序章】等前言类可识别', () => {
-    expect(anyRegexMatches(getApi().createChapterRegexps('zh'), '\n【序章】\n')).toBe(true);
+    expect(anyRegexMatches(buildChapterRegexps('zh'), '\n【序章】\n')).toBe(true);
   });
 
   it('裸标题保持可识别（不回归）', () => {
-    expect(anyRegexMatches(getApi().createChapterRegexps('zh'), '\n第五章、锦州城（一）\n')).toBe(
-      true,
-    );
+    expect(anyRegexMatches(buildChapterRegexps('zh'), '\n第五章、锦州城（一）\n')).toBe(true);
   });
 });
 
@@ -199,32 +196,26 @@ describe('buildChapterPatternFromSamples（勾选行→规则）', () => {
   it('同前缀+数字分歧 → 生成数字通配规则，其它章也命中', () => {
     const pattern = buildChapterPatternFromSamples(samples);
     expect(pattern).toBeTruthy();
+    expect(anyRegexMatches(buildChapterRegexps('zh', [pattern!]), '\n第五章、锦州城（一）\n')).toBe(
+      true,
+    );
     expect(
-      anyRegexMatches(getApi().createChapterRegexps('zh', [pattern!]), '\n第五章、锦州城（一）\n'),
-    ).toBe(true);
-    expect(
-      anyRegexMatches(
-        getApi().createChapterRegexps('zh', [pattern!]),
-        '\n第八十章、锦州城（九）\n',
-      ),
+      anyRegexMatches(buildChapterRegexps('zh', [pattern!]), '\n第八十章、锦州城（九）\n'),
     ).toBe(true);
   });
 
   it('无关正文行不命中', () => {
     const pattern = buildChapterPatternFromSamples(samples)!;
     expect(
-      anyRegexMatches(
-        getApi().createChapterRegexps('zh', [pattern]),
-        '\n这是正文段落文字，长度足够长。\n',
-      ),
+      anyRegexMatches(buildChapterRegexps('zh', [pattern]), '\n这是正文段落文字，长度足够长。\n'),
     ).toBe(false);
   });
 
   it('样本首字符即分歧 → 退化字面量 alternation，样本本身可命中', () => {
     const pattern = buildChapterPatternFromSamples(['序章', '楔子']);
     expect(pattern).toBeTruthy();
-    expect(anyRegexMatches(getApi().createChapterRegexps('zh', [pattern!]), '\n序章\n')).toBe(true);
-    expect(anyRegexMatches(getApi().createChapterRegexps('zh', [pattern!]), '\n楔子\n')).toBe(true);
+    expect(anyRegexMatches(buildChapterRegexps('zh', [pattern!]), '\n序章\n')).toBe(true);
+    expect(anyRegexMatches(buildChapterRegexps('zh', [pattern!]), '\n楔子\n')).toBe(true);
   });
 
   it('空样本返回 null', () => {
@@ -234,7 +225,7 @@ describe('buildChapterPatternFromSamples（勾选行→规则）', () => {
   it('单样本数字通配：尾部通配限长，不整句吞入超长尾随正文', () => {
     const pattern = buildChapterPatternFromSamples(['1.']);
     expect(pattern).toBeTruthy();
-    const re = getApi().createChapterRegexps('zh', [pattern!])[0]!;
+    const re = buildChapterRegexps('zh', [pattern!])[0]!;
     const longLine = '1.' + 'x'.repeat(200);
     const m = re.exec('\n' + longLine + '\n');
     expect(m).not.toBeNull();

@@ -2,9 +2,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { TxtToEpubConverter } from '@/utils/txt';
+import { buildChapterRegexps } from '@/utils/chapterRules';
 
 type TxtConverterExtractAPI = {
-  createChapterRegexps(language: string): RegExp[];
   joinAroundUndefined(arr: (string | undefined)[]): string[];
   isGoodMatches(matches: string[], maxLength?: number): boolean;
   extractChaptersFromSegment(
@@ -34,10 +34,7 @@ const extractChapters = (text: string, language: string) => {
 };
 
 /** Helper: get the first chapter regex for a language. */
-const getFirstRegex = (language: string) => {
-  const api = getApi();
-  return api.createChapterRegexps(language)[0]!;
-};
+const getFirstRegex = (language: string) => buildChapterRegexps(language)[0]!;
 
 // ---------------------------------------------------------------------------
 // Chinese chapter regex — matching tests
@@ -197,8 +194,7 @@ describe('createChapterRegexps — Chinese (zh) regex matching', () => {
 // ---------------------------------------------------------------------------
 describe('createChapterRegexps — Chinese (zh) second regex', () => {
   it('should match Chinese number followed by colon and title', () => {
-    const api = getApi();
-    const regexps = api.createChapterRegexps('zh');
+    const regexps = buildChapterRegexps('zh');
     // Use fresh regex copies to avoid g-flag lastIndex issues
     const re1 = new RegExp(regexps[1]!.source, regexps[1]!.flags);
     const re2 = new RegExp(regexps[1]!.source, regexps[1]!.flags);
@@ -207,8 +203,7 @@ describe('createChapterRegexps — Chinese (zh) second regex', () => {
   });
 
   it('should match bare number heading', () => {
-    const api = getApi();
-    const regexps = api.createChapterRegexps('zh');
+    const regexps = buildChapterRegexps('zh');
     const secondRegex = regexps[1]!;
     expect(secondRegex.test('\n1 第一节\n')).toBe(true);
   });
@@ -548,32 +543,27 @@ describe('extractChaptersFromSegment — English (en)', () => {
 // ---------------------------------------------------------------------------
 describe('createChapterRegexps — structure', () => {
   it('should produce two regexps for Chinese', () => {
-    const api = getApi();
-    expect(api.createChapterRegexps('zh').length).toBe(2);
+    expect(buildChapterRegexps('zh').length).toBe(2);
   });
 
   it('should produce two regexps for English', () => {
-    const api = getApi();
-    expect(api.createChapterRegexps('en').length).toBe(2);
+    expect(buildChapterRegexps('en').length).toBe(2);
   });
 
   it('should produce two regexps for any non-zh language', () => {
-    const api = getApi();
-    expect(api.createChapterRegexps('fr').length).toBe(2);
-    expect(api.createChapterRegexps('ja').length).toBe(2);
-    expect(api.createChapterRegexps('de').length).toBe(2);
+    expect(buildChapterRegexps('fr').length).toBe(2);
+    expect(buildChapterRegexps('ja').length).toBe(2);
+    expect(buildChapterRegexps('de').length).toBe(2);
   });
 
   it('Chinese first regex should be case-insensitive with unicode flag', () => {
-    const api = getApi();
-    const regex = api.createChapterRegexps('zh')[0]!;
+    const regex = buildChapterRegexps('zh')[0]!;
     expect(regex.flags).toContain('i');
     expect(regex.flags).toContain('u');
   });
 
   it('English regex should be case-insensitive', () => {
-    const api = getApi();
-    const regex = api.createChapterRegexps('en')[0]!;
+    const regex = buildChapterRegexps('en')[0]!;
     expect(regex.flags).toContain('i');
   });
 });

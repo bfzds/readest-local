@@ -1,16 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { TxtToEpubConverter } from '@/utils/txt';
+import { buildChapterRegexps } from '@/utils/chapterRules';
 
 /**
- * Access private createChapterRegexps via a thin test subclass.
+ * 章节正则已抽取为共享模块函数 buildChapterRegexps，这里用 thin 子类
+ * 保持既有用例的调用形态不变。
  */
-type TxtConverterPrivateAPI = {
-  createChapterRegexps(language: string): RegExp[];
-};
-
 class TestableConverter extends TxtToEpubConverter {
   getChapterRegexps(language: string): RegExp[] {
-    return (this as unknown as TxtConverterPrivateAPI).createChapterRegexps(language);
+    return buildChapterRegexps(language);
   }
 }
 
