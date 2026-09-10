@@ -45,3 +45,24 @@ describe('synthesizeSectionToc', () => {
     expect(entries.every((e) => e.source === 'section')).toBe(true);
   });
 });
+
+describe('synthesizeSectionToc 回归（R6）', () => {
+  it('wrapper div 不被当作首块，改取其后第一个块元素', async () => {
+    const wrapped = {
+      ...doc3(),
+      sections: [
+        section(
+          '4',
+          '<html><body><div class="wrap"><p>第一段</p><p>第二段</p></div></body></html>',
+        ),
+      ],
+    } as unknown as BookDoc;
+    const entries = await synthesizeSectionToc(wrapped);
+    expect(entries[0]!.label).toBe('第一段');
+  });
+
+  it('pre-paginated 布局不提供合成（fixed-layout 门禁）', () => {
+    const fixed = { ...doc3(), rendition: { layout: 'pre-paginated' } } as unknown as BookDoc;
+    expect(shouldOfferSynthesis(fixed)).toBe(false);
+  });
+});

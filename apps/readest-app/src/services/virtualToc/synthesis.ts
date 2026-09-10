@@ -22,9 +22,14 @@ export const synthesizeSectionToc = async (bookDoc: BookDoc): Promise<VirtualToc
       if (heading?.textContent?.trim()) {
         label = heading.textContent;
       } else {
-        const firstBlock = Array.from(doc.querySelectorAll('p,div,h1,h2,h3,h4,h5,h6')).find((el) =>
-          el.textContent?.trim(),
-        );
+        const firstBlock = Array.from(doc.querySelectorAll('p,div,h1,h2,h3,h4,h5,h6'))
+          // div 只在“纯文本 div（无块级子元素）”时才算候选行，避免容器节点（如
+          // <div class="wrap"> 包住整章）被当成首块、把多段拼成一个标签（同 scan.ts）。
+          .filter(
+            (el) =>
+              !/^div$/i.test(el.tagName) || !el.querySelector('p,div,h1,h2,h3,h4,h5,h6,table,img'),
+          )
+          .find((el) => el.textContent?.trim());
         label = firstBlock?.textContent ?? '';
       }
     } catch (e) {
