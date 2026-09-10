@@ -105,7 +105,10 @@ if ($needBuild) {
         exit 1
     }
     $elapsed = (Get-Date) - $buildStart
-    Write-Host ('构建完成, 耗时 {0:mm\min ss\s}。' -f $elapsed)
+    # TimeSpan 自定义格式里的反斜杠转义在 -f（string.Format）中不合法，直接拼数字。
+    $mins = [int][math]::Floor($elapsed.TotalMinutes)
+    $secs = [int]($elapsed.TotalSeconds) % 60
+    Write-Host ('构建完成, 耗时 {0} 分 {1:00} 秒。' -f $mins, $secs)
     # 只在构建成功后记录指纹——失败后重跑不会被误判为"无变化"。
     New-Item -ItemType Directory -Force (Split-Path $stampPath) | Out-Null
     Set-Content -Path $stampPath -Value $fingerprint -Encoding ascii
