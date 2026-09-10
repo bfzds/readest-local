@@ -4,12 +4,14 @@ import {
   buildAuthorGroupedToastSpec,
   collectGroupNames,
   findAuthorGroupMatch,
+  matchesOwnGroupAuthor,
   normalizeAuthorKey,
   AuthorGroupedImport,
 } from '@/app/library/utils/authorGrouping';
 import {
   findGroupRenameCollision,
   getGroupNewBookCounts,
+  getGroupNewBookHashes,
   NEW_BOOK_BADGE_WINDOW_MS,
   renameGroupInLibrary,
   renamePersistentGroupNames,
@@ -149,6 +151,59 @@ describe('getGroupNewBookCounts', () => {
     const counts = getGroupNewBookCounts(books, {}, now);
     expect(counts.get(md5Fingerprint('A/B'))).toBe(1);
     expect(counts.get(md5Fingerprint('A'))).toBe(1);
+  });
+});
+
+describe('matchesOwnGroupAuthor', () => {
+  test('matches when the book sits in a group named after its author', () => {
+    expect(matchesOwnGroupAuthor(makeBook({ hash: '1', author: '鲁迅', groupName: '鲁迅' }))).toBe(
+      '鲁迅',
+    );
+    expect(
+      matchesOwnGroupAuthor(
+        makeBook({ hash: '2', author: 'j.k. rowling', groupName: 'J.K. Rowling' }),
+      ),
+    ).toBe('J.K. Rowling');
+  });
+
+  test('returns null for other groups, missing group or missing author', () => {
+    expect(
+      matchesOwnGroupAuthor(makeBook({ hash: '1', author: '鲁迅', groupName: '别的组' })),
+    ).toBeNull();
+    expect(matchesOwnGroupAuthor(makeBook({ hash: '2', author: '鲁迅' }))).toBeNull();
+    expect(matchesOwnGroupAuthor(makeBook({ hash: '3', groupName: '鲁迅' }))).toBeNull();
+  });
+});
+
+describe('getGroupNewBookHashes', () => {
+  const now = 1_000_000_000;
+
+  test('returns the same books the badge counts, for the group subtree', () => {
+    const books = [
+      makeBook({ hash: '1', groupName: 'A', createdAt: now - 1000 }),
+      makeBook({ hash: '2', groupName: 'A/B', createdAt: now - 2000 }),
+      makeBook({ hash: '3', groupName: 'C', createdAt: now - 1000 }),
+    ];
+    const hashes = getGroupNewBookHashes(books, 'A', {}, now);
+    expect(hashes.sort()).toEqual(['1', '2']);
+    const counts = getGroupNewBookCounts(books, {}, now);
+    expect(counts.get(md5Fingerprint('A'))).toBe(2);
+  });
+
+  test('honours lastVisited of the book\u2019s own group and the window', () => {
+    const books = [
+      makeBook({ hash: '1', groupName: 'A', createdAt: now - 1000 }),
+      makeBook({ hash: '2', groupName: 'A', createdAt: now - 100 }),
+      makeBook({ hash: '3', groupName: 'A', createdAt: now - NEW_BOOK_BADGE_WINDOW_MS - 1 }),
+      makeBook({ hash: '4', groupName: 'A', createdAt: now - 100, progress: [1, 10] }),
+    ];
+    const hashes = getGroupNewBookHashes(books, 'A', { [md5Fingerprint('A')]: now - 500 }, now);
+    expect(hashes).toEqual(['2']);
+  });
+
+  test('returns empty for unrelated group path', () => {
+    const books = [makeBook({ hash: '1', groupName: 'A/B', createdAt: now - 1000 })];
+    expect(getGroupNewBookHashes(books, 'B', {}, now)).toEqual([]);
   });
 });
 
