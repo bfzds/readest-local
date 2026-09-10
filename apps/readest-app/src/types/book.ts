@@ -573,6 +573,14 @@ export interface BookSearchResult {
   progress?: number;
 }
 
+export interface VirtualTocEntry {
+  label: string;
+  /** epubcfi(...) 字符串；侧栏 goTo 原生支持 CFI 目标（view.js resolveNavigation）。 */
+  cfi: string;
+  source: 'pattern' | 'section';
+  generatedAt: number;
+}
+
 export const BOOK_CONFIG_SCHEMA_VERSION = 3;
 
 export interface BookConfig {
@@ -585,6 +593,9 @@ export interface BookConfig {
   booknotes?: BookNote[];
   rsvpPosition?: { cfi: string; wordText: string };
   searchConfig?: Partial<BookSearchConfig>;
+  /** 用户生成的虚拟目录（EPUB 目录元数据缺失/退化时）。用户数据，存 config.json
+   *    而非 nav.json（后者随 BOOK_NAV_VERSION 重建）。 */
+  virtualToc?: VirtualTocEntry[];
   viewSettings?: Partial<ViewSettings>;
 
   lastSyncedAtConfig?: number;
