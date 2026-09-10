@@ -150,5 +150,8 @@
   "Undo": "Undo",
   "{{count}} new book(s)_one": "{{count}} new book",
   "{{count}} new book(s)_other": "{{count}} new books",
-  "Failed to save group changes": "Failed to save group changes"
+  "Failed to save group changes": "Failed to save group changes",
+  "No TOC": "No TOC",
+  "No table of contents in this book.": "No table of contents in this book.",
+  "Generate TOC from content": "Generate TOC from content"
 }

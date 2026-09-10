@@ -14,6 +14,7 @@ import { EnvConfigType } from '@/services/environment';
 import { FoliateView } from '@/types/view';
 import { DocumentLoader, TOCItem } from '@/libs/document';
 import { computeBookNav, hydrateBookNav, isBookNavCacheCurrent, updateToc } from '@/services/nav';
+import { applyVirtualToc } from '@/services/virtualToc/apply';
 import { formatTitle, getMetadataHash, getPrimaryLanguage } from '@/utils/book';
 import { getBaseFilename } from '@/utils/path';
 import { perfMark } from '@/utils/perf';
@@ -264,6 +265,10 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
           }
         }
       }
+      // 虚拟目录（EPUB 目录元数据缺失/退化时用户生成的）存在书籍 config 里，每次打开
+      // 现读现并；必须在 updateToc 之前，让 simplecc 的标签转换一并处理。非 EPUB 书的
+      // config.virtualToc 恒为 undefined，applyVirtualToc 直接返回 false，不误伤 PDF。
+      applyVirtualToc(bookDoc, config.virtualToc);
       await updateToc(
         bookDoc,
         config.viewSettings?.sortedTOC ?? false,

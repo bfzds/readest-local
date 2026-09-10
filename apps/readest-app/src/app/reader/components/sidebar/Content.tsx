@@ -5,6 +5,8 @@ import { BookDoc } from '@/libs/document';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useBookDataStore } from '@/store/bookDataStore';
+import { useTranslation } from '@/hooks/useTranslation';
+import { shouldOfferSynthesis } from '@/services/virtualToc/synthesis';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import 'overlayscrollbars/overlayscrollbars.css';
 
@@ -12,6 +14,7 @@ import TOCView from './TOCView';
 import BooknoteView from './BooknoteView';
 import TabNavigation from './TabNavigation';
 import TOCChapterNav from './TOCChapterNav';
+import VirtualTocDialog from '../VirtualTocDialog';
 
 const SidebarContent: React.FC<{
   bookDoc: BookDoc;
@@ -82,9 +85,12 @@ const SidebarContent: React.FC<{
               'opacity-100': !fade,
             })}
           >
-            {activeTab === 'toc' && bookDoc.toc && (
-              <TOCView toc={bookDoc.toc} bookKey={sideBarBookKey} />
-            )}
+            {activeTab === 'toc' &&
+              (bookDoc.toc && bookDoc.toc.length > 0 ? (
+                <TOCView toc={bookDoc.toc} bookKey={sideBarBookKey} />
+              ) : (
+                <VirtualTocEmptyState bookKey={sideBarBookKey} bookDoc={bookDoc} />
+              ))}
             {activeTab === 'annotations' && (
               <BooknoteView type='annotation' toc={bookDoc.toc ?? []} bookKey={sideBarBookKey} />
             )}
@@ -93,7 +99,9 @@ const SidebarContent: React.FC<{
             )}
           </div>
         </OverlayScrollbarsComponent>
-        {activeTab === 'toc' && bookDoc.toc && <TOCChapterNav bookKey={sideBarBookKey} />}
+        {activeTab === 'toc' && bookDoc.toc && bookDoc.toc.length > 0 && (
+          <TOCChapterNav bookKey={sideBarBookKey} />
+        )}
       </div>
       <div
         className='flex-shrink-0'
@@ -110,3 +118,26 @@ const SidebarContent: React.FC<{
 };
 
 export default SidebarContent;
+
+// 目录为空/缺失时的面板内容：能合成虚拟目录（可重排且有多个正文 section）时给出
+// 「从正文生成目录」入口，否则退化为「无目录」文案。用 shouldOfferSynthesis 而不是
+// 复刻其判定，保证 UI 入口与 Task 5 的合成入口始终一致（synthesizeSectionToc 自身
+// 没有 fixed-layout 守卫，调用点必须先过这道判定）。
+const VirtualTocEmptyState = ({ bookKey, bookDoc }: { bookKey: string; bookDoc: BookDoc }) => {
+  const _ = useTranslation();
+  const [open, setOpen] = useState(false);
+  if (!shouldOfferSynthesis(bookDoc)) {
+    return <div className='text-base-content/60 p-4 text-sm'>{_('No TOC')}</div>;
+  }
+  return (
+    <div className='flex flex-col items-center gap-3 p-4'>
+      <p className='text-base-content/60 text-sm'>{_('No table of contents in this book.')}</p>
+      <button type='button' className='btn btn-contrast btn-sm' onClick={() => setOpen(true)}>
+        {_('Generate TOC from content')}
+      </button>
+      {open && (
+        <VirtualTocDialog bookKey={bookKey} bookDoc={bookDoc} onClose={() => setOpen(false)} />
+      )}
+    </div>
+  );
+};

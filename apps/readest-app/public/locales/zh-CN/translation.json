@@ -2046,5 +2046,8 @@
   "View": "前往查看",
   "Undo": "撤销",
   "{{count}} new book(s)_other": "{{count}} 本新书",
-  "Failed to save group changes": "保存分组修改失败"
+  "Failed to save group changes": "保存分组修改失败",
+  "No TOC": "无目录",
+  "No table of contents in this book.": "本书没有目录信息。",
+  "Generate TOC from content": "从正文生成目录"
 }

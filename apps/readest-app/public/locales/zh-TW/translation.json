@@ -2046,5 +2046,8 @@
   "View": "前往查看",
   "Undo": "撤銷",
   "{{count}} new book(s)_other": "{{count}} 本新書",
-  "Failed to save group changes": "儲存分組修改失敗"
+  "Failed to save group changes": "儲存分組修改失敗",
+  "No TOC": "無目錄",
+  "No table of contents in this book.": "本書沒有目錄資訊。",
+  "Generate TOC from content": "從正文生成目錄"
 }
