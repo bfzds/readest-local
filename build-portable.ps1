@@ -12,16 +12,29 @@ $exe = Join-Path $root 'target\release\readest-local.exe'
 $needBuild = $true
 
 # ---------------------------------------------------------------------------
-# 源码指纹：HEAD 提交 + 全工作区（含未跟踪文件、不含 gitignore 项）的 git
-# 树哈希，覆盖所有会进 exe 的输入（前端/静态资源/Tauri 配置/Rust 源码/依赖
-# 清单）。与上次成功构建时记录的指纹比对，无变化可安全跳过构建。
+# 源码指纹：只覆盖真正会进 exe 的输入（前端源码/静态资源/Tauri 与 Rust 配置/
+# 依赖清单）的 git 内容哈希，与上次成功构建时记录的指纹比对，无变化自动跳过
+# 构建，有变化自动重建——全程无交互。
 # 用临时索引（GIT_INDEX_FILE）做 write-tree，不碰真实的 git index；只哈希
 # 有变化的文件，实测 1 秒左右（文件系统全量枚举在本机要 180s+）。内容级
 # 精确：改了再改回去不会误报。
+# 已知盲区：被 gitignore 的构建输入（如 .env.tauri 环境变量）不在指纹内，
+# 改它们不会触发重建——需要时删除指纹文件强制重建。
 # ---------------------------------------------------------------------------
 $stampPath = Join-Path $root 'apps\readest-app\release\.last-build-fingerprint'
 
 function Get-SourceFingerprint {
+    $pathspecs = @(
+        'apps\readest-app\src',
+        'apps\readest-app\public',
+        'apps\readest-app\src-tauri',
+        'apps\readest-app\next.config.mjs',
+        'apps\readest-app\package.json',
+        'package.json',
+        'pnpm-lock.yaml',
+        'Cargo.toml',
+        'Cargo.lock'
+    )
     $head = $null
     try { $head = & git rev-parse HEAD 2>$null } catch { }
     $tree = $null
@@ -29,7 +42,7 @@ function Get-SourceFingerprint {
     $prevIndex = $env:GIT_INDEX_FILE
     $env:GIT_INDEX_FILE = $tmpIndex
     try {
-        & git add -A -- . 2>$null | Out-Null
+        & git add -A -- @pathspecs 2>$null | Out-Null
         if ($LASTEXITCODE -eq 0) {
             $tree = & git write-tree 2>$null
         }
@@ -38,7 +51,7 @@ function Get-SourceFingerprint {
         Remove-Item -LiteralPath $tmpIndex -Force -ErrorAction SilentlyContinue
     }
     # 非 git 环境（比如整个目录被拷走）拿不到树哈希——返回哨兵值，
-    # 由调用方降级为"永远询问"，绝不自动跳过构建。
+    # 由调用方保守处理：直接构建，绝不自动跳过。
     if (-not $head) { $head = 'no-git' }
     if (-not $tree) { $tree = 'no-tree' }
     return "$head|$tree"
@@ -75,22 +88,24 @@ if ($running) {
     Write-Host '阅读器已关闭。'
 }
 
-if (Test-Path $exe) {
-    $fingerprint = Get-SourceFingerprint
-    $stamp = if (Test-Path $stampPath) { (Get-Content $stampPath -Raw).Trim() } else { '' }
-    if ($stamp -eq $fingerprint -and $fingerprint -notmatch '^no-git\|') {
-        Write-Host "检测到已有 release 程序, 且源码自上次构建后无变化: $exe"
-        $needBuild = $false
-    } else {
-        Write-Host "检测到已有 release 程序, 但源码相对上次构建有变化 (或首次记录指纹)。"
-        $answer = Read-Host '直接回车或输入 1 = 重新构建 (推荐, 否则新改动不会进便携版); 输入 0 = 仍用现有程序打包'
-        if ($answer -eq '0') {
-            $needBuild = $false
-            Write-Host '已选择跳过构建: 注意便携版将不包含最近的源码改动。' -ForegroundColor Yellow
-        }
-    }
+# 全自动判断是否重建：无 exe → 构建；指纹匹配 → 跳过；指纹不同 → 重建；
+# git 不可用 → 保守构建。指纹故意只覆盖构建相关路径，改文档/测试不会
+# 触发无谓的重建。
+$fingerprint = Get-SourceFingerprint
+$stamp = if (Test-Path $stampPath) { (Get-Content $stampPath -Raw).Trim() } else { '' }
+$canDetect = $fingerprint -notmatch '^no-git\|'
+
+if (-not (Test-Path $exe)) {
+    Write-Host '未检测到已有 release 程序, 开始完整构建。'
+} elseif (-not $canDetect) {
+    Write-Host '无法读取 git 指纹 (非 git 仓库?), 为稳妥起见执行完整构建。'
+} elseif ($stamp -eq $fingerprint) {
+    Write-Host "检测到已有 release 程序, 且构建相关源码自上次构建后无变化: $exe"
+    Write-Host '跳过构建, 使用现有程序。'
+    $needBuild = $false
 } else {
-    $fingerprint = Get-SourceFingerprint
+    Write-Host '检测到构建相关源码相对上次构建有变化, 自动重新构建...'
+    Write-Host "(跳过构建改用旧 exe 的办法: 直接运行 apps\readest-app\scripts\build-portable.ps1 仅组装)"
 }
 
 if ($needBuild) {
