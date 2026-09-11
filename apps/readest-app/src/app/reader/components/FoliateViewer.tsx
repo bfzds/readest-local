@@ -65,7 +65,7 @@ import { TransformContext } from '@/services/transformers/types';
 import { transformContent } from '@/services/transformService';
 import { useBookCoverAutoSave } from '../hooks/useAutoSaveBookCover';
 import { manageSyntaxHighlighting } from '@/utils/highlightjs';
-import { getViewInsets } from '@/utils/insets';
+import { getViewInsets, HEADER_BAR_HEIGHT_PX } from '@/utils/insets';
 import { collectDocumentImages, DocumentImage } from '../utils/documentImages';
 import { footerReservesBand } from '../utils/footerBand';
 import { showTransientSearchHighlight } from '../utils/searchHighlight';
@@ -797,6 +797,15 @@ const FoliateViewer: React.FC<{
     } else {
       setScrollMargins({ top: 0, bottom: 0 });
     }
+    // The header bar is hover-revealed and opaque while shown, and with the
+    // in-flow page header off scrollMargins.top reserves nothing under it —
+    // so an element-level jump (CFI/Range anchor) pins the target under the
+    // bar. Let the renderer push just those jumps down by the bar's height
+    // instead of reserving the space while reading (which would blank 44px).
+    viewRef.current?.renderer.setAttribute(
+      'overlay-top-inset',
+      viewSettings.scrolled && !showTopHeader ? `${HEADER_BAR_HEIGHT_PX}px` : '0px',
+    );
     viewRef.current?.renderer.setAttribute('gap', `${viewSettings.gapPercent}%`);
     viewRef.current?.renderer.setAttribute(
       'scroll-direction',

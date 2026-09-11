@@ -40,6 +40,15 @@ export const getHeaderBandGeometry = (topInset: number, marginTopPx: number) => 
 };
 
 /**
+ * Height (px) of the header bar (`h-11` in HeaderBar).
+ *
+ * It caps the hover trigger and is the top clearance an element-level jump
+ * needs when the in-flow page header is off: the bar is hover-revealed and
+ * opaque, and in that case scrollMargins.top reserves nothing under it.
+ */
+export const HEADER_BAR_HEIGHT_PX = 44;
+
+/**
  * Height (px) of the header bar's hover trigger — the invisible strip along the
  * top of the book cell that reveals the toolbar.
  *
@@ -53,7 +62,7 @@ export const getHeaderBandGeometry = (topInset: number, marginTopPx: number) => 
  * the page header is on and drops the safe-area inset when it is off.
  */
 export const getHeaderTriggerHeight = (topInset: number, viewSettings: ViewSettings) => {
-  const maxHeight = 44;
+  const maxHeight = HEADER_BAR_HEIGHT_PX;
   const isVertical = viewSettings.vertical || viewSettings.writingMode.includes('vertical');
   const marginTopPx = getViewInsets(viewSettings).top;
   const contentTop =
