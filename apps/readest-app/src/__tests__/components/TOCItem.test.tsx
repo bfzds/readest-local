@@ -32,6 +32,7 @@ const makeParentItem = (overrides?: Partial<TOCItem>): TOCItem => ({
 const defaultProps = {
   bookKey: 'book1',
   activeHref: null,
+  activeLocationKey: null,
   onToggleExpand: vi.fn(),
   onItemClick: vi.fn(),
 };
@@ -138,6 +139,7 @@ describe('aria-current on active treeitem', () => {
       <StaticListRow
         {...defaultProps}
         activeHref='chapter2.html'
+        activeLocationKey={null}
         flatItem={{ item, depth: 0, index: 0 }}
       />,
     );
@@ -179,6 +181,7 @@ describe('current position indicator on the active item', () => {
       <StaticListRow
         {...defaultProps}
         activeHref='chapter2.html'
+        activeLocationKey={null}
         flatItem={{ item, depth: 0, index: 0 }}
       />,
     );

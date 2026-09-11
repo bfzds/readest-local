@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import React, { useCallback } from 'react';
 import { FiBookOpen } from 'react-icons/fi';
 import { TOCItem } from '@/libs/document';
+import { isVirtualTocItem } from '@/services/virtualToc/apply';
 import { getContentMd5 } from '@/utils/misc';
 
 const createExpanderIcon = (isExpanded: boolean) => {
@@ -30,6 +31,53 @@ export interface FlatTOCItem {
   index: number;
   isExpanded?: boolean;
 }
+
+/** location 区间的稳定标识（字符串，可直接进 React.memo 的 props）。 */
+export const tocLocationKey = (location: TOCItem['location']): string | null =>
+  location ? `${location.current}:${location.next}` : null;
+
+/**
+ * 虚拟条目的当前章节：按 location 区间判定。
+ *
+ * 虚拟条目的 href 是 CFI 串，而 `progress.sectionHref` 是 section 路径
+ * （形如 `OEBPS/page-0.html`）→ href 相等永不成立，书本图标永远不出现。
+ * `progress.fraction` 是全书 0..1 的 reading position，与 location 的
+ * size-domain 同源（见 types/book.ts），所以 `round(fraction × total)` 落在
+ * 条目的 `[current, next)` 里就是当前章节。total 从任意带 location 的条目取
+ * （同一次生成的所有条目 total 相同）。
+ *
+ * 返回的是 location 区间 key（而不是条目对象）——`TOCItemView` 是 React.memo，
+ * props 必须是值稳定的原始类型，否则每渲染都会失效。
+ */
+export const findActiveLocationKey = (
+  items: ReadonlyArray<TOCItem>,
+  fraction: number | null | undefined,
+): string | null => {
+  if (typeof fraction !== 'number' || !Number.isFinite(fraction)) return null;
+  const total = items.find((item) => item.location?.total)?.location?.total;
+  if (!total) return null;
+  const currentLoc = Math.round(fraction * total);
+  const active = items.find(
+    (item) =>
+      item.location && currentLoc >= item.location.current && currentLoc < item.location.next,
+  );
+  return active ? tocLocationKey(active.location) : null;
+};
+
+/** 真实条目按 href 相等判定（行为不变）；虚拟条目按 location 区间判定。
+ *  两边都要判非空：没有 location 的条目 key 也是 null，只比相等会把无 location
+ *  的真实条目全部点亮；判 isVirtualTocItem 是为了让**真实的**结构条目（在退化
+ *  nav 里同样带 location）保留原 href 语义，不被区间判定顺带点亮。 */
+const isActiveTocItem = (
+  item: TOCItem,
+  activeHref: string | null,
+  activeLocationKey: string | null,
+): boolean => {
+  if (activeHref && activeHref === item.href) return true;
+  if (!isVirtualTocItem(item)) return false;
+  const key = tocLocationKey(item.location);
+  return !!key && key === activeLocationKey;
+};
 
 const TOCItemView = React.memo<{
   bookKey: string;
@@ -133,6 +181,7 @@ interface ListRowProps {
   flatItem: FlatTOCItem;
   itemSize?: number;
   activeHref: string | null;
+  activeLocationKey: string | null;
   onToggleExpand: (item: TOCItem) => void;
   onItemClick: (item: TOCItem) => void;
 }
@@ -142,10 +191,11 @@ export const StaticListRow: React.FC<ListRowProps> = ({
   flatItem,
   itemSize,
   activeHref,
+  activeLocationKey,
   onToggleExpand,
   onItemClick,
 }) => {
-  const isActive = activeHref === flatItem.item.href;
+  const isActive = isActiveTocItem(flatItem.item, activeHref, activeLocationKey);
 
   return (
     <div

@@ -7,7 +7,7 @@ import { TOCItem } from '@/libs/document';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { eventDispatcher } from '@/utils/event';
-import { FlatTOCItem, StaticListRow } from './TOCItem';
+import { FlatTOCItem, findActiveLocationKey, StaticListRow } from './TOCItem';
 import { computeExpandedSet, getItemIdentifier } from './tocTree';
 
 const flattenTOC = (items: TOCItem[], expandedItems: Set<string>, depth = 0): FlatTOCItem[] => {
@@ -174,6 +174,16 @@ const TOCView: React.FC<{
 
   const activeHref = progress?.sectionHref ?? null;
   const flatItems = useMemo(() => flattenTOC(toc, expandedItems), [toc, expandedItems]);
+  // 虚拟条目的 href 是 CFI 串，与 sectionHref 永不相等 → 改用 location 区间判定。
+  // 返回值是字符串（值稳定），React.memo 的 StaticListRow/TOCItemView 才不会被穿透。
+  const activeLocationKey = useMemo(
+    () =>
+      findActiveLocationKey(
+        flatItems.map((flat) => flat.item),
+        progress?.fraction,
+      ),
+    [flatItems, progress?.fraction],
+  );
   // Keep the refs read by the OverlayScrollbars `initialized` callback current.
   activeHrefRef.current = activeHref;
   flatItemsRef.current = flatItems;
@@ -290,6 +300,7 @@ const TOCView: React.FC<{
               bookKey={bookKey}
               flatItem={flatItems[index]!}
               activeHref={activeHref}
+              activeLocationKey={activeLocationKey}
               onToggleExpand={handleToggleExpand}
               onItemClick={handleItemClick}
             />
