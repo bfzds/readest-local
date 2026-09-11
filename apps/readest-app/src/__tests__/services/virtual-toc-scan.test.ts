@@ -142,6 +142,16 @@ describe('virtualToc scan：内嵌目录密集簇（修复二）', () => {
     const doc = docOf(bodyOf(para('第一章 甲'), para('第二章 乙'), filler(5), para('第三章 丙')));
     expect(await generateVirtualTocEntries(doc, '')).toHaveLength(3);
   });
+
+  // 日记体最自然的排版就是「日期标题 + 2~3 段正文」：候选项下标差恰好 3，会被
+  // 簇判据整簇吃掉。手写正则是主权行为（同修复一），这里必须关门。
+  it('手写正则路径不做簇丢弃（日记体按日期分章不被清空）', async () => {
+    const dense =
+      para('2024-01-01') + filler(2) + para('2024-01-02') + filler(2) + para('2024-01-03');
+    const doc = docOf(bodyOf(dense));
+    const entries = await generateVirtualTocEntries(doc, '^\\d{4}-\\d{2}-\\d{2}$');
+    expect(entries.map((e) => e.label)).toEqual(['2024-01-01', '2024-01-02', '2024-01-03']);
+  });
 });
 
 // --- 修复四：近似 location ---------------------------------------------------------

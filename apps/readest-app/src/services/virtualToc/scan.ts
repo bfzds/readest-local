@@ -114,7 +114,12 @@ const collectMatches = async (
         }
         const sectionBytes = sizes[index]!;
         const baseBytes = cumulativeSizes[index]!;
-        return pruneEmbeddedTocRuns(matches).map((m) => {
+        // 簇丢弃同样只在内置规则路径生效：日记体的自然排版是「日期标题 + 2~3 段
+        // 正文」，候选块下标差恰好 3，手写正则选出的一整段日期分章会被整簇吃掉、
+        // 目录直接变空。「变空」比「少几条重复」严重得多——用户手写正则即主权行为
+        // （同修复一），不做任何自动过滤。
+        const kept = filterNoise ? pruneEmbeddedTocRuns(matches) : matches;
+        return kept.map((m) => {
           const fraction = textLen > 0 ? m.prefixLen / textLen : 0;
           return {
             label: countOnly ? '' : normalizeLabel(m.label),
