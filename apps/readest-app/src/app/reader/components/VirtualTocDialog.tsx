@@ -3,7 +3,7 @@
 // 「从正文生成目录」弹窗（Task 7）：内置章节规则预选 → 命中预览 → 生成/按文件分章。
 // 生成的条目先过 applyVirtualToc 门禁、落进书籍 config，再刷新 bookData 引用让目录树
 // 立即更新；EPUB 文件本身永不改动。
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Dialog from '@/components/Dialog';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -32,15 +32,29 @@ const VirtualTocDialog = ({ bookKey, bookDoc, onClose }: VirtualTocDialogProps) 
   const { envConfig } = useEnv();
   // R19：CHAPTER_RULES 的键只有 zh/ja/ko/'*'，而 metadata.language 常带区域码
   // （Task 8 样本书的 OPF 就是 `zh-cn`）——不归一化会落到英文规则，中文书命中恒为 0、
-  // 生成按钮被禁用。用仓库现成的 getPrimaryLanguage 取主码（不归一化时它是 'en'，
-  // 所以仅在有非空语言码时调用；无语言码保持原行为 zh）。
+  // 生成按钮被禁用。用仓库现成的 getPrimaryLanguage 取主码（不归一化时它是 'en'）。
+  // R22：取第一个「去空白后非空」的语言码，空串/纯空白/`['']`（畸形 OPF）都兜底 zh——
+  // 把 getPrimaryLanguage('') 的 'en' 当结果会把中文书推进英文规则。
   const rawLanguage = bookDoc.metadata?.language;
-  const hasLanguage = Array.isArray(rawLanguage) ? rawLanguage.length > 0 : !!rawLanguage;
-  const language = hasLanguage ? getPrimaryLanguage(rawLanguage) : 'zh';
+  const languageSource = Array.isArray(rawLanguage)
+    ? rawLanguage.find((code) => typeof code === 'string' && code.trim() !== '')
+    : rawLanguage;
+  const hasLanguage = typeof languageSource === 'string' && languageSource.trim() !== '';
+  const language = hasLanguage ? getPrimaryLanguage(languageSource) : 'zh';
   const [pattern, setPattern] = useState('');
   const [previewCount, setPreviewCount] = useState<number | null>(null);
   const [scanning, setScanning] = useState(false);
   const [generating, setGenerating] = useState(false);
+  // R21：Dialog 自带的关闭入口（X / ESC / 遮罩 / Android 返回键 / 移动端拖拽）不受
+  // `generating` 约束，都会 onClose → Content 卸载弹窗，而 pending 的 await 不随卸载中断。
+  // 世代号在卸载时自增，让已经作废的生成结果放弃 apply / 写盘 / toast / onClose。
+  const generationRef = useRef(0);
+  useEffect(
+    () => () => {
+      generationRef.current += 1;
+    },
+    [],
+  );
   // R6：synthesizeSectionToc 自身没有 fixed-layout 守卫，可见性一律由 shouldOfferSynthesis
   // 把守（它同时排除 pre-paginated 与健康目录），按钮不可见即调用点不可达。
   const offerSynthesis = useMemo(() => shouldOfferSynthesis(bookDoc), [bookDoc]);
@@ -105,9 +119,12 @@ const VirtualTocDialog = ({ bookKey, bookDoc, onClose }: VirtualTocDialogProps) 
   };
 
   const handleGenerate = async () => {
+    const gen = ++generationRef.current;
     setGenerating(true);
     try {
       const entries = await generateVirtualTocEntries(bookDoc, pattern, language);
+      // R21：弹窗已在扫描途中被关闭（卸载使世代号自增）→ 丢弃结果，不写盘。
+      if (generationRef.current !== gen) return;
       if (entries.length === 0) {
         eventDispatcher.dispatch('toast', {
           message: _('No chapter-like lines matched. Try a custom pattern.'),
@@ -119,21 +136,26 @@ const VirtualTocDialog = ({ bookKey, bookDoc, onClose }: VirtualTocDialogProps) 
       if (await persistAndApply(entries)) onClose();
     } catch (e) {
       console.error('virtualToc generate failed:', e);
+      if (generationRef.current !== gen) return;
       eventDispatcher.dispatch('toast', { message: _('Failed to generate TOC'), type: 'error' });
     } finally {
-      setGenerating(false);
+      if (generationRef.current === gen) setGenerating(false);
     }
   };
 
   const handleSynthesize = async () => {
+    const gen = ++generationRef.current;
     setGenerating(true);
     try {
-      if (await persistAndApply(await synthesizeSectionToc(bookDoc))) onClose();
+      const entries = await synthesizeSectionToc(bookDoc);
+      if (generationRef.current !== gen) return;
+      if (await persistAndApply(entries)) onClose();
     } catch (e) {
       console.error('virtualToc synthesize failed:', e);
+      if (generationRef.current !== gen) return;
       eventDispatcher.dispatch('toast', { message: _('Failed to generate TOC'), type: 'error' });
     } finally {
-      setGenerating(false);
+      if (generationRef.current === gen) setGenerating(false);
     }
   };
 

@@ -113,18 +113,33 @@ describe('VirtualTocDialog', () => {
 
   // 区域码是常态（Task 8 样本书的 OPF 是 `zh-cn`，全小写），而 CHAPTER_RULES 只认
   // zh/ja/ko/'*'——不归一化就会落到 EN_RULES，中文书内置预览恒为 0、生成按钮被禁用。
-  it.each([
-    'zh-cn',
-    'zh-CN',
-    'zh-TW',
-    'zh-Hant',
-  ])('区域语言码 %s 归一化为规则表主码 zh，内置预览不为 0', async (lang) => {
+  // 生产里语言码是数组（epub.js 的 `dc.language?.map(x => x.value)` → `['zh-cn']`），
+  // 裸字符串只是简写形态，两种都得归一化。
+  it.each<[string, string | string[]]>([
+    ['zh-cn', 'zh-cn'],
+    ['zh-CN', 'zh-CN'],
+    ['zh-TW', 'zh-TW'],
+    ['zh-Hant', 'zh-Hant'],
+    ["['zh-cn']（foliate 真实形状）", ['zh-cn']],
+  ])('区域语言码 %s 归一化为规则表主码 zh，内置预览不为 0', async (_name, lang) => {
     const regionDoc = { ...bookDoc, metadata: { language: lang } } as unknown as BookDoc;
     renderDialog('k1', () => {}, regionDoc);
     await waitFor(() =>
       expect(scanMock.countChapterMatches).toHaveBeenCalledWith(regionDoc, '', 'zh'),
     );
     await waitFor(() => expect(screen.getByText(/matches 15 locations/iu)).toBeTruthy());
+  });
+
+  // R22：畸形的空 `<dc:language/>`（foliate 会保留空串）必须仍兜底 zh——
+  // getPrimaryLanguage('') 返回 'en'，把中文书推进英文规则是方向相反的回归。
+  it.each<[string, string | string[]]>([
+    ['空串', ''],
+    ['纯空白串', '   '],
+    ["['']（空串数组）", ['']],
+  ])('无有效语言码（%s）仍兜底 zh 规则，不落到 en', async (_name, lang) => {
+    const doc = { ...bookDoc, metadata: { language: lang } } as unknown as BookDoc;
+    renderDialog('k1', () => {}, doc);
+    await waitFor(() => expect(scanMock.countChapterMatches).toHaveBeenCalledWith(doc, '', 'zh'));
   });
 
   it('确认生成：先 apply 再写 config、刷新 bookData 的 bookDoc 引用并关闭', async () => {
@@ -225,7 +240,7 @@ describe('VirtualTocDialog', () => {
 
   // R20：扫描途中「取消」若仍可点，用户取消后扫描完成依旧会 apply + saveConfig + 成功
   // toast——「用户已经取消却写了数据」。生成/合成期间禁用取消（与另外两个按钮同口径）。
-  it('扫描/合成途中取消按钮被禁用，完成前用户无法取消后仍写盘', async () => {
+  it('生成途中取消按钮被禁用，完成后恢复可点', async () => {
     let settleGenerate: ((entries: VirtualTocEntry[]) => void) | undefined;
     scanMock.generateVirtualTocEntries.mockImplementationOnce(
       () =>
@@ -246,6 +261,67 @@ describe('VirtualTocDialog', () => {
     expect((screen.getByRole('button', { name: 'Cancel' }) as HTMLButtonElement).disabled).toBe(
       false,
     );
+  });
+
+  // R21：Dialog 自带的关闭入口（X / ESC / 遮罩 / Android 返回键 / 移动端拖拽）不受
+  // `generating` 约束，都会 onClose → Content 卸载弹窗；而 pending 的 await 不随卸载中断，
+  // 没有世代守卫时 resolve 后照旧 apply + saveConfig + 成功 toast（「用户已经取消却写了数据」）。
+  it('生成途中弹窗被关闭（卸载）：丢弃结果，不 apply、不写 config、无成功 toast', async () => {
+    let settleGenerate: ((entries: VirtualTocEntry[]) => void) | undefined;
+    scanMock.generateVirtualTocEntries.mockImplementationOnce(
+      () =>
+        new Promise<VirtualTocEntry[]>((resolve) => {
+          settleGenerate = resolve;
+        }),
+    );
+    const saveSpy = vi
+      .spyOn(useBookDataStore.getState(), 'saveConfig')
+      .mockResolvedValue(undefined);
+    const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
+    const onClose = vi.fn();
+    const { unmount } = renderDialog('k1', onClose);
+    fireEvent.click(screen.getByRole('button', { name: GENERATE }));
+
+    unmount();
+    await act(async () => {
+      settleGenerate!([
+        { label: '第1章', cfi: 'epubcfi(/6/4!/4/2)', source: 'pattern', generatedAt: 1 },
+      ]);
+    });
+
+    expect(applyMock.applyVirtualToc).not.toHaveBeenCalled();
+    expect(saveSpy).not.toHaveBeenCalled();
+    expect(dispatchSpy).not.toHaveBeenCalledWith(
+      'toast',
+      expect.objectContaining({ type: 'success' }),
+    );
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  // 合成路径同样要守卫（同一个 generating 标志，同一类 pending await）。
+  it('合成途中弹窗被关闭（卸载）：丢弃结果，不 apply、不写 config', async () => {
+    let settleSynth: ((entries: VirtualTocEntry[]) => void) | undefined;
+    synthMock.shouldOfferSynthesis.mockReturnValue(true);
+    synthMock.synthesizeSectionToc.mockImplementationOnce(
+      () =>
+        new Promise<VirtualTocEntry[]>((resolve) => {
+          settleSynth = resolve;
+        }),
+    );
+    const saveSpy = vi
+      .spyOn(useBookDataStore.getState(), 'saveConfig')
+      .mockResolvedValue(undefined);
+    const { unmount } = renderDialog('k1');
+    await waitFor(() => screen.getByRole('button', { name: SYNTHESIZE }));
+    fireEvent.click(screen.getByRole('button', { name: SYNTHESIZE }));
+
+    unmount();
+    await act(async () => {
+      settleSynth!([{ label: 's1', cfi: 'epubcfi(/6/4)', source: 'section', generatedAt: 1 }]);
+    });
+
+    expect(applyMock.applyVirtualToc).not.toHaveBeenCalled();
+    expect(saveSpy).not.toHaveBeenCalled();
   });
 
   it('按文件分章：仅在 shouldOfferSynthesis 放行时出现，点击走合成 + apply + 持久化', async () => {
