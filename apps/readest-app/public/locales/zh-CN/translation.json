@@ -2049,5 +2049,17 @@
   "Failed to save group changes": "保存分组修改失败",
   "No TOC": "无目录",
   "No table of contents in this book.": "本书没有目录信息。",
-  "Generate TOC from content": "从正文生成目录"
+  "Generate TOC from content": "从正文生成目录",
+  "This book has no usable TOC. Pick a chapter pattern; matches become TOC entries.": "本书没有可用的目录。选择章节规则，命中的行将成为目录条目。",
+  "Custom chapter pattern (optional, e.g. 第\\d+章)": "自定义章节正则（可选）",
+  "Invalid pattern: {{reason}}": "正则无效：{{reason}}",
+  "This pattern matches {{count}} locations": "此规则将命中 {{count}} 处",
+  "Scanning…": "扫描中…",
+  "Use section files as chapters": "按文件分章",
+  "Generate": "生成",
+  "TOC generated: {{count}} entries": "已生成目录：{{count}} 条",
+  "No chapter-like lines matched. Try a custom pattern.": "未匹配到章节样式行，可试试自定义正则",
+  "Failed to generate TOC": "生成目录失败",
+  "Cannot apply virtual TOC to this book": "本书目录结构无法应用虚拟目录",
+  "Virtual TOC is saved per book and never modifies the EPUB file.": "虚拟目录按书保存，不会修改 EPUB 文件。"
 }

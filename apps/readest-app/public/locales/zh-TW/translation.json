@@ -2049,5 +2049,17 @@
   "Failed to save group changes": "儲存分組修改失敗",
   "No TOC": "無目錄",
   "No table of contents in this book.": "本書沒有目錄資訊。",
-  "Generate TOC from content": "從正文生成目錄"
+  "Generate TOC from content": "從正文生成目錄",
+  "This book has no usable TOC. Pick a chapter pattern; matches become TOC entries.": "本書沒有可用的目錄。選擇章節規則，命中的行將成為目錄條目。",
+  "Custom chapter pattern (optional, e.g. 第\\d+章)": "自訂章節正則（可選）",
+  "Invalid pattern: {{reason}}": "正則無效：{{reason}}",
+  "This pattern matches {{count}} locations": "此規則將命中 {{count}} 處",
+  "Scanning…": "掃描中…",
+  "Use section files as chapters": "按檔案分章",
+  "Generate": "生成",
+  "TOC generated: {{count}} entries": "已生成目錄：{{count}} 條",
+  "No chapter-like lines matched. Try a custom pattern.": "未匹配到章節樣式行，可試試自訂正則",
+  "Failed to generate TOC": "生成目錄失敗",
+  "Cannot apply virtual TOC to this book": "本書目錄結構無法套用虛擬目錄",
+  "Virtual TOC is saved per book and never modifies the EPUB file.": "虛擬目錄按書儲存，不會修改 EPUB 檔案。"
 }

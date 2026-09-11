@@ -48,6 +48,12 @@ const SidebarContent: React.FC<{
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sideBarBookKey]);
 
+  // R18：弹窗的 open 状态挂在本组件根节点，而 SideBar 渲染它时未传 key——切换书籍
+  // 会跨书保留未完成的弹窗（内容按新 props 渲染，用户易误以为在操作原书）。切换即复位。
+  useEffect(() => {
+    setTocDialogOpen(false);
+  }, [sideBarBookKey]);
+
   const handleTabChange = (tab: string) => {
     if (activeTab === tab) {
       if (isMobile) {

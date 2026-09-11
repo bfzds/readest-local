@@ -153,5 +153,17 @@
   "Failed to save group changes": "Failed to save group changes",
   "No TOC": "No TOC",
   "No table of contents in this book.": "No table of contents in this book.",
-  "Generate TOC from content": "Generate TOC from content"
+  "Generate TOC from content": "Generate TOC from content",
+  "This book has no usable TOC. Pick a chapter pattern; matches become TOC entries.": "This book has no usable TOC. Pick a chapter pattern; matches become TOC entries.",
+  "Custom chapter pattern (optional, e.g. 第\\d+章)": "Custom chapter pattern (optional)",
+  "Invalid pattern: {{reason}}": "Invalid pattern: {{reason}}",
+  "This pattern matches {{count}} locations": "This pattern matches {{count}} locations",
+  "Scanning…": "Scanning…",
+  "Use section files as chapters": "Use section files as chapters",
+  "Generate": "Generate",
+  "TOC generated: {{count}} entries": "TOC generated: {{count}} entries",
+  "No chapter-like lines matched. Try a custom pattern.": "No chapter-like lines matched. Try a custom pattern.",
+  "Failed to generate TOC": "Failed to generate TOC",
+  "Cannot apply virtual TOC to this book": "Cannot apply virtual TOC to this book",
+  "Virtual TOC is saved per book and never modifies the EPUB file.": "Virtual TOC is saved per book and never modifies the EPUB file."
 }
