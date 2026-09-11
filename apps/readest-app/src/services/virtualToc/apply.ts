@@ -75,6 +75,30 @@ export const isVirtualTocItem = (item: TOCItem): boolean =>
   CFI.isCFI.test(item.href ?? '') || item.id < 0;
 
 /**
+ * 结构不变量：虚拟条目是用户数据（存 config.json 的 virtualToc），绝不属于
+ * nav.json。nav 管线会把条目重新编号成非负 id，虚拟条目一旦进入 nav 产物，id
+ * 判据就被洗掉，strip 只能靠 href 识别，残留会在每次打开时叠加。因此 nav 产物
+ * 的每个出入口（computeBookNav、isBookNavCacheCurrent、saveBookNav）都必须
+ * 自带过滤/检测，正确性不依赖调用方先 strip 的顺序。
+ */
+
+/** 递归丢弃 items 及其 subitems 里的虚拟条目。非变异：含虚拟条目的宿主对象以
+ *  浅拷贝返回，原树的任何节点都不被改动。 */
+export const filterVirtualTocItems = (items: TOCItem[]): TOCItem[] =>
+  items
+    .filter((item) => !isVirtualTocItem(item))
+    .map((item) =>
+      item.subitems?.length ? { ...item, subitems: filterVirtualTocItems(item.subitems) } : item,
+    );
+
+/** items 树（含 subitems 递归）里是否存在虚拟条目。 */
+export const containsVirtualTocItem = (items: TOCItem[]): boolean =>
+  items.some(
+    (item) =>
+      isVirtualTocItem(item) || (!!item.subitems?.length && containsVirtualTocItem(item.subitems)),
+  );
+
+/**
  * 原地剥离 bookDoc.toc 里的虚拟条目（无论 id 被重编号成正还是负），返回剥离条数。
  *
  * 用途：nav.json 只承载真实目录。`computeBookNav` 读的是内存里的 `bookDoc.toc`，

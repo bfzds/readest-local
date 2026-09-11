@@ -2,6 +2,7 @@ import { ConvertChineseVariant } from '@/types/book';
 import { BookDoc, SectionFragment, TOCItem } from '@/libs/document';
 import { initSimpleCC, runSimpleCC } from '@/utils/simplecc';
 import { runWithConcurrency } from '@/utils/concurrency';
+import { containsVirtualTocItem, filterVirtualTocItems } from '@/services/virtualToc/apply';
 import {
   cloneSectionFragments,
   cloneTocItems,
@@ -89,10 +90,19 @@ export interface BookNav {
  * semantics have since changed — e.g. pre-#5097 caches that stored reserved-
  * char TOC hrefs percent-encoded, which no longer resolve against the decoded
  * manifest (see the BOOK_NAV_VERSION docblock, #5308).
+ *
+ * Content-level check: a cache whose TOC carries any virtual item is also not
+ * current. Virtual items are user data (config.json) and never belong in
+ * nav.json; if one leaked in, the nav pipeline renumbered its id to a
+ * non-negative value, so only the CFI-href predicate still recognizes it.
+ * Declaring such a cache stale forces a recompute that rewrites a clean one,
+ * so historical pollution heals itself on the next open instead of surviving
+ * forever on the production cache-hit path.
  */
 export const isBookNavCacheCurrent = (
   cachedNav: BookNav | null | undefined,
-): cachedNav is BookNav => cachedNav?.version === BOOK_NAV_VERSION;
+): cachedNav is BookNav =>
+  cachedNav?.version === BOOK_NAV_VERSION && !containsVirtualTocItem(cachedNav.toc ?? []);
 
 const convertTocLabels = (items: TOCItem[], convertChineseVariant: ConvertChineseVariant) => {
   items.forEach((item) => {
@@ -135,7 +145,11 @@ export const updateToc = async (
  * hydrateBookNav on subsequent opens.
  */
 export const computeBookNav = async (bookDoc: BookDoc): Promise<BookNav> => {
-  const tocClone = cloneTocItems(bookDoc.toc ?? []);
+  // 结构不变量：虚拟条目是用户数据（存 config.json），绝不进入 nav.json。内存里的
+  // bookDoc.toc 可能已被上一次 applyVirtualToc 合并过虚拟条目，若不过滤，它们会被
+  // nav 管线重编号成非负 id 并写进缓存，之后每次打开残留叠加。过滤内建于此，
+  // readerStore 侧的 strip 只是提前防线的优化，不再是正确性前提。
+  const tocClone = cloneTocItems(filterVirtualTocItems(bookDoc.toc ?? []));
   const sections: Record<string, BookNavSection> = {};
   const enrichedNav = await enrichTocFromNavElements(bookDoc, tocClone);
 

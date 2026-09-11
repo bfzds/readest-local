@@ -23,6 +23,7 @@ import {
   getMetadataHash,
 } from '@/utils/book';
 import type { BookNav } from '@/services/nav';
+import { filterVirtualTocItems } from '@/services/virtualToc/apply';
 import { partialMD5, md5 } from '@/utils/md5';
 import { perfMark } from '@/utils/perf';
 import { getCoverThumbnailUrl } from '@/utils/coverThumbnail';
@@ -1030,7 +1031,12 @@ export async function loadBookNav(fs: FileSystem, book: Book): Promise<BookNav |
 }
 
 export async function saveBookNav(fs: FileSystem, book: Book, nav: BookNav): Promise<void> {
-  await fs.writeFile(getBookNavFilename(book), 'Books', JSON.stringify(nav));
+  // 结构不变量：nav.json 只承载真实目录。虚拟目录条目是用户数据（存 config.json
+  // 的 virtualToc），一旦写进 nav.json 就会被 nav 管线重编号成非负 id，strip 的
+  // id 判据随之失效，之后每次打开都会残留叠加。过滤内建于写盘，不依赖调用方
+  // 先剥的顺序；入参 nav 不被改动。
+  const toc = filterVirtualTocItems(nav.toc ?? []);
+  await fs.writeFile(getBookNavFilename(book), 'Books', JSON.stringify({ ...nav, toc }));
 }
 
 export async function deleteBook(

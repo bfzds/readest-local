@@ -3,6 +3,7 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { DocumentLoader } from '@/libs/document';
 import type { BookDoc, TOCItem, SectionItem } from '@/libs/document';
+import { isVirtualTocItem } from '@/services/virtualToc/apply';
 import {
   computeBookNav,
   hydrateBookNav,
@@ -323,4 +324,84 @@ describe('isBookNavCacheCurrent — nav cache invalidation (#5308)', () => {
     expect(isBookNavCacheCurrent(null)).toBe(false);
     expect(isBookNavCacheCurrent(undefined)).toBe(false);
   });
+});
+
+describe('isBookNavCacheCurrent — rejects caches polluted by virtual TOC items', () => {
+  // Virtual TOC items are user data persisted in config.json, never in nav.json.
+  // A historical bug let them leak into the cache where the nav pipeline renumbered
+  // their ids to non-negative values, defeating the strip predicate on every open.
+  // A cache carrying any virtual item must therefore be treated as not current so
+  // the reader recomputes and rewrites a clean one (self-healing exit).
+  const makeCache = (toc: TOCItem[]): BookNav => ({
+    version: BOOK_NAV_VERSION,
+    toc,
+    sections: {},
+  });
+
+  it('rejects a v4 cache whose toc carries a CFI-href virtual item', () => {
+    const polluted = makeCache([
+      { id: 0, label: 'Chapter 1', href: 'OEBPS/normal.html' },
+      { id: 3, label: 'Scanned Chapter', href: 'epubcfi(/6/4!/4/2)' },
+    ] as TOCItem[]);
+    expect(isBookNavCacheCurrent(polluted)).toBe(false);
+  });
+
+  it('rejects a v4 cache whose toc carries a negative-id virtual item', () => {
+    const polluted = makeCache([
+      { id: 0, label: 'Chapter 1', href: 'OEBPS/normal.html' },
+      { id: -1, label: 'Scanned Chapter', href: 'OEBPS/normal.html#anchor' },
+    ] as TOCItem[]);
+    expect(isBookNavCacheCurrent(polluted)).toBe(false);
+  });
+
+  it('rejects when a virtual item is nested under subitems', () => {
+    const polluted = makeCache([
+      {
+        id: 0,
+        label: 'Part One',
+        href: 'OEBPS/part1.html',
+        subitems: [{ id: 5, label: 'Scanned Chapter', href: 'epubcfi(/6/4!/4/2)' }],
+      },
+    ] as TOCItem[]);
+    expect(isBookNavCacheCurrent(polluted)).toBe(false);
+  });
+
+  it('accepts a v4 cache whose toc is free of virtual items', () => {
+    const clean = makeCache([
+      {
+        id: 0,
+        label: 'Part One',
+        href: 'OEBPS/part1.html',
+        subitems: [{ id: 1, label: 'Chapter 1', href: 'OEBPS/ch1.html' }],
+      },
+    ] as TOCItem[]);
+    expect(isBookNavCacheCurrent(clean)).toBe(true);
+  });
+});
+
+describe('computeBookNav — virtual TOC items never enter the nav artifact', () => {
+  // bookDoc.toc may already carry virtual items merged by a previous
+  // applyVirtualToc (the strip in readerStore is a caller-side defense only).
+  // computeBookNav must filter them itself, otherwise the nav pipeline
+  // renumbers their ids and persists them into nav.json.
+  const collectAll = (items: TOCItem[]): TOCItem[] =>
+    items.flatMap((item) => [item, ...(item.subitems?.length ? collectAll(item.subitems) : [])]);
+
+  it('drops CFI-href and negative-id virtual items merged into bookDoc.toc', async () => {
+    const book = await openFixture('sample-alice.epub');
+    const realItems = book.toc ?? [];
+    expect(realItems.length).toBeGreaterThan(0);
+    const virtualItems = [
+      { id: -1, label: 'Scanned Chapter', href: 'epubcfi(/6/4!/4/2)', index: 0 },
+      { id: -2, label: 'Scanned Chapter 2', href: realItems[0]!.href, index: 0 },
+    ] as TOCItem[];
+    book.toc = [...realItems, ...virtualItems];
+
+    const nav = await computeBookNav(book);
+
+    for (const item of collectAll(nav.toc)) {
+      expect(isVirtualTocItem(item), `item "${item.label}" must not be virtual`).toBe(false);
+    }
+    expect(nav.toc.map((item) => item.label)).toContain(realItems[0]!.label);
+  }, 30000);
 });
