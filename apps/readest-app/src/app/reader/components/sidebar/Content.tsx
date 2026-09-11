@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import React, { useEffect, useState } from 'react';
 
 import { BookDoc } from '@/libs/document';
+import { isTocDegraded } from '@/services/virtualToc/apply';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useBookDataStore } from '@/store/bookDataStore';
@@ -22,10 +23,23 @@ const SidebarContent: React.FC<{
   const { setHoveredBookKey } = useReaderStore();
   const { setSideBarVisible, setSearchBarVisible } = useSidebarStore();
   const { getConfig, setConfig } = useBookDataStore();
+  const getBookData = useBookDataStore((s) => s.getBookData);
+  const _ = useTranslation();
   const config = getConfig(sideBarBookKey);
   const [activeTab, setActiveTab] = useState(config?.viewSettings?.sideBarTab || 'toc');
   const [fade, setFade] = useState(false);
+  const [tocDialogOpen, setTocDialogOpen] = useState(false);
   const isMobile = window.innerWidth < 640 || window.innerHeight < 640;
+
+  const tocEmpty = !bookDoc.toc || bookDoc.toc.length === 0;
+  // 虚拟目录是 EPUB 专属（正文按 section 扫描），与 readerStore 的 nav 门禁同口径。
+  const canGenerateToc =
+    getBookData(sideBarBookKey)?.book?.format === 'EPUB' &&
+    bookDoc.rendition?.layout !== 'pre-paginated' &&
+    (bookDoc.sections?.length ?? 0) > 0;
+  // 目录非空也可能是退化的（几条无锚点结构条目指向一个巨型 section）——此时不能只
+  // 看条目数，判据与 applyVirtualToc 门禁、弹窗合成入口共用同一份 isTocDegraded。
+  const showTocEntry = canGenerateToc && (tocEmpty || isTocDegraded(bookDoc));
 
   useEffect(() => {
     if (!sideBarBookKey) return;
@@ -88,7 +102,10 @@ const SidebarContent: React.FC<{
               (bookDoc.toc && bookDoc.toc.length > 0 ? (
                 <TOCView toc={bookDoc.toc} bookKey={sideBarBookKey} />
               ) : (
-                <VirtualTocEmptyState bookKey={sideBarBookKey} bookDoc={bookDoc} />
+                <VirtualTocEmptyState
+                  canGenerate={canGenerateToc}
+                  onGenerate={() => setTocDialogOpen(true)}
+                />
               ))}
             {activeTab === 'annotations' && (
               <BooknoteView type='annotation' toc={bookDoc.toc ?? []} bookKey={sideBarBookKey} />
@@ -98,6 +115,21 @@ const SidebarContent: React.FC<{
             )}
           </div>
         </OverlayScrollbarsComponent>
+        {/* 退化但目录非空的入口：TOCView 的高度按父容器 .scroll-container 算并以 400px
+            为下限（TOCView 的 updateHeight），入口挂在它之后会被推到滚动区之外，所以
+            与 TOCChapterNav 一样做成滚动区外的固定底栏——放在章节导航之上，让章节
+            导航相对底部 TabNavigation 的位置保持原样。 */}
+        {activeTab === 'toc' && !tocEmpty && showTocEntry && (
+          <div className='border-base-300/50 flex-shrink-0 border-t px-2 py-2'>
+            <button
+              type='button'
+              className='btn btn-contrast btn-sm w-full'
+              onClick={() => setTocDialogOpen(true)}
+            >
+              {_('Generate TOC from content')}
+            </button>
+          </div>
+        )}
         {activeTab === 'toc' && bookDoc.toc && bookDoc.toc.length > 0 && (
           <TOCChapterNav bookKey={sideBarBookKey} />
         )}
@@ -112,34 +144,42 @@ const SidebarContent: React.FC<{
       >
         <TabNavigation activeTab={activeTab} onTabChange={handleTabChange} />
       </div>
+      {/* 空态入口与退化入口共用同一份弹窗挂载与 open 状态。 */}
+      {tocDialogOpen && canGenerateToc && (
+        <VirtualTocDialog
+          bookKey={sideBarBookKey}
+          bookDoc={bookDoc}
+          onClose={() => setTocDialogOpen(false)}
+        />
+      )}
     </>
   );
 };
 
 export default SidebarContent;
 
-// 目录为空/缺失时的面板内容：只要这本书有正文可扫（可重排、至少 1 个 section）就给出
-// 「从正文生成目录」入口，否则退化为「无目录」文案。这里**不能**用 shouldOfferSynthesis：
-// 它的语义是「按文件分章这条捷径是否适用」（要求可读 section > 1），而正则扫描单
-// section 的书正是本功能的主战场（如单 HTML 的长篇网络小说）。shouldOfferSynthesis
-// 仍在 Task 7 弹窗里把守 synthesizeSectionToc 的调用点（R6）。
-const VirtualTocEmptyState = ({ bookKey, bookDoc }: { bookKey: string; bookDoc: BookDoc }) => {
+// 目录为空/缺失时的面板内容：只要这本书有正文可扫（EPUB、可重排、至少 1 个 section）
+// 就给出「从正文生成目录」入口，否则退化为「无目录」文案。这里**不能**用
+// shouldOfferSynthesis：它的语义是「按文件分章这条捷径是否适用」（要求可读 section
+// > 1），而正则扫描单 section 的书正是本功能的主战场（如单 HTML 的长篇网络小说）。
+// shouldOfferSynthesis 仍在 Task 7 弹窗里把守 synthesizeSectionToc 的调用点（R6）。
+const VirtualTocEmptyState = ({
+  canGenerate,
+  onGenerate,
+}: {
+  canGenerate: boolean;
+  onGenerate: () => void;
+}) => {
   const _ = useTranslation();
-  const [open, setOpen] = useState(false);
-  const eligible =
-    bookDoc.rendition?.layout !== 'pre-paginated' && (bookDoc.sections?.length ?? 0) > 0;
-  if (!eligible) {
+  if (!canGenerate) {
     return <div className='text-base-content/60 p-4 text-sm'>{_('No TOC')}</div>;
   }
   return (
     <div className='flex flex-col items-center gap-3 p-4'>
       <p className='text-base-content/60 text-sm'>{_('No table of contents in this book.')}</p>
-      <button type='button' className='btn btn-contrast btn-sm' onClick={() => setOpen(true)}>
+      <button type='button' className='btn btn-contrast btn-sm' onClick={onGenerate}>
         {_('Generate TOC from content')}
       </button>
-      {open && (
-        <VirtualTocDialog bookKey={bookKey} bookDoc={bookDoc} onClose={() => setOpen(false)} />
-      )}
     </div>
   );
 };

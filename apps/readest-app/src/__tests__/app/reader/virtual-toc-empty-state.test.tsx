@@ -6,6 +6,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import Content from '@/app/reader/components/sidebar/Content';
 
+// 由 mock 的 getBookData 读取，供「非 EPUB」用例覆写；默认 EPUB 让既有用例保持原语义。
+const mockBook = vi.hoisted(() => ({ format: 'EPUB' as string }));
+
 vi.mock('@/hooks/useTranslation', () => ({
   useTranslation: () => (s: string) => s,
 }));
@@ -22,6 +25,9 @@ vi.mock('@/store/bookDataStore', () => {
   const state = {
     getConfig: () => ({ viewSettings: { sideBarTab: 'toc' } }),
     setConfig: vi.fn(),
+    // R14：入口与弹窗挂载两处都要看书籍格式，格式从 store 取（Content 的 props
+    // 里没有 book）。格式可变，供「非 EPUB」用例覆写。
+    getBookData: () => ({ book: { format: mockBook.format } }),
   };
   return {
     useBookDataStore: (selector?: (s: typeof state) => unknown) =>
@@ -48,6 +54,7 @@ type ContentProps = ComponentProps<typeof Content>;
 
 const tocItem = { id: 1, label: 'a', href: 'h', index: 0, subitems: [] };
 
+// 退化判据要按 section 路径比对锚点，夹具必须给 splitTOCHref（EPUB 形态）。
 const makeProps = (toc: unknown, bookDocOverrides: Record<string, unknown> = {}) =>
   ({
     bookDoc: {
@@ -55,13 +62,30 @@ const makeProps = (toc: unknown, bookDocOverrides: Record<string, unknown> = {})
       sections: [{ id: 's1' }, { id: 's2' }],
       rendition: { layout: 'reflowable' },
       metadata: {},
+      splitTOCHref: (href: string) => href.split('#'),
       ...bookDocOverrides,
     },
     sideBarBookKey: 'k1',
   }) as unknown as ContentProps;
 
+// 样本书形态：NCX 3 条结构条目（信息/目录/全文）全部无锚点地指向同一个巨型文件。
+const structuralToc = [
+  { id: 1, label: '信息', href: 'page-0.html', index: 0, subitems: [] },
+  { id: 2, label: '目录', href: 'page-0.html', index: 0, subitems: [] },
+  { id: 3, label: '全文', href: 'page-0.html', index: 0, subitems: [] },
+];
+const slabSections = [{ id: 'page-0.html', size: 300 * 1024, linear: 'yes' }];
+// 每章一个文件、远小于 slab 阈值的健康分章书。
+const healthySections = [
+  { id: 'chap-1.html', size: 32 * 1024, linear: 'yes' },
+  { id: 'chap-2.html', size: 32 * 1024, linear: 'yes' },
+];
+
 describe('侧栏 TOC 空态', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    mockBook.format = 'EPUB';
+  });
 
   it('toc 为空数组时显示「从正文生成目录」入口', () => {
     render(<Content {...makeProps([])} />);
@@ -104,5 +128,30 @@ describe('侧栏 TOC 空态', () => {
   it('目录非空时渲染章节导航', () => {
     render(<Content {...makeProps([tocItem])} />);
     expect(screen.getByTestId('toc-chapter-nav')).toBeTruthy();
+  });
+
+  it('toc 3 条 + slab（退化非空）时 TOCView 与生成入口同时出现', () => {
+    render(<Content {...makeProps(structuralToc, { sections: slabSections })} />);
+    expect(screen.getByTestId('toc-view')).toBeTruthy();
+    expect(screen.getByRole('button', { name: GENERATE_ENTRY })).toBeTruthy();
+  });
+
+  it('toc 3 条 + 无 slab（健康分章书）时只有 TOCView、无生成入口', () => {
+    render(<Content {...makeProps(structuralToc, { sections: healthySections })} />);
+    expect(screen.getByTestId('toc-view')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: GENERATE_ENTRY })).toBeNull();
+  });
+
+  it('非 EPUB（MOBI）即使目录退化也不给生成入口', () => {
+    mockBook.format = 'MOBI';
+    render(<Content {...makeProps(structuralToc, { sections: slabSections })} />);
+    expect(screen.getByTestId('toc-view')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: GENERATE_ENTRY })).toBeNull();
+  });
+
+  it('非 EPUB（MOBI）空目录时不给生成入口', () => {
+    mockBook.format = 'MOBI';
+    render(<Content {...makeProps([])} />);
+    expect(screen.queryByRole('button', { name: GENERATE_ENTRY })).toBeNull();
   });
 });

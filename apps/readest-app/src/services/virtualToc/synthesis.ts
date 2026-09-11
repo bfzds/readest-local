@@ -1,13 +1,17 @@
 import type { BookDoc } from '@/libs/document';
 import type { VirtualTocEntry } from '@/types/book';
 import { runWithConcurrency } from '@/utils/concurrency';
+import { isTocDegraded } from './apply';
 
 const SYNTHESIS_CONCURRENCY = 64;
 const MAX_LABEL_LEN = 40;
 
 export const shouldOfferSynthesis = (bookDoc: BookDoc): boolean => {
   if (bookDoc.rendition?.layout === 'pre-paginated') return false;
-  if ((bookDoc.toc?.length ?? 0) > 1) return false;
+  // 与 applyVirtualToc 门禁共用同一份「退化」认知：toc 条目数 > 1 也可能是退化
+  // （样本书 4 个 spine section、3 条无锚点结构条目），否则弹窗里连「按文件分章」
+  // 按钮都不会出现。
+  if ((bookDoc.toc?.length ?? 0) > 1 && !isTocDegraded(bookDoc)) return false;
   return (bookDoc.sections ?? []).filter((s) => s.linear !== 'no').length > 1;
 };
 
