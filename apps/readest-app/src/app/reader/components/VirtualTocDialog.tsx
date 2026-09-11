@@ -108,9 +108,13 @@ const VirtualTocDialog = ({ bookKey, bookDoc, onClose }: VirtualTocDialogProps) 
       // splitTOCHref 定义在 EPUB.prototype 上），残废对象被 store 复用后 nav 管线调
       // bookDoc.splitTOCHref 直接抛 TypeError → 切书回来报 Failed to open book。
       // 「刷新目录」不需要靠换 bookDoc 引用：上面 applyVirtualToc 已经**原地**把
-      // bookDoc.toc 换成了新数组，而刷新由**外层 BookData 对象**达成——侧栏 Content 用
-      // useBookDataStore()（无选择器）订阅整个 store，下面 `{ ...current }` 一变就会
-      // 重渲染并读到新 toc。
+      // `bookDoc.toc` 换成了一个新数组，而侧栏是**取数式**读取、不是订阅整个 store——
+      // SideBar.tsx:214 每次渲染现调 getBookData(sideBarBookKey) 取整份 BookData，
+      // :218 解构出的 bookDoc 再作为 **props** 传给 Content（:341）；Content 的
+      // `useBookDataStore((s) => s.getBookData)` 只拿取数函数本身，渲染时现读
+      // `bookDoc.toc`（Content.tsx:34）。所以后续任何一次渲染（弹窗关闭即触发）读到的
+      // 都是新 toc，保留同一引用不会让目录看起来没刷新；下面 `{ ...current }` 只是让
+      // store 里那份 BookData 同步带上新 config。
       return {
         booksData: {
           ...state.booksData,

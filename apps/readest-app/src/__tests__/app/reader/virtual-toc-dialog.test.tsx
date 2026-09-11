@@ -214,6 +214,7 @@ describe('VirtualTocDialog', () => {
   it('回归钉子：生成目录后 store 里的 bookDoc 仍是可用类实例（原型方法未丢）', async () => {
     const doc = makeBookDoc();
     useBookDataStore.setState({ booksData: { k1: makeStoreBookData('k1', doc) } });
+    const tocBefore = doc.toc;
     const saveSpy = vi
       .spyOn(useBookDataStore.getState(), 'saveConfig')
       .mockResolvedValue(undefined);
@@ -235,6 +236,14 @@ describe('VirtualTocDialog', () => {
     expect(stored.toc!.some((t) => t.id < 0)).toBe(true);
     // 钉住真机崩溃点：nav 管线的调用形态（grouping.ts:43）不再抛 TypeError。
     expect(() => stored.splitTOCHref('OEBPS/ch1.xhtml#frag')).not.toThrow();
+    // 钉住真实刷新机制的**前提**：侧栏是取数式读取——SideBar.tsx:214 每次渲染现调
+    // getBookData(sideBarBookKey) 再把 bookDoc 当 props 传给 Content（:341），所以从
+    // store 取回来的 bookDoc 必须已经**原地**换上了新 toc 数组。将来谁把「原地换 toc」
+    // 改成「生成新对象却没写回 store」，这条立刻红。
+    const viaGetter = useBookDataStore.getState().getBookData('k1-view0')!;
+    expect(viaGetter.bookDoc).toBe(doc);
+    expect(viaGetter.bookDoc!.toc).not.toBe(tocBefore);
+    expect(viaGetter.bookDoc!.toc!.some((t) => t.id < 0)).toBe(true);
   });
 
   it('apply 被拒时：错误 toast、不写 config、不关弹窗（防死配置）', async () => {
