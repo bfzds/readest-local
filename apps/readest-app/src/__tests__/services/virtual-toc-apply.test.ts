@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyVirtualToc,
   isVirtualTocItem,
+  isWholeBookTocItem,
   stripVirtualTocItems,
   virtualTocToItems,
 } from '@/services/virtualToc/apply';
@@ -181,6 +182,69 @@ describe('isVirtualTocItem', () => {
     expect(isVirtualTocItem(tocItem(0, 'chapter1.html'))).toBe(false);
     expect(isVirtualTocItem(tocItem(7, 'OEBPS/page-0.html#ch1'))).toBe(false);
     expect(isVirtualTocItem(tocItem(-1, 'chapter1.html'))).toBe(true);
+  });
+});
+
+describe('isWholeBookTocItem', () => {
+  // 单 section 书书自带的「书名条目」（真实条目）：href 是裸 section 路径（无
+  // fragment）、location 跨度覆盖全书（样例书实测 {1,179,179}，99.4%）。它没有
+  // 章节粒度，isActiveTocItem 用本谓词把它排除出「当前章节」高亮。
+  it('无 fragment 且跨度占全书 ≥ 0.9 → true（实测书名条目 {1,179,179}）', () => {
+    expect(
+      isWholeBookTocItem({
+        ...tocItem(0, 'OEBPS/page-0.html'),
+        location: { current: 1, next: 179, total: 179 },
+      }),
+    ).toBe(true);
+  });
+
+  it('无 fragment 但跨度小 → false（正常分章章节，不能误杀）', () => {
+    expect(
+      isWholeBookTocItem({
+        ...tocItem(1, 'OEBPS/chap-1.html'),
+        location: { current: 0, next: 10, total: 179 },
+      }),
+    ).toBe(false);
+  });
+
+  it('href 带 #fragment → 即使跨度占满全书也是 false（有锚点即有章节粒度）', () => {
+    expect(
+      isWholeBookTocItem({
+        ...tocItem(2, 'OEBPS/page-0.html#ch1'),
+        location: { current: 0, next: 179, total: 179 },
+      }),
+    ).toBe(false);
+  });
+
+  it('虚拟条目（CFI href）→ false（它有自己的 location 区间判定）', () => {
+    expect(
+      isWholeBookTocItem({
+        ...tocItem(-1, 'epubcfi(/6/4!/4/2)'),
+        location: { current: 1, next: 179, total: 179 },
+      }),
+    ).toBe(false);
+  });
+
+  it('缺 location、total 非正、next ≤ current → false（判不出跨度就不排除）', () => {
+    expect(isWholeBookTocItem(tocItem(0, 'OEBPS/page-0.html'))).toBe(false);
+    expect(
+      isWholeBookTocItem({
+        ...tocItem(0, 'OEBPS/page-0.html'),
+        location: { current: 0, next: 179, total: 0 },
+      }),
+    ).toBe(false);
+    expect(
+      isWholeBookTocItem({
+        ...tocItem(0, 'OEBPS/page-0.html'),
+        location: { current: 179, next: 179, total: 179 },
+      }),
+    ).toBe(false);
+    expect(
+      isWholeBookTocItem({
+        ...tocItem(0, 'OEBPS/page-0.html'),
+        location: { current: 5, next: 3, total: 179 },
+      }),
+    ).toBe(false);
   });
 });
 

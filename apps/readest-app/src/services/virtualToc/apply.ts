@@ -9,6 +9,27 @@ import { getIndexFromCfi } from '@/utils/cfi';
 // 目标书类；健康分章书每章只有 10–60KB，触发不到。常量化便于后续调整。
 const SLAB_SIZE_BYTES = 128 * 1024;
 
+// 「全书级」跨度阈值：无 fragment 且 location 跨度占全书 ≥ 此值的真实条目没有
+// 章节粒度（如单 section 书里指向整个正文文件的书名条目，实测跨度 99.4%），不
+// 参与「当前章节」高亮。必须用比值而非 `current === 0 && next === total` 之类的
+// 等值判据：单 section 书的正文前常有小 section，书名条目的 current 从 1 起步，
+// 等值判据永远不成立。与 SLAB_SIZE_BYTES 同属退化目录语义，集中放在此处。
+export const WHOLE_BOOK_SPAN_RATIO = 0.9;
+
+/** 全书级真实条目：href 是裸 section 路径（无 #fragment，带锚点即有章节粒度）
+ *  且 location 跨度占全书 ≥ WHOLE_BOOK_SPAN_RATIO。location 缺失或构不成有效
+ *  区间（total 非正、next ≤ current）时判不出跨度，恒 false——不排除，保持原有
+ *  href 相等高亮行为。虚拟条目恒 false：它没有 section href，高亮走自己的
+ *  location 区间判定（findActiveLocationKey），与本谓词无关。 */
+export const isWholeBookTocItem = (item: TOCItem): boolean => {
+  if (isVirtualTocItem(item)) return false;
+  const href = item.href ?? '';
+  if (!href || href.includes('#')) return false;
+  const loc = item.location;
+  if (!loc || loc.total <= 0 || loc.next <= loc.current) return false;
+  return (loc.next - loc.current) / loc.total >= WHOLE_BOOK_SPAN_RATIO;
+};
+
 /** 取 TOC href 的 section 路径。splitTOCHref 的返回形态随格式而异（EPUB 返回
  *  [路径, fragment]，PDF 是 async），拿不到数组时退回按 '#' 手拆，绝不抛错。 */
 const sectionPathOf = (bookDoc: BookDoc, href: string): string => {

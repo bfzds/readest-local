@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import React, { useCallback } from 'react';
 import { FiBookOpen } from 'react-icons/fi';
 import { TOCItem } from '@/libs/document';
-import { isVirtualTocItem } from '@/services/virtualToc/apply';
+import { isVirtualTocItem, isWholeBookTocItem } from '@/services/virtualToc/apply';
 import { getContentMd5 } from '@/utils/misc';
 
 const createExpanderIcon = (isExpanded: boolean) => {
@@ -74,13 +74,16 @@ export const findActiveLocationKey = (
 /** 真实条目按 href 相等判定（行为不变）；虚拟条目按 location 区间判定。
  *  两边都要判非空：没有 location 的条目 key 也是 null，只比相等会把无 location
  *  的真实条目全部点亮；判 isVirtualTocItem 是为了让**真实的**结构条目（在退化
- *  nav 里同样带 location）保留原 href 语义，不被区间判定顺带点亮。 */
+ *  nav 里同样带 location）保留原 href 语义，不被区间判定顺带点亮。
+ *  全书级条目（isWholeBookTocItem）从 href 分支排除：单 section 书里 foliate 的
+ *  tocProgress 恒命中书名条目，若按 href 相等点亮它会永久高亮；这类条目没有章节
+ *  粒度，只显示在列表里、永不参与「当前章节」高亮。 */
 const isActiveTocItem = (
   item: TOCItem,
   activeHref: string | null,
   activeLocationKey: string | null,
 ): boolean => {
-  if (activeHref && activeHref === item.href) return true;
+  if (activeHref && activeHref === item.href && !isWholeBookTocItem(item)) return true;
   if (!isVirtualTocItem(item)) return false;
   const key = tocLocationKey(item.location);
   return !!key && key === activeLocationKey;

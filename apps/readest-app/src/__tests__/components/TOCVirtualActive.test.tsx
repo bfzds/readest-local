@@ -144,3 +144,74 @@ describe('虚拟条目的书本图标（当前章节高亮）', () => {
     expect(treeitem.querySelector('svg')).toBeNull();
   });
 });
+
+describe('全书级条目（书名条目）不参与当前章节高亮', () => {
+  // 单 section 书书自带的「书名条目」：真实条目、href 是裸 section 路径（无
+  // fragment）、location 跨度覆盖全书（实测 {current:1, next:179, total:179}，
+  // 99.4%）。foliate 的 tocProgress 在单 section 书里恒命中它 → activeHref 恒等于
+  // 它的 href；按跨度占比判为全书级后不再参与高亮（列表里仍显示，只是永不点亮）。
+  const titleItem: TOCItem = {
+    id: 0,
+    label: '书名',
+    href: 'OEBPS/page-0.html',
+    index: 0,
+    location: { current: 1, next: 179, total: 179 },
+  };
+  const virtualChapter = virtualItem('当前章', { current: 0, next: 100, total: 179 });
+  const baseProps = {
+    bookKey: 'book1',
+    flatItem: { item: titleItem, depth: 0, index: 0 },
+    activeHref: 'OEBPS/page-0.html',
+    activeLocationKey: null,
+    onToggleExpand: () => {},
+    onItemClick: () => {},
+  };
+
+  it('activeHref 命中书名条目也不亮（无 aria-current、无书本图标）', () => {
+    render(<StaticListRow {...baseProps} />);
+    const treeitem = screen.getByRole('treeitem');
+    expect(treeitem.hasAttribute('aria-current')).toBe(false);
+    expect(treeitem.querySelector('svg')).toBeNull();
+  });
+
+  it('同场景下并列的虚拟章节条目仍按区间点亮（书名条目不抢、不干扰区间判定）', () => {
+    render(
+      <div>
+        <StaticListRow {...baseProps} activeLocationKey={keyOf(virtualChapter)} />
+        <StaticListRow
+          {...baseProps}
+          flatItem={{ ...baseProps.flatItem, item: virtualChapter }}
+          activeLocationKey={keyOf(virtualChapter)}
+        />
+      </div>,
+    );
+    const rows = screen.getAllByRole('treeitem');
+    const titleRow = rows[0]!;
+    const chapterRow = rows[1]!;
+    expect(titleRow.hasAttribute('aria-current')).toBe(false);
+    expect(titleRow.querySelector('svg')).toBeNull();
+    expect(chapterRow.getAttribute('aria-current')).toBe('page');
+    expect(chapterRow.querySelector('svg')).toBeTruthy();
+  });
+
+  it('反例：小跨度真实条目 + activeHref 相等仍亮（不误杀正常章节）', () => {
+    const chapter: TOCItem = {
+      id: 1,
+      label: '第一章',
+      href: 'OEBPS/chap-1.html',
+      index: 0,
+      location: { current: 0, next: 10, total: 179 },
+    };
+    render(
+      <StaticListRow
+        {...baseProps}
+        flatItem={{ item: chapter, depth: 0, index: 0 }}
+        activeHref='OEBPS/chap-1.html'
+        activeLocationKey={null}
+      />,
+    );
+    const treeitem = screen.getByRole('treeitem');
+    expect(treeitem.getAttribute('aria-current')).toBe('page');
+    expect(treeitem.querySelector('svg')).toBeTruthy();
+  });
+});
