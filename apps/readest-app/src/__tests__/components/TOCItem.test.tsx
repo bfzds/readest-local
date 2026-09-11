@@ -65,6 +65,15 @@ describe('TOCItem accessibility', () => {
     expect(treeitem.hasAttribute('aria-expanded')).toBe(false);
   });
 
+  // 空数组是 truthy：虚拟目录条目曾带 subitems: []，导致每条都画展开三角。
+  it('treeitem with empty subitems array IS a leaf (no aria-expanded, no button)', () => {
+    const item = makeLeafItem({ subitems: [] });
+    render(<StaticListRow {...defaultProps} flatItem={{ item, depth: 0, index: 0 }} />);
+    const treeitem = screen.getByRole('treeitem');
+    expect(treeitem.hasAttribute('aria-expanded')).toBe(false);
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
   it('parent treeitem HAS aria-expanded set to false when collapsed', () => {
     const item = makeParentItem();
     render(

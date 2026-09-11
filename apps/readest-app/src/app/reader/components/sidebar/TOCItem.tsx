@@ -77,7 +77,7 @@ const TOCItemView = React.memo<{
       onKeyDown={item.href ? (e) => e.key === 'Enter' && handleClickItem(e) : undefined}
       aria-label={ariaLabel}
       aria-current={isActive ? 'page' : undefined}
-      aria-expanded={item.subitems ? (flatItem.isExpanded ? 'true' : 'false') : undefined}
+      aria-expanded={item.subitems?.length ? (flatItem.isExpanded ? 'true' : 'false') : undefined}
       aria-selected={isActive ? 'true' : 'false'}
       data-href={item.href ? getContentMd5(item.href) : undefined}
       className={clsx(
@@ -88,7 +88,7 @@ const TOCItemView = React.memo<{
         paddingInlineStart: `${(depth + 1) * 12}px`,
       }}
     >
-      {item.subitems && (
+      {!!item.subitems?.length && (
         <button
           onClick={handleToggleExpand}
           onKeyDown={(e) => {

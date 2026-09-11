@@ -58,7 +58,8 @@ export const virtualTocToItems = (entries: VirtualTocEntry[]): TOCItem[] =>
     label: entry.label,
     href: entry.cfi, // goTo 原生支持 CFI 目标（view.js resolveNavigation 先测 CFI.isCFI）
     index: 0,
-    subitems: [],
+    // subitems 键整键省略（不是 []）——空数组是 truthy，侧栏会据此画出可展开的
+    // 假三角（TOCItem.tsx 判真）。叶子就必须是 undefined。
   }));
 
 export const applyVirtualToc = (

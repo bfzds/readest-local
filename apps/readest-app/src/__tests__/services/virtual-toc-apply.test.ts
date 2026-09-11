@@ -115,9 +115,12 @@ describe('applyVirtualToc', () => {
     expect(applyVirtualToc(doc, entries)).toBe(false);
   });
 
-  it('virtualTocToItems 生成负数 id 与空 subitems', () => {
+  // 空 subitems 数组是 truthy，会被侧栏当成可展开父节点画出假三角；
+  // 整键省略（undefined）才是叶子。
+  it('virtualTocToItems 生成负数 id 且整个省略 subitems 键', () => {
     const items = virtualTocToItems(entries);
     expect(items[0]!.id).toBeLessThan(0);
-    expect(items[0]!.subitems).toEqual([]);
+    expect(items[0]!.subitems).toBeUndefined();
+    expect('subitems' in items[0]!).toBe(false);
   });
 });
