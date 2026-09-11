@@ -76,4 +76,5 @@ fastlane/metadata-play/android/en-US/changelogs
 
 # local tooling caches (not part of the project)
 .dsh-vision-toolkit/
+_dsh_log_tmp/
 .pnpm-store/
