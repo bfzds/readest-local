@@ -1,4 +1,5 @@
 import type { BookDoc, TOCItem } from '@/libs/document';
+import { CFI } from '@/libs/document';
 import type { VirtualTocEntry } from '@/types/book';
 import { collectAllTocItems } from '@/services/nav/grouping';
 import { getIndexFromCfi } from '@/utils/cfi';
@@ -66,15 +67,40 @@ export const virtualTocToItems = (entries: VirtualTocEntry[]): TOCItem[] =>
     ...(entry.location ? { location: entry.location } : {}),
   }));
 
+/** 虚拟条目的稳定特征：href 是 CFI 串（config 里存的就是 CFI）。
+ *  不能只看 id：nav 管线会把条目重新编号成非负（locations.ts `item.id ??= index++`），
+ *  历史 nav.json 里那 14 条虚拟条目就是这样变成 id=3..16 的，之后 id 判据就失效了。
+ *  isCFI 是 RegExp，必须用 .test()，不能当函数调。 */
+export const isVirtualTocItem = (item: TOCItem): boolean =>
+  CFI.isCFI.test(item.href ?? '') || item.id < 0;
+
+/**
+ * 原地剥离 bookDoc.toc 里的虚拟条目（无论 id 被重编号成正还是负），返回剥离条数。
+ *
+ * 用途：nav.json 只承载真实目录。`computeBookNav` 读的是内存里的 `bookDoc.toc`，
+ * 若它已经被上一次 `applyVirtualToc` 合并过虚拟条目，这些条目就会被写进 nav.json
+ * 并被重新编号，下次打开认不出来 → 每次开书叠加一轮（真机 21 条）。所以计算 nav
+ * **之前**先剥一次。只在内存里改 toc：不写 config、不动 nav.json 文件本身。
+ */
+export const stripVirtualTocItems = (bookDoc: BookDoc): number => {
+  const items = bookDoc.toc;
+  if (!items?.length) return 0;
+  const real = items.filter((item) => !isVirtualTocItem(item));
+  const stripped = items.length - real.length;
+  if (stripped > 0) bookDoc.toc = real;
+  return stripped;
+};
+
 export const applyVirtualToc = (
   bookDoc: BookDoc,
   entries: VirtualTocEntry[] | undefined,
 ): boolean => {
   if (!entries?.length) return false;
   if (bookDoc.rendition?.layout === 'pre-paginated') return false;
-  // 先剥离既有虚拟条目（负 id）再判健康目录——否则"重新生成"会被
-  // healthy 守卫拒绝、无法替换（R2）。真实 TOC id 均为非负。
-  const real = (bookDoc.toc ?? []).filter((item) => item.id >= 0);
+  // 先剥离既有虚拟条目再判健康目录——否则"重新生成"会被 healthy 守卫拒绝、
+  // 无法替换（R2）。判据是 href 是否 CFI 串，不依赖 id（历史 nav.json 里留下的
+  // 虚拟条目 id 已被重编号成非负，只判 id < 0 会认不出来）。
+  const real = (bookDoc.toc ?? []).filter((item) => !isVirtualTocItem(item));
   // 条目数 > 1 不再等于「目录健康」：样本书的 3 条结构条目全都无锚点地指向同一个
   // 巨型 section，同样属于退化的目标书类。健康判据交给 isTocDegraded。
   if (real.length > 1 && !isTocDegraded(bookDoc)) return false;

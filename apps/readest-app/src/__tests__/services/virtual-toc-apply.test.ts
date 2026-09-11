@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { applyVirtualToc, virtualTocToItems } from '@/services/virtualToc/apply';
+import {
+  applyVirtualToc,
+  isVirtualTocItem,
+  stripVirtualTocItems,
+  virtualTocToItems,
+} from '@/services/virtualToc/apply';
 import type { VirtualTocEntry } from '@/types/book';
 import type { BookDoc, SectionItem, TOCItem } from '@/libs/document';
 
@@ -78,6 +83,27 @@ describe('applyVirtualToc', () => {
     ]);
   });
 
+  // 核心守门用例（nav.json 污染自愈）：历史 nav.json 把虚拟条目重新编号成 0..N 的非负
+  // id，旧判据 `item.id >= 0` 就把这 14 条当成真实条目 → 永不剥离 → 每次打开残留 + 叠加
+  // （用户真机看到 21 条）。判据必须回到 href 是不是 CFI 串。
+  it('重编号为非负 id（href 仍是 CFI）的虚拟条目照样被剥离、不叠加（nav.json 污染自愈）', () => {
+    const staleNavToc: TOCItem[] = [
+      { id: 0, label: '正文', href: 'page-0.html', index: 0 },
+      ...Array.from({ length: 14 }, (_, i) => ({
+        id: i + 1,
+        label: `旧第${i + 1}章`,
+        href: `epubcfi(/6/4!/4/${2 + i * 2})`,
+        index: 0,
+      })),
+    ];
+    const doc = makeDoc(staleNavToc, [slabSection('page-0.html')]);
+    expect(applyVirtualToc(doc, entries)).toBe(true);
+    // 1 条真实 + 2 条新虚拟；旧实现会留下 1 + 14 + 2 = 17 条。
+    expect(doc.toc).toHaveLength(3);
+    expect(doc.toc!.filter((item) => item.href.startsWith('epubcfi('))).toHaveLength(2);
+    expect(doc.toc!.map((item) => item.label)).toEqual(['正文', '第1章', '第2章']);
+  });
+
   it('3 条结构条目 + slab（大 section 只被 1 条指到）时应用虚拟目录', () => {
     const doc = makeDoc(
       [tocItem(1, 'page-0.html'), tocItem(2, 'page-0.html'), tocItem(3, 'page-0.html')],
@@ -142,5 +168,39 @@ describe('applyVirtualToc', () => {
     // index 不再是恒 0 的占位，而是 CFI 对应的真 spine 序
     expect(items[0]!.index).toBeGreaterThan(0);
     expect(items[1]!.index).toBeGreaterThan(items[0]!.index!);
+  });
+});
+
+describe('isVirtualTocItem', () => {
+  it('href 是 CFI 串 → 虚拟（无论 id 正负）', () => {
+    expect(isVirtualTocItem(tocItem(0, 'epubcfi(/6/4!/4/2)'))).toBe(true);
+    expect(isVirtualTocItem(tocItem(3, 'epubcfi(/6/4!/4/8)'))).toBe(true);
+  });
+
+  it('普通 href + 非负 id → 真实；负 id → 虚拟（向后兼容）', () => {
+    expect(isVirtualTocItem(tocItem(0, 'chapter1.html'))).toBe(false);
+    expect(isVirtualTocItem(tocItem(7, 'OEBPS/page-0.html#ch1'))).toBe(false);
+    expect(isVirtualTocItem(tocItem(-1, 'chapter1.html'))).toBe(true);
+  });
+});
+
+describe('stripVirtualTocItems', () => {
+  it('原地剥离 CFI 虚拟条目与负 id 条目，返回剥离条数，真实条目引用不变', () => {
+    const real = tocItem(0, 'page-0.html');
+    const renumbered = tocItem(1, 'epubcfi(/6/4!/4/2)');
+    const negative = tocItem(-1, 'epubcfi(/6/4!/4/8)');
+    const doc = makeDoc([real, renumbered, negative]);
+
+    expect(stripVirtualTocItems(doc)).toBe(2);
+    expect(doc.toc).toHaveLength(1);
+    expect(doc.toc![0]).toBe(real);
+  });
+
+  it('没有虚拟条目时不动数组、返回 0；toc 缺失时返回 0', () => {
+    const items = [tocItem(0, 'a.html'), tocItem(1, 'b.html')];
+    const doc = makeDoc(items);
+    expect(stripVirtualTocItems(doc)).toBe(0);
+    expect(doc.toc).toBe(items);
+    expect(stripVirtualTocItems(makeDoc(undefined))).toBe(0);
   });
 });

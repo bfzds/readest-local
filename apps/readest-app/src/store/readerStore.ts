@@ -14,7 +14,7 @@ import { EnvConfigType } from '@/services/environment';
 import { FoliateView } from '@/types/view';
 import { DocumentLoader, isUsableBookDoc, TOCItem } from '@/libs/document';
 import { computeBookNav, hydrateBookNav, isBookNavCacheCurrent, updateToc } from '@/services/nav';
-import { applyVirtualToc } from '@/services/virtualToc/apply';
+import { applyVirtualToc, stripVirtualTocItems } from '@/services/virtualToc/apply';
 import { formatTitle, getMetadataHash, getPrimaryLanguage } from '@/utils/book';
 import { getBaseFilename } from '@/utils/path';
 import { perfMark } from '@/utils/perf';
@@ -255,6 +255,14 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
       }
       // Filter out invalid booknotes
       config.booknotes = config.booknotes?.filter((booknote) => booknote.cfi) ?? [];
+      // nav.json 只承载真实目录：内存里的 bookDoc.toc 若还残留上次合并进来的虚拟
+      // 条目（href 是 CFI，id 已被 nav 管线重编号成非负），computeBookNav 会把它们
+      // 当成真实条目写回 nav.json，下次打开就认不出来 → 每开一次叠加一轮。计算 nav
+      // 之前先在内存剥一次；虚拟目录随后由下面的 applyVirtualToc 现读现并（顺序不变）。
+      const strippedVirtual = stripVirtualTocItems(bookDoc);
+      if (strippedVirtual > 0) {
+        console.log(`Stripped ${strippedVirtual} stale virtual TOC items before computing nav`);
+      }
       // Load cached book navigation (TOC + section fragments) or compute and persist.
       if (book.format === 'EPUB' && bookDoc.rendition?.layout !== 'pre-paginated') {
         const cachedNav = await appService.loadBookNav(book);

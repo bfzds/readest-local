@@ -40,7 +40,14 @@ vi.mock('@/utils/misc', () => ({
 }));
 
 // These are transitive imports needed by readerStore
-vi.mock('@/services/nav', () => ({ updateToc: vi.fn() }));
+// computeBookNav 用 hoisted spy：Task 11 的用例要断言「nav 计算前目录已被剥离干净」。
+const { computeBookNavMock } = vi.hoisted(() => ({ computeBookNavMock: vi.fn() }));
+vi.mock('@/services/nav', () => ({
+  updateToc: vi.fn(),
+  hydrateBookNav: vi.fn(),
+  isBookNavCacheCurrent: vi.fn(),
+  computeBookNav: computeBookNavMock,
+}));
 vi.mock('@/utils/book', () => ({
   formatTitle: vi.fn((t: string) => t),
   getMetadataHash: vi.fn(() => 'hash'),
@@ -471,6 +478,84 @@ describe('readerStore', () => {
 
       expect(loadLibraryBooks).toHaveBeenCalled();
       expect(library.getBookByHash).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('Task 11 修复 B: nav 计算前剥离虚拟条目', () => {
+    test('nav 管线收到的是干净真实目录，且剥离先于 computeBookNav', async () => {
+      const { virtualTocToItems } = await import('@/services/virtualToc/apply');
+      const computeNavSpy = vi.mocked(computeBookNavMock);
+      computeNavSpy.mockReset();
+      const real = { id: 0, label: '正文', href: 'page-0.html', index: 0 };
+      const staleVirtual = { id: 3, label: '旧第1章', href: 'epubcfi(/6/4!/4/2)', index: 0 };
+      // initViewState 内部 hydrateBookNav 用 mock 实现，清理内存目录的责任在 strip 这一步。
+      // bookDoc 是原地改的：后面 applyVirtualToc 会往同一个对象里再合并虚拟目录，所以
+      // 在这里就把「nav 管线收到的目录」快照下来，避免读到后来被改写的引用。
+      let navInputToc: unknown[] = [];
+      computeNavSpy.mockImplementation(async (doc: unknown) => {
+        navInputToc = [...((doc as { toc?: unknown[] }).toc ?? [])];
+        return { version: 1, toc: [real], sections: {} };
+      });
+      const entries = [
+        { label: '第1章', cfi: 'epubcfi(/6/4!/4/8)', source: 'pattern' as const, generatedAt: 1 },
+      ];
+
+      const id = 'hash-virtual';
+      const book = {
+        hash: id,
+        format: 'EPUB',
+        title: 'V',
+        author: '',
+        createdAt: 1,
+        updatedAt: 1,
+        primaryLanguage: 'zh',
+        metadata: {},
+      } as never;
+      const bookDoc = {
+        metadata: { title: 'V', language: 'zh' },
+        rendition: { layout: 'reflowable' },
+        toc: [real, staleVirtual],
+        sections: [],
+      };
+
+      const { DocumentLoader } = await import('@/libs/document');
+      vi.mocked(DocumentLoader).mockImplementation(
+        class {
+          open = async () => ({ book: bookDoc });
+        } as never,
+      );
+
+      const appService = {
+        loadLibraryBooks: vi.fn(async () => [book]),
+        loadBookContent: vi.fn(async () => ({ file: {} })),
+        resolveNativeBookFilePath: vi.fn(async () => {
+          throw new Error('no native path (test)');
+        }),
+        loadBookConfig: vi.fn(async () => ({
+          viewSettings: { sortedTOC: false, convertChineseVariant: 't2s' },
+          booknotes: [],
+          virtualToc: entries,
+        })),
+        loadBookNav: vi.fn(async () => null),
+        saveBookNav: vi.fn(async () => undefined),
+      } as never;
+      const envConfig = { getAppService: async () => appService } as never;
+
+      const library = useLibraryStore.getState() as unknown as {
+        getBookByHash: ReturnType<typeof vi.fn>;
+      };
+      library.getBookByHash.mockReset().mockReturnValue(book);
+
+      await expect(realInitViewState(envConfig, id, 'virtual-key', true)).resolves.toBeUndefined();
+
+      // 传进 nav 管线的目录已经不含那 14 条被重编号的历史虚拟条目。
+      expect(computeNavSpy).toHaveBeenCalledTimes(1);
+      expect(navInputToc).toHaveLength(1);
+      expect(navInputToc[0]).toEqual(real);
+      // 剥离之后才合并本次的虚拟目录（applyVirtualToc 的位置不变）。
+      expect(bookDoc.toc).toHaveLength(2);
+      expect(bookDoc.toc!.map((item) => item.label)).toEqual(['正文', '第1章']);
+      expect(bookDoc.toc![1]!.href).toBe(virtualTocToItems(entries)[0]!.href);
     });
   });
 });
