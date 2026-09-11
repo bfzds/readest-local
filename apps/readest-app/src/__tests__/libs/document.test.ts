@@ -1,7 +1,8 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { DocumentLoader, getDirection } from '@/libs/document';
+import { DocumentLoader, getDirection, isUsableBookDoc } from '@/libs/document';
+import type { BookDoc } from '@/libs/document';
 
 if (typeof globalThis['CSS'] === 'undefined') {
   (globalThis as Record<string, unknown>)['CSS'] = {
@@ -93,6 +94,37 @@ describe('DocumentLoader.open', () => {
     expect(result.book).toBeTruthy();
     expect(result.format).toBe('EPUB');
   }, 15000);
+});
+
+describe('isUsableBookDoc', () => {
+  // Task 10 修复 B：缓存里可能躺着「被浅拷贝毁掉原型方法」的 bookDoc（切书崩溃的元凶）。
+  // 判定必须看 splitTOCHref 这个方法在不在（它在 BookDoc 上是必填），而不是只判对象真假
+  // ——残废对象仍是 truthy，只判真假正是这次崩溃漏掉的一层。
+  class FakeEPUB {
+    toc: { id: number; label: string; href: string }[] = [];
+    sections = [{ id: 's1' }];
+    rendition = {};
+    metadata = { language: 'zh' };
+    splitTOCHref(href: string): (string | number)[] {
+      return href.split('#');
+    }
+  }
+
+  it('真类实例（原型方法可调用）视为可用', () => {
+    expect(isUsableBookDoc(new FakeEPUB() as unknown as BookDoc)).toBe(true);
+  });
+
+  it('浅拷贝丢掉原型方法的对象（`{ ...bookDoc }`）视为不可用', () => {
+    const broken = { ...(new FakeEPUB() as unknown as BookDoc) };
+    // 前提校验：展开确实把方法弄丢了（否则这条测试就失去判别力）。
+    expect((broken as { splitTOCHref?: unknown }).splitTOCHref).toBeUndefined();
+    expect(isUsableBookDoc(broken)).toBe(false);
+  });
+
+  it('null / undefined 视为不可用', () => {
+    expect(isUsableBookDoc(null)).toBe(false);
+    expect(isUsableBookDoc(undefined)).toBe(false);
+  });
 });
 
 describe('getDirection', () => {

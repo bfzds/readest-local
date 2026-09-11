@@ -12,7 +12,7 @@ import {
 import { Insets } from '@/types/misc';
 import { EnvConfigType } from '@/services/environment';
 import { FoliateView } from '@/types/view';
-import { DocumentLoader, TOCItem } from '@/libs/document';
+import { DocumentLoader, isUsableBookDoc, TOCItem } from '@/libs/document';
 import { computeBookNav, hydrateBookNav, isBookNavCacheCurrent, updateToc } from '@/services/nav';
 import { applyVirtualToc } from '@/services/virtualToc/apply';
 import { formatTitle, getMetadataHash, getPrimaryLanguage } from '@/utils/book';
@@ -210,7 +210,12 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
       }
       let bookDoc = bookData?.bookDoc;
       let file: File | null = bookData?.file ?? null;
-      if (!bookDoc || !file || reload) {
+      // 缓存的 bookDoc 可能是被浅拷贝破坏的对象（对象字面量展开会丢掉类实例原型上的
+      // 方法，如 EPUB 的 splitTOCHref），喂给 nav 管线会直接抛 TypeError；当作没有文档
+      // 处理、走重新解析——当前 session 里已经坏掉的缓存对象也能这样自愈，不必重启应用。
+      // 判据用「方法是否存在」而不是只判 bookDoc 真假（残废对象仍是 truthy，只判真假
+      // 正是本次崩溃漏掉的一层）。
+      if (!isUsableBookDoc(bookDoc) || !file || reload) {
         console.log('Loading book', key);
         const content = (await appService.loadBookContent(book)) as BookContent;
         file = content.file;

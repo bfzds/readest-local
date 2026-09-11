@@ -52,7 +52,12 @@ vi.mock('@/utils/path', () => ({
 vi.mock('@/services/constants', () => ({
   SUPPORTED_LANGNAMES: {},
 }));
-vi.mock('@/libs/document', () => ({
+vi.mock('@/libs/document', async (importOriginal) => ({
+  // Task 10 修复 B：initViewState 现在用 isUsableBookDoc 判定缓存的 bookDoc 是否残废
+  // （浅拷贝丢了原型方法 → 当作没文档、重新解析）。只换 DocumentLoader，其余导出
+  // （含该判定）保持真实实现——partial mock 漏掉它会让用例直接抛
+  // `No "isUsableBookDoc" export is defined on the mock`。
+  ...(await importOriginal<typeof import('@/libs/document')>()),
   DocumentLoader: vi.fn(),
 }));
 vi.mock('@/services/opds/pseStream', () => ({

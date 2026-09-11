@@ -127,6 +127,19 @@ export interface BookDoc {
   media?: { narrator?: string; duration?: number };
 }
 
+/**
+ * 缓存的 bookDoc 还能不能喂给 nav 管线。
+ *
+ * 判据是 splitTOCHref **方法是否存在**，不是对象真假：`{ ...bookDoc }` 这类对象字面量
+ * 展开只复制自有字段，会静默丢掉类实例原型上的方法（EPUB 的 `splitTOCHref` 定义在
+ * `EPUB.prototype` 上，见 packages/foliate-js/epub.js），拷出来的残废对象依旧 truthy，
+ * 但 nav 管线（services/nav/grouping.ts 等）一调它就直接抛
+ * `TypeError: bookDoc.splitTOCHref is not a function or its return value is not iterable`。
+ * splitTOCHref 在 BookDoc 上是必填方法，「缺失」本身就是异常状态，对任何格式都成立。
+ */
+export const isUsableBookDoc = (bookDoc: BookDoc | null | undefined): bookDoc is BookDoc =>
+  !!bookDoc && typeof bookDoc.splitTOCHref === 'function';
+
 export const EXTS: Record<BookFormat, string> = {
   EPUB: 'epub',
   PDF: 'pdf',
