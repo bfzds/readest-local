@@ -579,6 +579,11 @@ export interface VirtualTocEntry {
   cfi: string;
   source: 'pattern' | 'section';
   generatedAt: number;
+  /** 近似 location（与 SectionItem.location 同口径：字节 / SIZE_PER_LOC）。
+   *  扫描时按「section 前累计字节 + 命中处文本占比 × section 字节」估算，供页码
+   *  显示与 sortedTOC 排序使用。旧 config 里的条目无此字段——行为同现状，
+   *  重新生成即升级，不做迁移。 */
+  location?: { current: number; next: number; total: number };
 }
 
 export const BOOK_CONFIG_SCHEMA_VERSION = 3;

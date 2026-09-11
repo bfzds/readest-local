@@ -1,6 +1,7 @@
 import type { BookDoc, TOCItem } from '@/libs/document';
 import type { VirtualTocEntry } from '@/types/book';
 import { collectAllTocItems } from '@/services/nav/grouping';
+import { getIndexFromCfi } from '@/utils/cfi';
 
 // 巨型内容 section（slab）阈值：约 6 万字中文的 XHTML 字节数。单文件长篇小说的
 // 正文常常就是「一个几百 KB 的 HTML + 3 条无锚点结构条目」，这是本功能的首要
@@ -57,9 +58,12 @@ export const virtualTocToItems = (entries: VirtualTocEntry[]): TOCItem[] =>
     id: -1 - i, // 负数 id 区分虚拟条目，避免与真实 TOC id 冲突
     label: entry.label,
     href: entry.cfi, // goTo 原生支持 CFI 目标（view.js resolveNavigation 先测 CFI.isCFI）
-    index: 0,
+    // 旧实现恒为 0（页码恒为 1）；用 CFI 推出真 spine 序，占位至少有意义。
+    index: getIndexFromCfi(entry.cfi) ?? 0,
     // subitems 键整键省略（不是 []）——空数组是 truthy，侧栏会据此画出可展开的
     // 假三角（TOCItem.tsx 判真）。叶子就必须是 undefined。
+    // 旧 config 的条目无 location：整键省略，行为同现状。
+    ...(entry.location ? { location: entry.location } : {}),
   }));
 
 export const applyVirtualToc = (

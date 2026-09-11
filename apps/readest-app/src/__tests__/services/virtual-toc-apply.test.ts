@@ -123,4 +123,24 @@ describe('applyVirtualToc', () => {
     expect(items[0]!.subitems).toBeUndefined();
     expect('subitems' in items[0]!).toBe(false);
   });
+
+  it('virtualTocToItems 透传 location，并用 CFI 推出真 spine 序 index', () => {
+    const located: VirtualTocEntry[] = [
+      {
+        label: '第1章',
+        cfi: 'epubcfi(/6/4!/4/8)',
+        source: 'pattern',
+        generatedAt: 1,
+        location: { current: 3, next: 12, total: 178 },
+      },
+      { label: '第2章', cfi: 'epubcfi(/6/8!/4/8)', source: 'pattern', generatedAt: 1 },
+    ];
+    const items = virtualTocToItems(located);
+    expect(items[0]!.location).toEqual({ current: 3, next: 12, total: 178 });
+    // 旧 config 里的条目无 location：行为同现状（不塞假值）
+    expect(items[1]!.location).toBeUndefined();
+    // index 不再是恒 0 的占位，而是 CFI 对应的真 spine 序
+    expect(items[0]!.index).toBeGreaterThan(0);
+    expect(items[1]!.index).toBeGreaterThan(items[0]!.index!);
+  });
 });

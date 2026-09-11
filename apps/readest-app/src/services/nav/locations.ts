@@ -3,8 +3,13 @@ import { SIZE_PER_LOC } from '@/services/constants';
 
 export type SplitTOCHref = (href: string) => Array<string | number>;
 
-const calculateCumulativeSizes = (sections: SectionItem[]): number[] => {
-  const sizes = sections.map((s) => (s.linear !== 'no' && s.size > 0 ? s.size : 0));
+/** 参与 location 计算的 section 字节数：非 linear 内容与非法尺寸一律记 0。 */
+export const calculateSectionSizes = (sections: SectionItem[]): number[] =>
+  sections.map((s) => (s.linear !== 'no' && s.size > 0 ? s.size : 0));
+
+/** 每个 section 之前的累计字节数（索引 i = section i 的起点偏移）。 */
+export const calculateCumulativeSizes = (sections: SectionItem[]): number[] => {
+  const sizes = calculateSectionSizes(sections);
   let cumulative = 0;
   return sizes.reduce((acc: number[], size) => {
     acc.push(cumulative);
@@ -138,7 +143,7 @@ export const bakeLocationsAndCfis = (
 ) => {
   if (!items.length || !sections.length) return;
 
-  const sizes = sections.map((s) => (s.linear !== 'no' && s.size > 0 ? s.size : 0));
+  const sizes = calculateSectionSizes(sections);
   const cumulativeSizes = calculateCumulativeSizes(sections);
   const totalSize = cumulativeSizes[cumulativeSizes.length - 1]! + sizes[sizes.length - 1]!;
   const totalLocations = Math.floor(totalSize / SIZE_PER_LOC);
