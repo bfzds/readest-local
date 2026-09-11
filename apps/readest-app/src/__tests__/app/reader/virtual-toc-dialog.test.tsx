@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // 虚拟目录弹窗（Task 7）：内置规则预选 → 命中预览 → 生成/按文件分章 → 先 apply 后持久化。
 // 三条路径（取消 / 正则生成 / 按文件分章）与两个门禁（apply 被拒、空条目）都钉在这里。
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -65,6 +65,7 @@ vi.mock('@/app/reader/components/sidebar/TOCChapterNav', () => ({ default: () =>
 import VirtualTocDialog from '@/app/reader/components/VirtualTocDialog';
 import Content from '@/app/reader/components/sidebar/Content';
 import type { BookDoc } from '@/libs/document';
+import type { VirtualTocEntry } from '@/types/book';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { eventDispatcher } from '@/utils/event';
 
@@ -85,8 +86,8 @@ const makeStoreBookData = (id: string, doc: BookDoc, format = 'EPUB') =>
     isFixedLayout: false,
   }) as never;
 
-const renderDialog = (bookKey: string, onClose: () => void = () => {}) =>
-  render(<VirtualTocDialog bookKey={bookKey} bookDoc={bookDoc} onClose={onClose} />);
+const renderDialog = (bookKey: string, onClose: () => void = () => {}, doc: BookDoc = bookDoc) =>
+  render(<VirtualTocDialog bookKey={bookKey} bookDoc={doc} onClose={onClose} />);
 
 const GENERATE = /^Generate$/u;
 const SYNTHESIZE = /section files as chapters/iu;
@@ -106,6 +107,22 @@ describe('VirtualTocDialog', () => {
     renderDialog('k1');
     await waitFor(() =>
       expect(scanMock.countChapterMatches).toHaveBeenCalledWith(bookDoc, '', 'zh'),
+    );
+    await waitFor(() => expect(screen.getByText(/matches 15 locations/iu)).toBeTruthy());
+  });
+
+  // 区域码是常态（Task 8 样本书的 OPF 是 `zh-cn`，全小写），而 CHAPTER_RULES 只认
+  // zh/ja/ko/'*'——不归一化就会落到 EN_RULES，中文书内置预览恒为 0、生成按钮被禁用。
+  it.each([
+    'zh-cn',
+    'zh-CN',
+    'zh-TW',
+    'zh-Hant',
+  ])('区域语言码 %s 归一化为规则表主码 zh，内置预览不为 0', async (lang) => {
+    const regionDoc = { ...bookDoc, metadata: { language: lang } } as unknown as BookDoc;
+    renderDialog('k1', () => {}, regionDoc);
+    await waitFor(() =>
+      expect(scanMock.countChapterMatches).toHaveBeenCalledWith(regionDoc, '', 'zh'),
     );
     await waitFor(() => expect(screen.getByText(/matches 15 locations/iu)).toBeTruthy());
   });
@@ -204,6 +221,31 @@ describe('VirtualTocDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(onClose).toHaveBeenCalled();
     expect(scanMock.generateVirtualTocEntries).not.toHaveBeenCalled();
+  });
+
+  // R20：扫描途中「取消」若仍可点，用户取消后扫描完成依旧会 apply + saveConfig + 成功
+  // toast——「用户已经取消却写了数据」。生成/合成期间禁用取消（与另外两个按钮同口径）。
+  it('扫描/合成途中取消按钮被禁用，完成前用户无法取消后仍写盘', async () => {
+    let settleGenerate: ((entries: VirtualTocEntry[]) => void) | undefined;
+    scanMock.generateVirtualTocEntries.mockImplementationOnce(
+      () =>
+        new Promise<VirtualTocEntry[]>((resolve) => {
+          settleGenerate = resolve;
+        }),
+    );
+    renderDialog('k1');
+    fireEvent.click(screen.getByRole('button', { name: GENERATE }));
+
+    expect((screen.getByRole('button', { name: 'Cancel' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+
+    await act(async () => {
+      settleGenerate!([]);
+    });
+    expect((screen.getByRole('button', { name: 'Cancel' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
   });
 
   it('按文件分章：仅在 shouldOfferSynthesis 放行时出现，点击走合成 + apply + 持久化', async () => {

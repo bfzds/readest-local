@@ -12,6 +12,7 @@ import { useBookDataStore } from '@/store/bookDataStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import type { BookDoc } from '@/libs/document';
 import type { VirtualTocEntry } from '@/types/book';
+import { getPrimaryLanguage } from '@/utils/book';
 import { validateChapterPattern } from '@/utils/chapterRules';
 import { countChapterMatches, generateVirtualTocEntries } from '@/services/virtualToc/scan';
 import { shouldOfferSynthesis, synthesizeSectionToc } from '@/services/virtualToc/synthesis';
@@ -29,9 +30,13 @@ const PREVIEW_DEBOUNCE_MS = 400;
 const VirtualTocDialog = ({ bookKey, bookDoc, onClose }: VirtualTocDialogProps) => {
   const _ = useTranslation();
   const { envConfig } = useEnv();
-  // metadata.language 在个别 loader 上是 string[]；扫描器只认单值语言码，非 string 回退 zh。
+  // R19：CHAPTER_RULES 的键只有 zh/ja/ko/'*'，而 metadata.language 常带区域码
+  // （Task 8 样本书的 OPF 就是 `zh-cn`）——不归一化会落到英文规则，中文书命中恒为 0、
+  // 生成按钮被禁用。用仓库现成的 getPrimaryLanguage 取主码（不归一化时它是 'en'，
+  // 所以仅在有非空语言码时调用；无语言码保持原行为 zh）。
   const rawLanguage = bookDoc.metadata?.language;
-  const language = typeof rawLanguage === 'string' && rawLanguage ? rawLanguage : 'zh';
+  const hasLanguage = Array.isArray(rawLanguage) ? rawLanguage.length > 0 : !!rawLanguage;
+  const language = hasLanguage ? getPrimaryLanguage(rawLanguage) : 'zh';
   const [pattern, setPattern] = useState('');
   const [previewCount, setPreviewCount] = useState<number | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -178,7 +183,14 @@ const VirtualTocDialog = ({ bookKey, bookDoc, onClose }: VirtualTocDialogProps) 
           </button>
         )}
         <div className='mt-1 flex justify-end gap-2 pb-2'>
-          <button type='button' className='btn btn-ghost btn-sm eink-bordered' onClick={onClose}>
+          {/* R20：生成/合成途中禁用取消——否则扫描完成仍会 apply + saveConfig + 成功 toast，
+              用户「已经取消却写了数据」。与另两个按钮同口径。 */}
+          <button
+            type='button'
+            className='btn btn-ghost btn-sm eink-bordered'
+            disabled={generating}
+            onClick={onClose}
+          >
             {_('Cancel')}
           </button>
           <button
