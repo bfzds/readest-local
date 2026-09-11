@@ -43,8 +43,14 @@ export const tocLocationKey = (location: TOCItem['location']): string | null =>
  * （形如 `OEBPS/page-0.html`）→ href 相等永不成立，书本图标永远不出现。
  * `progress.fraction` 是全书 0..1 的 reading position，与 location 的
  * size-domain 同源（见 types/book.ts），所以 `round(fraction × total)` 落在
- * 条目的 `[current, next)` 里就是当前章节。total 从任意带 location 的条目取
+ * 条目的 `[current, next)` 里就是当前章节。total 从任意带 location 的虚拟条目取
  * （同一次生成的所有条目 total 相同）。
+ *
+ * **只对虚拟条目做区间匹配**：合并时真实条目被前置，nav 管线又给它们写了
+ * `section.location`（样本书那几条无锚点条目的 href 就是 section href）→ 其区间
+ * 覆盖整块 slab（如 `0:178`）。若在全表上 find，阅读位置一进 slab 就先命中真实
+ * 条目、返回它的 key，虚拟条目永远拿不到自己的 key——C 要修的症状会原样保留。
+ * 真实条目仍由 `isActiveTocItem` 的 href 相等那条路负责。
  *
  * 返回的是 location 区间 key（而不是条目对象）——`TOCItemView` 是 React.memo，
  * props 必须是值稳定的原始类型，否则每渲染都会失效。
@@ -54,10 +60,11 @@ export const findActiveLocationKey = (
   fraction: number | null | undefined,
 ): string | null => {
   if (typeof fraction !== 'number' || !Number.isFinite(fraction)) return null;
-  const total = items.find((item) => item.location?.total)?.location?.total;
+  const virtual = items.filter(isVirtualTocItem);
+  const total = virtual.find((item) => item.location?.total)?.location?.total;
   if (!total) return null;
   const currentLoc = Math.round(fraction * total);
-  const active = items.find(
+  const active = virtual.find(
     (item) =>
       item.location && currentLoc >= item.location.current && currentLoc < item.location.next,
   );

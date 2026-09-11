@@ -175,7 +175,7 @@ const TOCView: React.FC<{
   const activeHref = progress?.sectionHref ?? null;
   const flatItems = useMemo(() => flattenTOC(toc, expandedItems), [toc, expandedItems]);
   // 虚拟条目的 href 是 CFI 串，与 sectionHref 永不相等 → 改用 location 区间判定。
-  // 返回值是字符串（值稳定），React.memo 的 StaticListRow/TOCItemView 才不会被穿透。
+  // 返回值是字符串（值稳定），只传给 memo 的 TOCItemView，避免每次渲染穿透它的 memo。
   const activeLocationKey = useMemo(
     () =>
       findActiveLocationKey(

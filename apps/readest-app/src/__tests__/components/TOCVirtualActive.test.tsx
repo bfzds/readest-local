@@ -52,6 +52,26 @@ describe('findActiveLocationKey（虚拟条目的当前章节判定）', () => {
       findActiveLocationKey([virtualItem('1', { current: 0, next: 10, total: 0 })], 0.5),
     ).toBeNull();
   });
+
+  it('真实条目带 location 覆盖整块 slab 时，不抢走虚拟条目的 key（区间匹配只对虚拟条目生效）', () => {
+    // 合并时真实条目被前置，nav 管线又给它们写了 section.location（样本书 3 条无锚点
+    // 条目 href 就是 section href，条件 id === item.href 成立）→ 真实条目的区间覆盖
+    // 整块 slab。若在全表上做 find，0.05 × 1000 = 50 会先命中真实条目、返回 "0:1000"，
+    // 虚拟条目永远拿不到自己的 key（C 要修的症状原样保留）。
+    const realWithSlabLocation: TOCItem = {
+      id: 0,
+      label: '正文',
+      href: 'page-0.html',
+      index: 0,
+      location: { current: 0, next: 1000, total: 1000 },
+    };
+    expect(
+      findActiveLocationKey(
+        [realWithSlabLocation, virtualItem('1', { current: 0, next: 100, total: 1000 })],
+        0.05,
+      ),
+    ).toBe('0:100');
+  });
 });
 
 describe('虚拟条目的书本图标（当前章节高亮）', () => {
