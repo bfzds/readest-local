@@ -103,10 +103,18 @@ const VirtualTocDialog = ({ bookKey, bookDoc, onClose }: VirtualTocDialogProps) 
       if (!current) return state;
       // config 一并写回内存：内存里的 config 是 saveConfig(getConfig(bookKey)) 这类
       // 整份落盘调用的来源，不带上 virtualToc 会把刚生成的目录从磁盘上抹掉。
+      // 这里**必须保留 bookDoc 的同一引用**，绝不能写成 `bookDoc: { ...bookDoc }`：
+      // 对象字面量展开只复制自有字段，类实例原型上的方法会全部消失（EPUB 的
+      // splitTOCHref 定义在 EPUB.prototype 上），残废对象被 store 复用后 nav 管线调
+      // bookDoc.splitTOCHref 直接抛 TypeError → 切书回来报 Failed to open book。
+      // 「刷新目录」不需要靠换 bookDoc 引用：上面 applyVirtualToc 已经**原地**把
+      // bookDoc.toc 换成了新数组，而刷新由**外层 BookData 对象**达成——侧栏 Content 用
+      // useBookDataStore()（无选择器）订阅整个 store，下面 `{ ...current }` 一变就会
+      // 重渲染并读到新 toc。
       return {
         booksData: {
           ...state.booksData,
-          [bookId]: { ...current, config, bookDoc: { ...bookDoc } },
+          [bookId]: { ...current, config, bookDoc },
         },
       };
     });

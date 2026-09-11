@@ -69,12 +69,27 @@ import type { VirtualTocEntry } from '@/types/book';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { eventDispatcher } from '@/utils/event';
 
-const bookDoc = {
-  rendition: {},
-  toc: [],
-  sections: [{ id: 's1' }],
-  metadata: { language: 'zh' },
-} as unknown as BookDoc;
+// 夹具必须是**真的类实例**：生产里 book 是 `new EPUB(...)` 的实例，`splitTOCHref`
+// 定义在 `EPUB.prototype` 上（packages/foliate-js/epub.js）。手写普通对象天生没有
+// 原型方法，永远测不出「对象字面量展开 `{ ...bookDoc }` 丢方法」这类破坏——Task 10
+// 的回归钉子就靠这个夹具把住。
+class FakeEPUB {
+  toc: { id: number; label: string; href: string }[] = [];
+  sections = [{ id: 's1' }];
+  rendition = {};
+  metadata: { language: string | string[] };
+  constructor(language: string | string[] = 'zh') {
+    this.metadata = { language };
+  }
+  splitTOCHref(href: string): (string | number)[] {
+    return href.split('#');
+  }
+}
+
+const makeBookDoc = (language: string | string[] = 'zh'): BookDoc =>
+  new FakeEPUB(language) as unknown as BookDoc;
+
+const bookDoc = makeBookDoc();
 
 const makeStoreBookData = (id: string, doc: BookDoc, format = 'EPUB') =>
   ({
@@ -122,7 +137,7 @@ describe('VirtualTocDialog', () => {
     ['zh-Hant', 'zh-Hant'],
     ["['zh-cn']（foliate 真实形状）", ['zh-cn']],
   ])('区域语言码 %s 归一化为规则表主码 zh，内置预览不为 0', async (_name, lang) => {
-    const regionDoc = { ...bookDoc, metadata: { language: lang } } as unknown as BookDoc;
+    const regionDoc = makeBookDoc(lang);
     renderDialog('k1', () => {}, regionDoc);
     await waitFor(() =>
       expect(scanMock.countChapterMatches).toHaveBeenCalledWith(regionDoc, '', 'zh'),
@@ -137,27 +152,38 @@ describe('VirtualTocDialog', () => {
     ['纯空白串', '   '],
     ["['']（空串数组）", ['']],
   ])('无有效语言码（%s）仍兜底 zh 规则，不落到 en', async (_name, lang) => {
-    const doc = { ...bookDoc, metadata: { language: lang } } as unknown as BookDoc;
+    const doc = makeBookDoc(lang);
     renderDialog('k1', () => {}, doc);
     await waitFor(() => expect(scanMock.countChapterMatches).toHaveBeenCalledWith(doc, '', 'zh'));
   });
 
-  it('确认生成：先 apply 再写 config、刷新 bookData 的 bookDoc 引用并关闭', async () => {
+  it('确认生成：先 apply 再写 config、换成新的 bookData 对象（bookDoc 保留同一引用）并关闭', async () => {
     // bookKey 带 `-view0` 后缀，而 booksData 以书籍 id（hash 段）为键——刷新必须写回 id。
-    useBookDataStore.setState({ booksData: { k1: makeStoreBookData('k1', bookDoc) } });
+    const doc = makeBookDoc();
+    useBookDataStore.setState({ booksData: { k1: makeStoreBookData('k1', doc) } });
+    const before = useBookDataStore.getState().booksData['k1']!;
     const setSpy = vi.spyOn(useBookDataStore, 'setState');
     const saveSpy = vi
       .spyOn(useBookDataStore.getState(), 'saveConfig')
       .mockResolvedValue(undefined);
+    // 用真实 apply 驱动：它**原地**把 bookDoc.toc 换成含负 id 虚拟条目的新数组，
+    // 这正是「不换 bookDoc 引用也能刷新目录」的立足点。
+    const realApply = await vi.importActual<typeof import('@/services/virtualToc/apply')>(
+      '@/services/virtualToc/apply',
+    );
+    // 真实 apply 的签名是 (bookDoc, entries)；模块级 mock 是无参桩，注入时对齐类型。
+    applyMock.applyVirtualToc.mockImplementationOnce(
+      realApply.applyVirtualToc as unknown as () => boolean,
+    );
     const onClose = vi.fn();
-    renderDialog('k1-view0', onClose);
+    renderDialog('k1-view0', onClose, doc);
 
     await waitFor(() => screen.getByRole('button', { name: GENERATE }));
     fireEvent.click(screen.getByRole('button', { name: GENERATE }));
 
     await waitFor(() => expect(saveSpy).toHaveBeenCalled());
     await waitFor(() => expect(onClose).toHaveBeenCalled());
-    expect(scanMock.generateVirtualTocEntries).toHaveBeenCalledWith(bookDoc, '', 'zh');
+    expect(scanMock.generateVirtualTocEntries).toHaveBeenCalledWith(doc, '', 'zh');
     expect(applyMock.applyVirtualToc).toHaveBeenCalled();
     // R13：apply 必须排在持久化之前，否则被守卫拒绝时会留下永不生效的死配置。
     expect(applyMock.applyVirtualToc.mock.invocationCallOrder[0]!).toBeLessThan(
@@ -172,7 +198,43 @@ describe('VirtualTocDialog', () => {
       {},
     );
     expect(setSpy).toHaveBeenCalled();
-    expect(useBookDataStore.getState().booksData['k1']!.bookDoc).not.toBe(bookDoc);
+    const after = useBookDataStore.getState().booksData['k1']!;
+    // 刷新目录靠的是**外层 BookData 换新对象**：侧栏 Content 用 useBookDataStore()
+    // 无选择器订阅整个 store，外层一变就重渲染并读到新 toc，不需要换 bookDoc。
+    expect(after).not.toBe(before);
+    expect(after.bookDoc).toBe(doc);
+    expect(after.bookDoc!.toc!.some((t) => t.id < 0)).toBe(true);
+  });
+
+  // Task 10 回归钉子（真机切书崩溃）：生成目录时若把 bookDoc 浅拷贝 `{ ...bookDoc }` 写回
+  // store，对象字面量展开只复制自有字段——而 EPUB 的 splitTOCHref 挂在 EPUB.prototype 上，
+  // 拷出来的对象 `typeof splitTOCHref === 'undefined'`；残废对象被 store 复用后 nav 管线
+  // （services/nav/grouping.ts:43）直接抛 `TypeError: bookDoc.splitTOCHref is not a function`
+  // → `Failed to open book in reader`。夹具是真类实例，所以只有它测得出这类破坏。
+  it('回归钉子：生成目录后 store 里的 bookDoc 仍是可用类实例（原型方法未丢）', async () => {
+    const doc = makeBookDoc();
+    useBookDataStore.setState({ booksData: { k1: makeStoreBookData('k1', doc) } });
+    const saveSpy = vi
+      .spyOn(useBookDataStore.getState(), 'saveConfig')
+      .mockResolvedValue(undefined);
+    const realApply = await vi.importActual<typeof import('@/services/virtualToc/apply')>(
+      '@/services/virtualToc/apply',
+    );
+    applyMock.applyVirtualToc.mockImplementationOnce(
+      realApply.applyVirtualToc as unknown as () => boolean,
+    );
+    renderDialog('k1-view0', () => {}, doc);
+
+    await waitFor(() => screen.getByRole('button', { name: GENERATE }));
+    fireEvent.click(screen.getByRole('button', { name: GENERATE }));
+    await waitFor(() => expect(saveSpy).toHaveBeenCalled());
+
+    const stored = useBookDataStore.getState().booksData['k1']!.bookDoc!;
+    expect(typeof stored.splitTOCHref).toBe('function');
+    // 目录确实合并进去了（负 id = 虚拟条目），证明刷新不依赖换 bookDoc 引用。
+    expect(stored.toc!.some((t) => t.id < 0)).toBe(true);
+    // 钉住真机崩溃点：nav 管线的调用形态（grouping.ts:43）不再抛 TypeError。
+    expect(() => stored.splitTOCHref('OEBPS/ch1.xhtml#frag')).not.toThrow();
   });
 
   it('apply 被拒时：错误 toast、不写 config、不关弹窗（防死配置）', async () => {
@@ -351,12 +413,7 @@ describe('VirtualTocDialog', () => {
   // R18：弹窗 open 状态挂在 SidebarContent 根节点，而 SideBar 渲染它时未传 key——
   // 切书必须把 open 复位，否则弹窗跨书保留、按新 props 渲染，用户会误以为在操作原书。
   it('R18：侧栏切换书籍时关闭尚未完成的弹窗', async () => {
-    const otherDoc = {
-      rendition: {},
-      toc: [],
-      sections: [{ id: 's2' }],
-      metadata: { language: 'zh' },
-    } as unknown as BookDoc;
+    const otherDoc = makeBookDoc();
     useBookDataStore.setState({
       booksData: {
         k1: makeStoreBookData('k1', bookDoc),
