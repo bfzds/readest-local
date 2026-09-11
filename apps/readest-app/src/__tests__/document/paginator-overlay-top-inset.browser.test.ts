@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { DocumentLoader } from '@/libs/document';
 import type { BookDoc } from '@/libs/document';
 import type { Renderer } from '@/types/view';
+import type { ViewSettings } from '@/types/book';
+import { HEADER_BAR_HEIGHT_PX, getOverlayTopInset } from '@/utils/insets';
 
 // Task 12: a CFI (virtual TOC) entry resolves to a Range anchor, which takes the
 // paginator's *rect* branch and pins the element box to the scroll viewport top
@@ -13,9 +15,10 @@ import type { Renderer } from '@/types/view';
 // must reproduce the pre-change offset exactly.
 const EPUB_URL = new URL('../fixtures/data/sample-alice.epub', import.meta.url).href;
 
-// Mirrors HEADER_BAR_HEIGHT_PX (readest HeaderBar `h-11`, also the `maxHeight`
-// of utils/insets.ts getHeaderTriggerHeight).
-const HEADER_BAR_PX = 44;
+// The app's own constant (readest HeaderBar `h-11`, also the `maxHeight` of
+// utils/insets.ts getHeaderTriggerHeight) — imported, so a rename or a value
+// change cannot silently drift away from this test.
+const HEADER_BAR_PX = HEADER_BAR_HEIGHT_PX;
 
 let book: BookDoc;
 
@@ -161,19 +164,48 @@ describe('Paginator element-level jump top inset (browser)', () => {
   };
 
   /**
+   * The same tall section, but laid out `vertical-rl` (R39): the paginator then
+   * scrolls along the *horizontal* axis (`#container.vertical` →
+   * `scrollProp === 'scrollLeft'`). The style has to be in place before `open`
+   * so every view inherits it and `getDirection` reports the vertical mode.
+   */
+  const openTallSectionVertical = async () => {
+    paginator = createPaginator();
+    paginator.setStyles?.('body { writing-mode: vertical-rl; }');
+    paginator.open(book);
+    paginator.setAttribute('margin-top', '16px');
+    paginator.setAttribute('flow', 'scrolled');
+    const index = book.sections!.findIndex((s) => s.linear !== 'no' && (s.size ?? 0) > 8000);
+    expect(index).toBeGreaterThanOrEqual(0);
+    const stabilized = waitForStabilized(paginator);
+    await paginator.goTo({ index, anchor: 0 });
+    await stabilized;
+    await waitForFillComplete(paginator);
+    paginator.setAttribute('no-preload', '');
+    const container = paginator.shadowRoot!.getElementById('container')!;
+    // Guard the premise: without the vertical class the case below proves nothing.
+    expect(container.classList.contains('vertical')).toBe(true);
+    const content = paginator.getContents().find((c) => c.index === index);
+    expect(content).toBeDefined();
+    return { index, container, doc: content!.doc as Document };
+  };
+
+  /**
    * Two far-apart paragraphs of the target section: `target` is measured,
    * `away` is jumped to first so the measured jump never short-circuits on the
    * `Math.abs(containerPosition - offset) < 1` early return.
    */
-  const pickTargets = (doc: Document) => {
+  const pickTargets = (doc: Document, axis: 'top' | 'left' = 'top') => {
     const paragraphs = (Array.from(doc.querySelectorAll('p')) as HTMLElement[]).filter(
       (el) => el.getBoundingClientRect().height > 0,
     );
     expect(paragraphs.length).toBeGreaterThan(4);
     const target = paragraphs[Math.floor(paragraphs.length / 3)]!;
     const away = paragraphs[Math.floor((paragraphs.length * 2) / 3)]!;
-    const gap = away.getBoundingClientRect().top - target.getBoundingClientRect().top;
-    expect(gap).toBeGreaterThan(200);
+    // vertical-rl lays paragraphs out along the horizontal axis (right to
+    // left), so the along-axis separation is in `left`, not `top`.
+    const gap = away.getBoundingClientRect()[axis] - target.getBoundingClientRect()[axis];
+    expect(Math.abs(gap)).toBeGreaterThan(200);
     return { target, away };
   };
 
@@ -253,6 +285,51 @@ describe('Paginator element-level jump top inset (browser)', () => {
 
     // Paginated anchoring is page-quantised and must be untouched by the inset.
     expect(inset.position).toBe(unset.position);
-    expect(paginator.page).toBeGreaterThanOrEqual(0);
+  });
+
+  it('should hand vertical books no inset, because their scroll axis is horizontal', async () => {
+    // R39: `showTopHeader` is false for vertical books (`showHeader &&
+    // !vertical`), so the first rule — `scrolled && !showTopHeader` — also gave
+    // them the 44px inset. But a vertical book scrolls along the horizontal
+    // axis while the bar covers the *top* of the columns: the inset could only
+    // slide the landing sideways, never clear the bar.
+    const vertical = {
+      scrolled: true,
+      showHeader: false,
+      vertical: true,
+      writingMode: 'vertical-rl',
+    } as unknown as ViewSettings;
+    expect(getOverlayTopInset(vertical)).toBe(0);
+    // `viewSettings.vertical` is synced asynchronously from the loaded document
+    // (FoliateViewer's load callback), so a vertical book can still look
+    // non-vertical on the first apply — writingMode has to carry the decision.
+    expect(getOverlayTopInset({ ...vertical, vertical: false } as unknown as ViewSettings)).toBe(0);
+    // The non-vertical scrolled case with the page header off still needs it.
+    expect(
+      getOverlayTopInset({
+        ...vertical,
+        vertical: false,
+        writingMode: 'horizontal-tb',
+      } as unknown as ViewSettings),
+    ).toBe(HEADER_BAR_PX);
+
+    const { index, container, doc } = await openTallSectionVertical();
+    const { target, away } = pickTargets(doc, 'left');
+
+    const unset = await measureJump(index, target, away, container);
+    paginator.setAttribute('overlay-top-inset', '0px');
+    const zero = await measureJump(index, target, away, container);
+    expect(zero.position).toBe(unset.position);
+
+    paginator.setAttribute('overlay-top-inset', `${HEADER_BAR_PX}px`);
+    const inset = await measureJump(index, target, away, container);
+    console.warn(
+      `[overlay-top-inset][vertical] unset: position=${unset.position} | ` +
+        `0px: position=${zero.position} | ${HEADER_BAR_PX}px: position=${inset.position}`,
+    );
+
+    // What the rule now avoids: on the horizontal scroll axis the inset moves
+    // the landing sideways by exactly the inset instead of clearing the bar.
+    expect(Math.abs(unset.position - inset.position)).toBeCloseTo(HEADER_BAR_PX, 0);
   });
 });

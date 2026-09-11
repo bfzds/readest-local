@@ -65,7 +65,7 @@ import { TransformContext } from '@/services/transformers/types';
 import { transformContent } from '@/services/transformService';
 import { useBookCoverAutoSave } from '../hooks/useAutoSaveBookCover';
 import { manageSyntaxHighlighting } from '@/utils/highlightjs';
-import { getViewInsets, HEADER_BAR_HEIGHT_PX } from '@/utils/insets';
+import { getViewInsets, getOverlayTopInset } from '@/utils/insets';
 import { collectDocumentImages, DocumentImage } from '../utils/documentImages';
 import { footerReservesBand } from '../utils/footerBand';
 import { showTransientSearchHighlight } from '../utils/searchHighlight';
@@ -804,7 +804,7 @@ const FoliateViewer: React.FC<{
     // instead of reserving the space while reading (which would blank 44px).
     viewRef.current?.renderer.setAttribute(
       'overlay-top-inset',
-      viewSettings.scrolled && !showTopHeader ? `${HEADER_BAR_HEIGHT_PX}px` : '0px',
+      `${getOverlayTopInset(viewSettings)}px`,
     );
     viewRef.current?.renderer.setAttribute('gap', `${viewSettings.gapPercent}%`);
     viewRef.current?.renderer.setAttribute(

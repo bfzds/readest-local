@@ -49,6 +49,26 @@ export const getHeaderBandGeometry = (topInset: number, marginTopPx: number) => 
 export const HEADER_BAR_HEIGHT_PX = 44;
 
 /**
+ * Top clearance (px) an element-level jump leaves for the hover-revealed header
+ * bar, or 0 when the renderer must not shift the landing.
+ *
+ * Only non-vertical scrolled mode with the in-flow page header off needs it:
+ * the bar is opaque while hovered, and there `scrollMargins.top` reserves
+ * nothing under it, so a rect anchor would pin the target under the bar. A
+ * vertical book scrolls along the *horizontal* axis (paginator's
+ * `#getRectMapper` / `scrollProp` switch with the writing mode) while the bar
+ * covers the start of the columns, so an inset could only slide the landing
+ * sideways — never clear the bar, and it stays 0. `writingMode` decides
+ * alongside `vertical`, which the load callback syncs asynchronously.
+ */
+export const getOverlayTopInset = (viewSettings: ViewSettings) => {
+  const isVertical = viewSettings.vertical || viewSettings.writingMode.includes('vertical');
+  return viewSettings.scrolled && !viewSettings.showHeader && !isVertical
+    ? HEADER_BAR_HEIGHT_PX
+    : 0;
+};
+
+/**
  * Height (px) of the header bar's hover trigger — the invisible strip along the
  * top of the book cell that reveals the toolbar.
  *
