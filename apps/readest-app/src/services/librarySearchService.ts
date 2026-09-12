@@ -15,6 +15,7 @@ import { findFuzzyMatches, MAX_FUZZY_QUERY_LENGTH } from '@/utils/fuzzySearch';
 import type { LibrarySearchWorkerMatch } from '@/utils/librarySearchWorkerProtocol';
 import { findNearbyMatches } from '@/utils/nearbySearch';
 import { createRejectFilter } from '@/utils/node';
+import { createBatchedSectionCfiResolver } from '@/utils/batchedCfi';
 import { compileSearchRegex, filterWholeWordMatches, findRegexMatches } from '@/utils/textSearch';
 import { perfMark } from '@/utils/perf';
 import { BookFileNotFoundError } from './errors';
@@ -183,20 +184,6 @@ const makeContext = (text: string, offset: number, direction: 'before' | 'after'
   }
   const value = normalized.trimEnd();
   return `${contextStart(value)}${cursor < text.length || value.length >= CONTEXT_LENGTH ? '…' : ''}`;
-};
-
-const findNodeOffset = (cumulative: number[], offset: number, bias: 'left' | 'right') => {
-  let low = 0;
-  let high = cumulative.length - 2;
-  while (low < high) {
-    const middle = (low + high + 1) >> 1;
-    if (cumulative[middle]! <= offset) low = middle;
-    else high = middle - 1;
-  }
-  if (bias === 'left') {
-    while (low > 0 && cumulative[low] === offset) low--;
-  }
-  return { index: low, offset: offset - cumulative[low]! };
 };
 
 const makeExcerpt = (text: string, start: number, end: number): SearchExcerpt => {
@@ -1139,18 +1126,15 @@ export const resolveSearchResultCfis = async (
         continue;
       }
       const prepared = prepareSearchSection('resolve', doc, makeAcceptNode(book));
-      const rangeCfi = (start: number, end: number): string | null => {
-        if (end > prepared.text.length || start >= end) return null;
-        const from = findNodeOffset(prepared.cumulative, start, 'right');
-        const to = findNodeOffset(prepared.cumulative, end, 'left');
-        const range = prepared.makeRange(from.index, from.offset, to.index, to.offset);
-        return CFI.joinIndir(baseCFI, CFI.fromRange(range));
-      };
+      // 逐匹配 CFI.fromRange 在高频字搜索（数万条匹配）下是主线程秒级瓶颈
+      // （每条要重建各级祖先的子节点索引）；同一对起止文本节点的 CFI 只差
+      // 两个末段偏移，按节点对缓存模板后逐条只做字符串拼装。
+      const resolveRangeCfi = createBatchedSectionCfiResolver(prepared, baseCFI);
       for (const position of positions) {
         const locator = locators[position]!;
-        const cfi = rangeCfi(locator.start, locator.end) ?? baseCFI;
+        const cfi = resolveRangeCfi(locator.start, locator.end) ?? baseCFI;
         const runCfis = locator.runs
-          ?.map((run) => rangeCfi(run.start, run.end))
+          ?.map((run) => resolveRangeCfi(run.start, run.end))
           .filter((value): value is string => value != null);
         resolved[position] = runCfis && runCfis.length >= 2 ? { cfi, cfis: runCfis } : { cfi };
       }

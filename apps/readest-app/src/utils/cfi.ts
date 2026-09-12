@@ -44,6 +44,15 @@ export function createCfiLocationMatcher(
   // Pre-unwrap the location once for the cheap prefix match below.
   const unwrappedLocation = unwrapCfi(location);
 
+  // Section prefix (everything up to the first '!'), e.g. "/6/14!" for a
+  // chapter spine index. A CFI from any other section can never fall inside
+  // this location's bounds, so the per-call `CFI.compare` pair below — two
+  // parses per call — is skipped for it. With tens of thousands of search
+  // hits looping against one location per page turn, this prefix check is
+  // what keeps the loop at string-comparison cost instead of CFI-parse cost.
+  const bangIndex = unwrappedLocation.indexOf('!');
+  const sectionPrefix = bangIndex > 0 ? unwrappedLocation.slice(0, bangIndex + 1) : null;
+
   // Collapse once. If collapse throws on a malformed location the
   // matcher degrades to the cheap equality / prefix branch only —
   // matching the failure mode of the original isCfiInLocation, which
@@ -60,7 +69,9 @@ export function createCfiLocationMatcher(
   return (cfi: string): boolean => {
     if (!cfi) return false;
     if (cfi === location) return true;
-    if (unwrapCfi(cfi).startsWith(unwrappedLocation)) return true;
+    const unwrapped = unwrapCfi(cfi);
+    if (unwrapped.startsWith(unwrappedLocation)) return true;
+    if (sectionPrefix && !unwrapped.startsWith(sectionPrefix)) return false;
     if (start === null || end === null) return false;
     try {
       return CFI.compare(cfi, start) >= 0 && CFI.compare(cfi, end) <= 0;
