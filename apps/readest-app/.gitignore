@@ -14,6 +14,10 @@
 # benchmarks — personal local perf history; share via PR/issue copy-paste
 bench/results.jsonl
 
+# search-perf diagnostics: user's private EPUB sample (personal book content,
+# local-only fixture; the test suite skips when it is absent)
+src/__tests__/fixtures/data/371c57b3-ecad-4256-99ae-d4394e2ec0ff.epub
+
 # next.js
 /.next/
 /out/
