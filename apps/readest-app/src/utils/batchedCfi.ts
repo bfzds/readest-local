@@ -40,6 +40,13 @@ export const createBatchedSectionCfiResolver = (
   baseCFI: string,
 ): ((start: number, end: number) => string | null) => {
   const { text, cumulative, makeRange } = prepared;
+  // Batch-scoped memoization of the CFI child-list computation. The node-pair
+  // template cache below degrades on flat DOMs (thousands of distinct node
+  // pairs), letting through a full CFI.fromRange per match — whose cost is
+  // dominated by rebuilding every ancestor's CFI child list. This cache makes
+  // those repeats O(1) lookups; scoped to this resolver (one section's resolve
+  // loop), so a restructured document can never serve stale lists.
+  const indexCache = CFI.createIndexCache();
   // One entry per (startNodeIndex, endNodeIndex) pair. null marks a pair whose
   // CFI doesn't fit the offset-substitutable shape — always fall back for it.
   const templates = new Map<string, OffsetTemplate | null>();
@@ -69,7 +76,7 @@ export const createBatchedSectionCfiResolver = (
       // fromRange wraps collapsed/point CFIs without the 3-part range shape,
       // and any future CFI feature (assertions, spatial/temporal) would break
       // offset substitution — the 3-segment check guards all of those.
-      const inner = CFI.fromRange(range)
+      const inner = CFI.fromRange(range, undefined, indexCache)
         .replace(/^epubcfi\(/, '')
         .replace(/\)$/, '');
       const segments = inner.split(',');
@@ -97,7 +104,7 @@ export const createBatchedSectionCfiResolver = (
     const template = templateFor(from.index, from.offset, to.index, to.offset);
     if (!template) {
       const range = makeRange(from.index, from.offset, to.index, to.offset);
-      return CFI.joinIndir(baseCFI, CFI.fromRange(range));
+      return CFI.joinIndir(baseCFI, CFI.fromRange(range, undefined, indexCache));
     }
     // The offsets in a range CFI are node-relative character positions —
     // exactly what findNodeOffset produced.
