@@ -233,6 +233,11 @@ interface SearchResultsProps {
   onSelectResult: (cfi: string) => void;
 }
 
+// 上游 #5728 解除结果上限后，"的/我/你"这类高频字可产出数万条匹配。全部
+// 展开渲染会把数万行 DOM 一次性塞进侧边栏（每次流式追加还全量重渲染）。
+// 总匹配数超过该阈值时章节默认折叠，只渲染标题行；用户点开感兴趣的章节。
+const COLLAPSE_RESULTS_THRESHOLD = 1000;
+
 const SearchResults: React.FC<SearchResultsProps> = ({ bookKey, results, onSelectResult }) => {
   const _ = useTranslation();
   const { getProgress } = useReaderStore();
@@ -276,15 +281,27 @@ const SearchResults: React.FC<SearchResultsProps> = ({ bookKey, results, onSelec
   );
 
   // The error itself is surfaced in the search bar; once the search has finished
-  // with no hits, say so instead of leaving a blank panel.
+  // with no hits, say so instead of leaving a blank panel. While a search is
+  // still running (panel mounted for status 'searching'), show a placeholder
+  // instead of a blank area.
   if (results.length === 0) {
-    if (searchError || searchProgress < 1) return null;
+    if (searchError) return null;
+    if (searchProgress < 1) {
+      return (
+        <div className='search-results text-base-content/60 p-4 text-center text-sm'>
+          {_('Searching...')}
+        </div>
+      );
+    }
     return (
       <div className='search-results text-base-content/60 p-4 text-center text-sm'>
         {_('No results found')}
       </div>
     );
   }
+
+  // 大结果集默认收起全部章节（展开语义反转：折叠模式下在集合中=展开）。
+  const defaultCollapsed = totalMatches > COLLAPSE_RESULTS_THRESHOLD;
 
   return (
     <div className='search-results @container overflow-y-auto px-2 font-sans text-sm font-light'>
@@ -305,7 +322,11 @@ const SearchResults: React.FC<SearchResultsProps> = ({ bookKey, results, onSelec
                 label={result.label}
                 subitems={result.subitems}
                 nearestCfi={nearestCfi}
-                isExpanded={!collapsedSections.has(sectionKey)}
+                isExpanded={
+                  defaultCollapsed
+                    ? collapsedSections.has(sectionKey)
+                    : !collapsedSections.has(sectionKey)
+                }
                 onToggle={() => toggleSection(sectionKey)}
                 onSelectResult={onSelectResult}
               />

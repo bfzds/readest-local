@@ -1425,3 +1425,29 @@ export const getGroupNewBookCounts = (
   }
   return counts;
 };
+
+/**
+ * 进入分组那一刻的"新书"清单（书 hash 集合），谓词与 {@link getGroupNewBookCounts}
+ * 完全一致——角标计数聚合了哪些书，这里就返回哪些书。必须在写入
+ * groupLastVisitedAt 之前调用（visited 更新后同一谓词立即变空）；调用方
+ * （handleLibraryNavigation）拿这批 hash 持久高亮分组内的对应书，弥补
+ * "角标进入即清除、却不知道哪本是新的"的断层。
+ */
+export const getGroupNewBookHashes = (
+  books: Book[],
+  groupPath: string,
+  lastVisitedAt: Record<string, number> = {},
+  now: number = Date.now(),
+): string[] => {
+  const hashes: string[] = [];
+  for (const book of books) {
+    if (book.deletedAt || !book.groupName) continue;
+    if (book.groupName !== groupPath && !book.groupName.startsWith(`${groupPath}/`)) continue;
+    if (book.progress) continue;
+    if (now - book.createdAt > NEW_BOOK_BADGE_WINDOW_MS) continue;
+    const visited = lastVisitedAt[md5Fingerprint(book.groupName)] ?? 0;
+    if (book.createdAt <= visited) continue;
+    hashes.push(book.hash);
+  }
+  return hashes;
+};

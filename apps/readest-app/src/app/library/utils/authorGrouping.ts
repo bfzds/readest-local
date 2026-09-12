@@ -54,6 +54,19 @@ export const findAuthorGroupMatch = (author: string, groupNames: string[]): stri
   return candidates[0] ?? null;
 };
 
+/**
+ * 该书当前所在分组是否恰好是其作者匹配组；是则返回分组名，否则 null。
+ * 用于 dedup 重导入（byHash 命中、原样保留原分组的书）：这类书没有被
+ * "重新归组"，但从用户视角书落在了作者分组里，去向反馈应与真新导入一致，
+ * 否则第二次拖入同一本书只会看到普通导入提示。
+ */
+export const matchesOwnGroupAuthor = (book: Book): string | null =>
+  book.author &&
+  book.groupName &&
+  findAuthorGroupMatch(book.author, [book.groupName]) === book.groupName
+    ? book.groupName
+    : null;
+
 export interface AuthorGroupedToastSpec {
   /** 基础导入提示（若有的话）加上逐分组的去向行，换行分隔。 */
   message: string;

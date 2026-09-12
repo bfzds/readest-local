@@ -72,6 +72,7 @@ import {
   createBookGroups,
   findGroupById,
   getBreadcrumbs,
+  getGroupNewBookHashes,
   resolveCurrentGroupBy,
 } from './utils/libraryUtils';
 import { resolveImportToast } from './utils/importToast';
@@ -80,6 +81,7 @@ import {
   buildAuthorGroupedToastSpec,
   collectGroupNames,
   findAuthorGroupMatch,
+  matchesOwnGroupAuthor,
 } from './utils/authorGrouping';
 import Spinner from '@/components/Spinner';
 import LibraryHeader from './components/LibraryHeader';
@@ -247,15 +249,18 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   const librarySearchConfigRef = useRef(librarySearchConfig);
   const [showDetailsBook, setShowDetailsBook] = useState<Book | null>(null);
   const [failedImportsModal, setFailedImportsModal] = useState<FailedImport[] | null>(null);
-  // 导入被自动归组后"前往查看"时短暂高亮的目标书（几秒后自动清除）。
+  // 导入被自动归组后"前往查看"时短暂高亮的目标书（几秒后自动清除）；
+  // 进入文件夹分组时持久高亮该组的新书（离开分组/切换分组即重算或清除）。
   const [highlightedBookHashes, setHighlightedBookHashes] = useState<Set<string>>(new Set());
   const highlightClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const highlightBooks = useCallback((hashes: string[]) => {
+  const highlightBooks = useCallback((hashes: string[], options?: { persist?: boolean }) => {
     setHighlightedBookHashes(new Set(hashes));
     if (highlightClearTimerRef.current) clearTimeout(highlightClearTimerRef.current);
-    highlightClearTimerRef.current = setTimeout(() => {
-      setHighlightedBookHashes(new Set());
-    }, 6000);
+    if (!options?.persist) {
+      highlightClearTimerRef.current = setTimeout(() => {
+        setHighlightedBookHashes(new Set());
+      }, 6000);
+    }
   }, []);
   // "Import from folder" dialog state. Held as a small object rather
   // than a boolean because we need a default starting directory to seed
@@ -476,12 +481,29 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
 
       // 进入文件夹分组即视为"看过"：清除该分组的新书角标（晚于此刻导入的
       // 书才重新计数）。键与角标计算一致——分组 id（组名指纹）。
+      // 角标清除的同时无从得知刚才计数的是哪几本，所以在写入 visited 之前
+      // 先捕获新书快照，持久高亮它们（换分组重算、回顶层清除），补上
+      // "角标说有 1 本新书、进组后却不知道是哪本"的断层。
       if (targetGroup) {
+        const targetPath = useLibraryStore.getState().getGroupName(targetGroup);
+        if (targetPath) {
+          const { library } = useLibraryStore.getState();
+          const newBookHashes = getGroupNewBookHashes(
+            library,
+            targetPath,
+            useSettingsStore.getState().settings.groupLastVisitedAt ?? {},
+          );
+          highlightBooks(newBookHashes, { persist: true });
+        } else {
+          setHighlightedBookHashes(new Set());
+        }
         const nextVisited = {
           ...(useSettingsStore.getState().settings.groupLastVisitedAt ?? {}),
           [targetGroup]: Date.now(),
         };
         void saveSysSettings(envConfig, 'groupLastVisitedAt', nextVisited);
+      } else {
+        setHighlightedBookHashes(new Set());
       }
 
       navigateToLibrary(router, params.toString());
@@ -1068,6 +1090,9 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       collectGroupNames(library, useLibraryStore.getState().persistentGroupNames ?? []),
     );
     const authorGroupedImports: AuthorGroupedImport[] = [];
+    // 其中本次导入真正执行了归组的书（不含 dedup 重导后"本就在作者组"的
+    // 书）——"撤销"只回退这些书的分组。
+    const regroupedImports: AuthorGroupedImport[] = [];
     // Build the lookup index ONCE per import batch so each book lookup is
     // O(1) instead of O(n) over the existing library. importBook also keeps
     // the index updated as new books are appended, so subsequent files in
@@ -1133,30 +1158,43 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           successfulImports.push(result.book.title);
         }
         // 按作者自动归组：仅当用户没有明确指定目标分组、目录导入也没推导出
-        // 分组（书本来会落在根目录）、且这本书是真正新导入时才生效。优先级：
+        // 分组（书本来会落在根目录）时才生效。优先级：
         // 用户显式选择 > 目录结构推导 > 作者匹配。盖 metadataUpdatedAt 时钟，
         // 否则多端同步时旧的元数据编辑会赢，把这个分组改动冲掉（同 #5438）。
+        // 真新导入按作者匹配现存分组；dedup 重导入（byHash 命中、原样保留
+        // 原分组）若恰好落在作者分组，同样纳入去向反馈——否则同一本书
+        // 第二次拖入只有普通"成功导入"提示，去向信息凭空消失。撤销只针对
+        // 本次真正归组的书（dedup 书本就在组里，撤销不该把它挪回根目录）。
         const book = result.book;
-        if (
-          groupId === undefined &&
-          !resolvedGroupName &&
-          !knownHashes.has(book.hash) &&
-          book.author
-        ) {
-          const matchedGroupName = findAuthorGroupMatch(book.author, [...existingGroupNames]);
-          if (matchedGroupName) {
-            const now = Date.now();
-            book.groupId = useLibraryStore.getState().getGroupId(matchedGroupName);
-            book.groupName = matchedGroupName;
-            book.updatedAt = now;
-            book.metadataUpdatedAt = now;
-            existingGroupNames.add(matchedGroupName);
-            authorGroupedImports.push({
-              hash: book.hash,
-              title: book.title,
-              groupId: book.groupId!,
-              groupName: matchedGroupName,
-            });
+        if (groupId === undefined && !resolvedGroupName && book.author) {
+          if (!knownHashes.has(book.hash)) {
+            const matchedGroupName = findAuthorGroupMatch(book.author, [...existingGroupNames]);
+            if (matchedGroupName) {
+              const now = Date.now();
+              book.groupId = useLibraryStore.getState().getGroupId(matchedGroupName);
+              book.groupName = matchedGroupName;
+              book.updatedAt = now;
+              book.metadataUpdatedAt = now;
+              existingGroupNames.add(matchedGroupName);
+              const entry = {
+                hash: book.hash,
+                title: book.title,
+                groupId: book.groupId!,
+                groupName: matchedGroupName,
+              };
+              authorGroupedImports.push(entry);
+              regroupedImports.push(entry);
+            }
+          } else if (!result.existed && book.groupId) {
+            const ownGroupName = matchesOwnGroupAuthor(book);
+            if (ownGroupName) {
+              authorGroupedImports.push({
+                hash: book.hash,
+                title: book.title,
+                groupId: book.groupId,
+                groupName: ownGroupName,
+              });
+            }
           }
         }
         // TXT 规则一条标题都没匹配上时，转换器按段落兜底切分（书已入库、
@@ -1350,7 +1388,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       }
       actions.push({
         label: _('Undo'),
-        onClick: () => undoAuthorGrouping(authorGroupedImports),
+        onClick: () => undoAuthorGrouping(regroupedImports),
       });
       eventDispatcher.dispatch('toast', {
         message: groupedToastSpec.message,

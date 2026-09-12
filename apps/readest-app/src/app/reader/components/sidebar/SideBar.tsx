@@ -34,8 +34,14 @@ const SideBar = ({}) => {
   const { updateAppTheme, safeAreaInsets, systemUIVisible, statusBarHeight } = useThemeStore();
   const { sideBarBookKey, setSideBarBookKey, getSearchNavState, setSearchTerm, clearSearch } =
     useSidebarStore();
-  const { isSearchBarVisible, setSearchBarVisible, requestSearchBarFocus, resetSearchBarFocus } =
-    useSidebarStore();
+  const {
+    isSearchBarVisible,
+    setSearchBarVisible,
+    requestSearchBarFocus,
+    resetSearchBarFocus,
+    setSearchStatus,
+    getSearchStatus,
+  } = useSidebarStore();
   const searchNavState = sideBarBookKey ? getSearchNavState(sideBarBookKey) : null;
   const {
     searchTerm = '',
@@ -71,6 +77,11 @@ const SideBar = ({}) => {
     resetSearchBarFocus();
     if (term !== undefined && term !== null) {
       setSearchTerm(bookKey, term);
+      // 乐观置为搜索中：结果面板立即接管内容区（"Searching..." 占位），
+      // 否则选词 Ctrl+F 会先停在目录页直到 500ms debounce 后真正开搜。
+      // 词长不足时 SearchBar 的 resetSearch 会把状态归回 terminated，
+      // 面板随之让位回目录。
+      setSearchStatus(bookKey, 'searching');
     }
   };
 
@@ -215,11 +226,15 @@ const SideBar = ({}) => {
   // 渲染出什么都不画的 SearchResults（内部 return null），把 Ctrl+F 刚打开
   // 的目录闪掉（首次 Ctrl+F 目录闪现后消失的根因）。搜索出错的反馈留在
   // 搜索栏内联显示，目录不被清空。
+  // status 'searching' 也接管内容区：选词 Ctrl+F 乐观置位后用户要的就是
+  // 搜索结果页；SearchBar 的 resetSearch（清词/词长不足）会把状态归回
+  // terminated，面板随之让位回目录。
+  const isSearching = !!sideBarBookKey && getSearchStatus(sideBarBookKey) === 'searching';
   const showResultsPanel =
     isSearchBarVisible &&
     !isAnnotationsTab &&
-    !!searchResults &&
-    (searchResults.length > 0 || (searchProgress >= 1 && !searchError));
+    (isSearching ||
+      (!!searchResults && (searchResults.length > 0 || (searchProgress >= 1 && !searchError))));
 
   return isSideBarVisible ? (
     <>
@@ -319,7 +334,7 @@ const SideBar = ({}) => {
         {showResultsPanel ? (
           <SearchResults
             bookKey={sideBarBookKey!}
-            results={searchResults}
+            results={searchResults ?? []}
             onSelectResult={handleSearchResultClick}
           />
         ) : (
