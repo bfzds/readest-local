@@ -72,6 +72,23 @@ describe('findActiveLocationKey（虚拟条目的当前章节判定）', () => {
       ),
     ).toBe('0:100');
   });
+
+  it('currentLoc 落在真实条目区间、不在任何虚拟条目区间 → 返回 null（顺序无关）', () => {
+    // R35 负向钉子，钉住两半：区间匹配只认虚拟条目（isVirtualTocItem 过滤），
+    // total 也从虚拟条目探测。真实条目 location [0,1000) 覆盖 0.05×1000=50，
+    // 虚拟条目 [100,250) 不含 50——若实现把真实条目纳入区间匹配，这里会命中
+    // 真实条目返回 '0:1000' 而非 null。两种排列都断言，防「按顺序先命中」。
+    const realWithLocation: TOCItem = {
+      id: 0,
+      label: '正文',
+      href: 'page-0.html',
+      index: 0,
+      location: { current: 0, next: 1000, total: 1000 },
+    };
+    const virtual = virtualItem('1', { current: 100, next: 250, total: 1000 });
+    expect(findActiveLocationKey([realWithLocation, virtual], 0.05)).toBeNull();
+    expect(findActiveLocationKey([virtual, realWithLocation], 0.05)).toBeNull();
+  });
 });
 
 describe('虚拟条目的书本图标（当前章节高亮）', () => {

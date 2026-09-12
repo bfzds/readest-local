@@ -39,7 +39,7 @@ const getFirstRegex = (language: string) => buildChapterRegexps(language)[0]!;
 // ---------------------------------------------------------------------------
 // Chinese chapter regex — matching tests
 // ---------------------------------------------------------------------------
-describe('createChapterRegexps — Chinese (zh) regex matching', () => {
+describe('buildChapterRegexps — Chinese (zh) regex matching', () => {
   describe('第N章 pattern', () => {
     it.each([
       '第一章',
@@ -192,7 +192,7 @@ describe('createChapterRegexps — Chinese (zh) regex matching', () => {
 // ---------------------------------------------------------------------------
 // Chinese chapter regex — second-tier regex
 // ---------------------------------------------------------------------------
-describe('createChapterRegexps — Chinese (zh) second regex', () => {
+describe('buildChapterRegexps — Chinese (zh) second regex', () => {
   it('should match Chinese number followed by colon and title', () => {
     const regexps = buildChapterRegexps('zh');
     // Use fresh regex copies to avoid g-flag lastIndex issues
@@ -212,7 +212,7 @@ describe('createChapterRegexps — Chinese (zh) second regex', () => {
 // ---------------------------------------------------------------------------
 // English chapter regex — matching tests
 // ---------------------------------------------------------------------------
-describe('createChapterRegexps — English (en) regex matching', () => {
+describe('buildChapterRegexps — English (en) regex matching', () => {
   describe('Chapter keyword', () => {
     it.each([
       'Chapter 1',
@@ -541,7 +541,7 @@ describe('extractChaptersFromSegment — English (en)', () => {
 // ---------------------------------------------------------------------------
 // Regex structure tests
 // ---------------------------------------------------------------------------
-describe('createChapterRegexps — structure', () => {
+describe('buildChapterRegexps — structure', () => {
   it('should produce two regexps for Chinese', () => {
     expect(buildChapterRegexps('zh').length).toBe(2);
   });

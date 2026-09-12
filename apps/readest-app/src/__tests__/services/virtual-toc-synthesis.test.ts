@@ -95,6 +95,31 @@ describe('synthesizeSectionToc', () => {
     expect(entries[0]!.cfi).toBe('epubcfi(/6/4)');
     expect(entries.every((e) => e.source === 'section')).toBe(true);
   });
+
+  // R42：合成条目必须携带 section.location 的**拷贝**。弹窗在 nav hydrate 之后
+  // 运行、location 现成；不带 location 的合成条目 href 是 section.cfi、与
+  // findActiveLocationKey 的 sectionHref 永不相等 → 合成目录的当前章节图标永不点亮。
+  it('条目携带 section.location 的拷贝；无 location 的 section 条目无该键', async () => {
+    const loc = { current: 3, next: 9, total: 120 };
+    const withLoc = {
+      ...section('4', '<html><body><h2>第一章</h2><p>a</p></body></html>'),
+      location: loc,
+    };
+    const withoutLoc = section('8', '<html><body><p>第二章 无标题文件的首行</p></body></html>');
+    const doc = {
+      rendition: {},
+      toc: [],
+      sections: [withLoc, withoutLoc],
+    } as unknown as BookDoc;
+    const entries = await synthesizeSectionToc(doc);
+    expect(entries).toHaveLength(2);
+    // 值相等，但必须是拷贝而非同一引用（合成结果要落盘 config，不能与 foliate
+    // 的 section 对象共享可变引用）。
+    expect(entries[0]!.location).toEqual(loc);
+    expect(entries[0]!.location).not.toBe(loc);
+    // 旧 config 条目无 location 的行为同现状：整键省略，而不是 location: undefined。
+    expect('location' in entries[1]!).toBe(false);
+  });
 });
 
 describe('synthesizeSectionToc 回归（R6）', () => {

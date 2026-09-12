@@ -1,7 +1,11 @@
 import type { BookDoc } from '@/libs/document';
 import type { VirtualTocEntry } from '@/types/book';
 import { buildElementCfi } from '@/services/nav/elementCfi';
-import { calculateCumulativeSizes, calculateSectionSizes } from '@/services/nav/locations';
+import {
+  calculateCumulativeSizes,
+  calculateSectionSizes,
+  computeTotalLocations,
+} from '@/services/nav/locations';
 import { SIZE_PER_LOC } from '@/services/constants';
 import { runWithConcurrency } from '@/utils/concurrency';
 import { buildChapterRegexps, isNumericNoiseLabel, matchChapterTitle } from '@/utils/chapterRules';
@@ -72,12 +76,11 @@ const collectMatches = async (
   const filterNoise = !pattern;
   // location 口径与 nav/locations.ts 共用同一份纯函数（不复制数学）：条目字节
   // 位置 = 本 section 之前的累计字节 + 命中处文本占比 × 本 section 字节。
+  // totalLocations 同样取自 locations.ts 的 computeTotalLocations，扫描估算的
+  // 页码与 nav bake 的页码不会漂移。
   const sizes = calculateSectionSizes(sections);
   const cumulativeSizes = calculateCumulativeSizes(sections);
-  const totalSize = sizes.length
-    ? cumulativeSizes[cumulativeSizes.length - 1]! + sizes[sizes.length - 1]!
-    : 0;
-  const totalLocations = Math.floor(totalSize / SIZE_PER_LOC);
+  const totalLocations = computeTotalLocations(sizes);
   let done = 0;
   const total = sections.length;
   const now = Date.now();

@@ -223,7 +223,10 @@ const CHAPTER_REGEXP_CACHE_MAX = 32;
 const chapterRegexpCache = new Map<string, Array<{ source: string; flags: string }>>();
 
 export const buildChapterRegexps = (language: string, extraPatterns?: string[]): RegExp[] => {
-  const cacheKey = `${language}${extraPatterns?.join('') ?? ''}`;
+  // 分隔符必须用 '\n'：join('') 会让 ['ab','c'] 与 ['a','bc'] 塌缩成同一个键，
+  // 第二次 build 命中缓存拿到第一份规则集。patterns 由 parseChapterPatterns 按
+  // 行切分而来、正则源不含换行，'\n' 作分隔符无碰撞面。
+  const cacheKey = `${language}${extraPatterns?.join('\n') ?? ''}`;
   const cached = chapterRegexpCache.get(cacheKey);
   if (cached) {
     chapterRegexpCache.delete(cacheKey);

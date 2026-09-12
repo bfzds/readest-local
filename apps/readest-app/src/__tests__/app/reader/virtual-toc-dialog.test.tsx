@@ -67,6 +67,7 @@ import Content from '@/app/reader/components/sidebar/Content';
 import type { BookDoc } from '@/libs/document';
 import type { VirtualTocEntry } from '@/types/book';
 import { useBookDataStore } from '@/store/bookDataStore';
+import { useLibraryStore } from '@/store/libraryStore';
 import { eventDispatcher } from '@/utils/event';
 
 // 夹具必须是**真的类实例**：生产里 book 是 `new EPUB(...)` 的实例，`splitTOCHref`
@@ -111,11 +112,18 @@ describe('VirtualTocDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useBookDataStore.setState({ booksData: {} });
+    // R45 预检的数据源：saveConfig 只认书库索引里的 hash。默认给 k1 建好索引，
+    // 让既有成功路径用例保持原语义；「store 无 hash」用例自行清空。
+    useLibraryStore.setState({
+      library: [{ hash: 'k1', format: 'EPUB' } as never],
+      hashIndex: new Map([['k1', 0]]),
+    });
   });
 
   afterEach(() => {
     cleanup();
     synthMock.shouldOfferSynthesis.mockReturnValue(false);
+    useLibraryStore.setState({ library: [], hashIndex: new Map() });
   });
 
   it('挂载即对内置规则做命中预览', async () => {
@@ -199,8 +207,11 @@ describe('VirtualTocDialog', () => {
     );
     expect(setSpy).toHaveBeenCalled();
     const after = useBookDataStore.getState().booksData['k1']!;
-    // 刷新目录靠的是**外层 BookData 换新对象**：侧栏 Content 用 useBookDataStore()
-    // 无选择器订阅整个 store，外层一变就重渲染并读到新 toc，不需要换 bookDoc。
+    // 刷新目录靠的是**外层 BookData 换新对象**：Content.tsx:25 用无选择器的
+    // useBookDataStore() 全量订阅整个 store，booksData 一替换就重渲染；重渲染时
+    // 的取数式读取（:26 的 getBookData、SideBar.tsx:214 现调）与 props 上同一
+    // bookDoc 引用（toc 已被 applyVirtualToc 原地换新数组）读到的都是新 toc，
+    // 不需要换 bookDoc。
     expect(after).not.toBe(before);
     expect(after.bookDoc).toBe(doc);
     expect(after.bookDoc!.toc!.some((t) => t.id < 0)).toBe(true);
@@ -249,7 +260,11 @@ describe('VirtualTocDialog', () => {
   it('apply 被拒时：错误 toast、不写 config、不关弹窗（防死配置）', async () => {
     // 守卫拒绝（健康目录 / pre-paginated / 空条目）时，绝不能先持久化再 apply——
     // 那会留下一份永远不生效的死配置，而用户看到的是成功提示。
+    // R45 预检排在 apply 之前，本用例测的是 apply 这道闸，须先让预检通过
+    //（播种 booksData；hashIndex 已在 beforeEach 建好）——否则拦截发生在预检，
+    // mockReturnValueOnce(false) 的队列不被消费、泄漏给后续用例。
     applyMock.applyVirtualToc.mockReturnValueOnce(false);
+    useBookDataStore.setState({ booksData: { k1: makeStoreBookData('k1', bookDoc) } });
     const saveSpy = vi
       .spyOn(useBookDataStore.getState(), 'saveConfig')
       .mockResolvedValue(undefined);
@@ -307,6 +322,33 @@ describe('VirtualTocDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(onClose).toHaveBeenCalled();
     expect(scanMock.generateVirtualTocEntries).not.toHaveBeenCalled();
+  });
+
+  // R45：saveConfig 第一步查书库索引，查不到本书 hash 会静默早退（bookDataStore.ts
+  // `if (idx === undefined) return;`）——组件却报成功并关弹窗，用户以为目录已保存。
+  // 书已移出书库（或 booksData 连 config 都没有）时必须预检：错误 toast、不写盘、
+  // 不报成功、不关弹窗。
+  it('store 无本书 hash（书已移出书库）时：错误 toast、不写 config、不关弹窗', async () => {
+    useLibraryStore.setState({ library: [], hashIndex: new Map() });
+    const saveSpy = vi
+      .spyOn(useBookDataStore.getState(), 'saveConfig')
+      .mockResolvedValue(undefined);
+    const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
+    const onClose = vi.fn();
+    renderDialog('k1', onClose);
+
+    await waitFor(() => screen.getByRole('button', { name: GENERATE }));
+    fireEvent.click(screen.getByRole('button', { name: GENERATE }));
+
+    await waitFor(() =>
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        'toast',
+        expect.objectContaining({ type: 'error', message: 'Failed to save virtual TOC' }),
+      ),
+    );
+    expect(saveSpy).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(useBookDataStore.getState().booksData['k1']).toBeUndefined();
   });
 
   // R20：扫描途中「取消」若仍可点，用户取消后扫描完成依旧会 apply + saveConfig + 成功
@@ -402,6 +444,9 @@ describe('VirtualTocDialog', () => {
     unmount();
 
     synthMock.shouldOfferSynthesis.mockReturnValue(true);
+    // R45：persistAndApply 现在要求 booksData 里已有本书 config（缺失即报错返回，
+    // 不再用 `?? { updatedAt: 0 }` 把空白 config 整份写盘）。
+    useBookDataStore.setState({ booksData: { k1: makeStoreBookData('k1', bookDoc) } });
     const saveSpy = vi
       .spyOn(useBookDataStore.getState(), 'saveConfig')
       .mockResolvedValue(undefined);

@@ -142,6 +142,16 @@ describe('侧栏 TOC 空态', () => {
     expect(screen.queryByRole('button', { name: GENERATE_ENTRY })).toBeNull();
   });
 
+  // R41：无 slab 的书首次生成后，toc 非空且不退化——旧的入口条件把它判死，
+  // 用户无法重新生成或改 pattern。只要 toc 已含虚拟条目（href 是 CFI 串，即
+  // config 落盘形态），入口必须保持可见（与 TOCView 并列，同退化非空形态）。
+  it('无 slab 书 toc 已含 CFI 虚拟条目时生成入口仍渲染', () => {
+    const virtualToc = [{ id: -1, label: '第一章 开端', href: 'epubcfi(/6/4!/4/2)', index: 0 }];
+    render(<Content {...makeProps(virtualToc, { sections: healthySections })} />);
+    expect(screen.getByTestId('toc-view')).toBeTruthy();
+    expect(screen.getByRole('button', { name: GENERATE_ENTRY })).toBeTruthy();
+  });
+
   it('非 EPUB（MOBI）即使目录退化也不给生成入口', () => {
     mockBook.format = 'MOBI';
     render(<Content {...makeProps(structuralToc, { sections: slabSections })} />);

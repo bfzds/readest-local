@@ -164,6 +164,7 @@
   "TOC generated: {{count}} entries": "TOC generated: {{count}} entries",
   "No chapter-like lines matched. Try a custom pattern.": "No chapter-like lines matched. Try a custom pattern.",
   "Failed to generate TOC": "Failed to generate TOC",
+  "Failed to save virtual TOC": "Failed to save virtual TOC",
   "Cannot apply virtual TOC to this book": "Cannot apply virtual TOC to this book",
   "Virtual TOC is saved per book and never modifies the EPUB file.": "Virtual TOC is saved per book and never modifies the EPUB file."
 }

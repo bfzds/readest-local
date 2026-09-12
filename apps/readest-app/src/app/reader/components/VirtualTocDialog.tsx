@@ -9,6 +9,7 @@ import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { eventDispatcher } from '@/utils/event';
 import { useBookDataStore } from '@/store/bookDataStore';
+import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import type { BookDoc } from '@/libs/document';
 import type { VirtualTocEntry } from '@/types/book';
@@ -79,10 +80,28 @@ const VirtualTocDialog = ({ bookKey, bookDoc, onClose }: VirtualTocDialogProps) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pattern, bookDoc, language]);
 
-  // 顺序必须是「先 apply、后 saveConfig」：apply 会被 isTocDegraded / pre-paginated /
+  // 整体顺序是「预检 → apply → saveConfig」：apply 会被 isTocDegraded / pre-paginated /
   // 空条目三道守卫拒绝，若先持久化就会留下一份永远不生效的死配置，而用户看到的是成功提示。
+  // 预检必须排在 apply **之前**（R45）：saveConfig 第一步就查书库索引
+  // （bookDataStore.ts `hashIndex.get(hash)`），查不到本书 hash 会**静默早退**——
+  // 若预检放在 apply 之后，错误路径上 bookDoc.toc 已被原地换成新目录但 config 未落盘，
+  // 用户会停在一份一重开书就消失的内存态目录。预检按 saveConfig 的同一数据源：
+  // hash 不在书库索引（书已移除/尚未同步入库）或 booksData 里没有 config，一律
+  // error toast、不 apply、不写盘、不报成功、不关弹窗。原先 `?? { updatedAt: 0 }`
+  // 兜底还会把一份没有 viewSettings 的空白 config 整份落盘，一并废除。
   // 返回 false 时：错误 toast、不写 config、不关弹窗（调用方据此决定是否 onClose）。
   const persistAndApply = async (entries: VirtualTocEntry[]): Promise<boolean> => {
+    const store = useBookDataStore.getState();
+    const bookId = bookKey.split('-')[0]!;
+    const existing = store.getConfig(bookKey);
+    if (!existing || !useLibraryStore.getState().hashIndex.has(bookId)) {
+      eventDispatcher.dispatch('toast', {
+        message: _('Failed to save virtual TOC'),
+        type: 'error',
+        timeout: 4000,
+      });
+      return false;
+    }
     if (!applyVirtualToc(bookDoc, entries)) {
       eventDispatcher.dispatch('toast', {
         message: _('Cannot apply virtual TOC to this book'),
@@ -91,13 +110,10 @@ const VirtualTocDialog = ({ bookKey, bookDoc, onClose }: VirtualTocDialogProps) 
       });
       return false;
     }
-    const store = useBookDataStore.getState();
-    const existing = store.getConfig(bookKey) ?? { updatedAt: 0 };
     const config = { ...existing, virtualToc: entries, updatedAt: Date.now() };
     await store.saveConfig(envConfig, bookKey, config, useSettingsStore.getState().settings);
     // booksData 以书籍 id（bookKey 的 hash 段）为键，而 bookKey 带 `-viewN` 后缀：
     // 按完整 bookKey 写会新建一个永不读取的条目，目录树不会刷新。
-    const bookId = bookKey.split('-')[0]!;
     useBookDataStore.setState((state) => {
       const current = state.booksData[bookId];
       if (!current) return state;
@@ -108,13 +124,15 @@ const VirtualTocDialog = ({ bookKey, bookDoc, onClose }: VirtualTocDialogProps) 
       // splitTOCHref 定义在 EPUB.prototype 上），残废对象被 store 复用后 nav 管线调
       // bookDoc.splitTOCHref 直接抛 TypeError → 切书回来报 Failed to open book。
       // 「刷新目录」不需要靠换 bookDoc 引用：上面 applyVirtualToc 已经**原地**把
-      // `bookDoc.toc` 换成了一个新数组，而侧栏是**取数式**读取、不是订阅整个 store——
-      // SideBar.tsx:214 每次渲染现调 getBookData(sideBarBookKey) 取整份 BookData，
-      // :218 解构出的 bookDoc 再作为 **props** 传给 Content（:341）；Content 的
-      // `useBookDataStore((s) => s.getBookData)` 只拿取数函数本身，渲染时现读
-      // `bookDoc.toc`（Content.tsx:34）。所以后续任何一次渲染（弹窗关闭即触发）读到的
-      // 都是新 toc，保留同一引用不会让目录看起来没刷新；下面 `{ ...current }` 只是让
-      // store 里那份 BookData 同步带上新 config。
+      // `bookDoc.toc` 换成了一个新数组，而侧栏拿到新 toc 有两路——
+      // Content.tsx:25 的 `useBookDataStore()` 是**无选择器**全量订阅，booksData
+      // 替换当拍就触发 SidebarContent 重渲染；SideBar.tsx:214 则是渲染时现调
+      // getBookData(sideBarBookKey) 取整份 BookData（取数式），:218 解构出的
+      // bookDoc 再作为 **props** 传给 Content（:341），Content.tsx:26 的
+      // `useBookDataStore((s) => s.getBookData)` 同样只取取数函数本身。重渲染后
+      // 两路读到的都是新 toc（props 上同一 bookDoc 引用的 toc 已被原地换新，
+      // Content.tsx:34 现读），保留同一引用不会让目录看起来没刷新；下面
+      // `{ ...current }` 只是让 store 里那份 BookData 同步带上新 config。
       return {
         booksData: {
           ...state.booksData,

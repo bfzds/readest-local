@@ -248,7 +248,12 @@ describe('Paginator element-level jump top inset (browser)', () => {
     // 2) Explicit zero must be indistinguishable from unset.
     paginator.setAttribute('overlay-top-inset', '0px');
     const zero = await measureJump(index, target, away, container);
-    // 3) A non-zero inset must push the target down by exactly that many px.
+    // 3) A negative inset clamps to 0: identical landing to unset.
+    paginator.setAttribute('overlay-top-inset', `-${HEADER_BAR_PX}px`);
+    const negative = await measureJump(index, target, away, container);
+    expect(negative.position).toBe(unset.position);
+    expect(negative.delta).toBe(unset.delta);
+    // 4) A non-zero inset must push the target down by exactly that many px.
     paginator.setAttribute('overlay-top-inset', `${HEADER_BAR_PX}px`);
     const inset = await measureJump(index, target, away, container);
 
@@ -257,6 +262,7 @@ describe('Paginator element-level jump top inset (browser)', () => {
     console.warn(
       `[overlay-top-inset] unset: delta=${unset.delta} position=${unset.position} | ` +
         `0px: delta=${zero.delta} position=${zero.position} | ` +
+        `-${HEADER_BAR_PX}px: delta=${negative.delta} position=${negative.position} | ` +
         `${HEADER_BAR_PX}px: delta=${inset.delta} position=${inset.position}`,
     );
 
@@ -330,6 +336,8 @@ describe('Paginator element-level jump top inset (browser)', () => {
 
     // What the rule now avoids: on the horizontal scroll axis the inset moves
     // the landing sideways by exactly the inset instead of clearing the bar.
+    // characterization：当前 paginator 在竖排仍沿横轴推 inset；将来正解（竖排映射
+    // 到块轴）落地时须同步改写此断言。
     expect(Math.abs(unset.position - inset.position)).toBeCloseTo(HEADER_BAR_PX, 0);
   });
 });

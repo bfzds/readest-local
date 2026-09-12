@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import React, { useEffect, useState } from 'react';
 
 import { BookDoc } from '@/libs/document';
-import { isTocDegraded } from '@/services/virtualToc/apply';
+import { containsVirtualTocItem, isTocDegraded } from '@/services/virtualToc/apply';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useBookDataStore } from '@/store/bookDataStore';
@@ -39,7 +39,11 @@ const SidebarContent: React.FC<{
     (bookDoc.sections?.length ?? 0) > 0;
   // 目录非空也可能是退化的（几条无锚点结构条目指向一个巨型 section）——此时不能只
   // 看条目数，判据与 applyVirtualToc 门禁、弹窗合成入口共用同一份 isTocDegraded。
-  const showTocEntry = canGenerateToc && (tocEmpty || isTocDegraded(bookDoc));
+  // 已含虚拟条目的书（无 slab、首次生成后 toc 健康非空）同样必须保住入口，否则
+  // 用户无法重新生成或改 pattern（R41）。
+  const showTocEntry =
+    canGenerateToc &&
+    (tocEmpty || isTocDegraded(bookDoc) || containsVirtualTocItem(bookDoc.toc ?? []));
 
   useEffect(() => {
     if (!sideBarBookKey) return;

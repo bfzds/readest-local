@@ -44,6 +44,12 @@ export const synthesizeSectionToc = async (bookDoc: BookDoc): Promise<VirtualToc
       cfi: section.cfi,
       source: 'section' as const,
       generatedAt: now,
+      // 弹窗在 nav hydrate 之后运行，section.location 已由加载管线算好；合成条目
+      // 必须带上它的**拷贝**——否则条目无 location（或与 section 共享可变引用），
+      // findActiveLocationKey 拿不到区间，合成目录的当前章节图标永不点亮（R42）。
+      // 无 location 的 section 整键省略（不是 location: undefined），与旧 config
+      // 条目「无该字段」的落盘形态一致。
+      ...(section.location ? { location: { ...section.location } } : {}),
     };
   });
   // runWithConcurrency 返回位置对齐的 `{ item, result } | { item, error }`；

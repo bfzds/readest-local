@@ -18,6 +18,12 @@ export const calculateCumulativeSizes = (sections: SectionItem[]): number[] => {
   }, []);
 };
 
+/** 全书总 loc 数：条目字节总数按 SIZE_PER_LOC 折算取整（sizes 须先经
+ *  calculateSectionSizes 过滤，非 linear 内容与非法尺寸已记 0）。nav bake 与
+ *  virtualToc 扫描共用这一份实现，两处估算的页码口径不会漂移。 */
+export const computeTotalLocations = (sizes: number[]): number =>
+  Math.floor(sizes.reduce((sum, size) => sum + size, 0) / SIZE_PER_LOC);
+
 const processFragmentLocations = (
   fragments: SectionFragment[],
   parentByteOffset: number,
@@ -145,8 +151,7 @@ export const bakeLocationsAndCfis = (
 
   const sizes = calculateSectionSizes(sections);
   const cumulativeSizes = calculateCumulativeSizes(sections);
-  const totalSize = cumulativeSizes[cumulativeSizes.length - 1]! + sizes[sizes.length - 1]!;
-  const totalLocations = Math.floor(totalSize / SIZE_PER_LOC);
+  const totalLocations = computeTotalLocations(sizes);
 
   updateSectionLocations(sections, cumulativeSizes, sizes, totalLocations);
   const sectionsMap = createSectionsMap(sections);

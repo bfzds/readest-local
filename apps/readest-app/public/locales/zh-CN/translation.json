@@ -2060,6 +2060,7 @@
   "TOC generated: {{count}} entries": "已生成目录：{{count}} 条",
   "No chapter-like lines matched. Try a custom pattern.": "未匹配到章节样式行，可试试自定义正则",
   "Failed to generate TOC": "生成目录失败",
+  "Failed to save virtual TOC": "保存虚拟目录失败",
   "Cannot apply virtual TOC to this book": "本书目录结构无法应用虚拟目录",
   "Virtual TOC is saved per book and never modifies the EPUB file.": "虚拟目录按书保存，不会修改 EPUB 文件。"
 }

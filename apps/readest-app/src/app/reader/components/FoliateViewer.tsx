@@ -904,6 +904,13 @@ const FoliateViewer: React.FC<{
     viewSettings?.showFooter,
     viewSettings?.scrolled,
     viewSettings?.noContinuousScroll,
+    // `vertical` is synced asynchronously from the loaded document (the load
+    // callback mutates + re-persists viewSettings). Content detection for a
+    // vertical book flips it to true *after* the first applyMarginAndGap, so
+    // the effect must re-run or the stale overlay-top-inset (44px, meant for
+    // horizontal books) survives the whole first session — and on a vertical
+    // book that inset slides element-level jumps sideways along the scroll axis.
+    viewSettings?.vertical,
     viewState?.ttsEnabled,
     // Switching Player Style changes whether a band is reserved at all.
     viewSettings?.ttsPlayerStyle,
