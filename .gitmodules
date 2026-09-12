@@ -1,6 +1,9 @@
 [submodule "packages/foliate-js"]
 	path = packages/foliate-js
-	url = https://github.com/readest/foliate-js.git
+	# 本仓库对 foliate-js 维护本地补丁链（渲染层修复，见父仓库 CHANGELOG/交接文档），
+	# 指向个人 fork 而非上游 readest/foliate-js，保证父仓库 gitlink 指向的提交
+	# 对任何 clone 都可达；同步上游：cd packages/foliate-js && git remote add upstream https://github.com/readest/foliate-js.git && git fetch upstream
+	url = https://github.com/bfzds/foliate-js.git
 [submodule "packages/tauri"]
 	path = packages/tauri
 	url = https://github.com/readest/tauri.git
