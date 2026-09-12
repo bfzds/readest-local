@@ -19,6 +19,12 @@ use tauri_plugin_fs::FsExt;
 
 #[cfg(desktop)]
 use tauri::{Listener, Url};
+#[cfg(all(not(target_os = "macos"), desktop))]
+use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(all(not(target_os = "macos"), desktop))]
+use std::sync::{Arc, Mutex};
+#[cfg(all(not(target_os = "macos"), desktop))]
+use std::time::{Duration, Instant};
 mod dir_scanner;
 mod epub_parser;
 mod library_lock;
@@ -413,9 +419,76 @@ pub fn run() {
             };
 
             #[cfg(not(target_os = "macos"))]
+            let main_window = win_builder.build().unwrap();
+
+            // Main-window dead-man switch (#2): the custom title bar lives in
+            // the webview, so a white screen / load failure (dev server dead,
+            // broken frontend bundle) leaves the window with no visible way to
+            // close it — the only way out was killing the process. The webview
+            // emits `main-window-alive` every few seconds (see
+            // mainWindowHeartbeat.ts); when those heartbeats stop, show the
+            // window and re-enable native decorations — an OS-level title bar
+            // with a real close button appears — and latch. If heartbeats
+            // resume (frontend recovered), restore the custom chrome. macOS
+            // always has real decorations and is excluded.
+            #[cfg(all(not(target_os = "macos"), desktop))]
             {
-                win_builder.build().unwrap();
+                let last_alive = Arc::new(Mutex::new(Instant::now()));
+                let fallback_latched = Arc::new(AtomicBool::new(false));
+                let app_handle = app.handle().clone();
+
+                let alive_for_listener = last_alive.clone();
+                let latched_for_listener = fallback_latched.clone();
+                let handle_for_listener = app_handle.clone();
+                main_window.listen("main-window-alive", move |_| {
+                    *alive_for_listener.lock().unwrap() = Instant::now();
+                    // Frontend came back after the fallback kicked in — the
+                    // custom title bar works again, hand control back to it.
+                    if latched_for_listener.swap(false, Ordering::SeqCst) {
+                        if let Some(main) = handle_for_listener.get_webview_window("main") {
+                            let _ = main.set_decorations(false);
+                        }
+                    }
+                });
+
+                std::thread::spawn(move || {
+                    const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(20);
+                    loop {
+                        std::thread::sleep(Duration::from_secs(5));
+                        let Some(main) = app_handle.get_webview_window("main") else {
+                            continue;
+                        };
+                        let stale = last_alive.lock().unwrap().elapsed() > HEARTBEAT_TIMEOUT;
+                        // swap(true) trips only on the healthy→fallback edge, so
+                        // a still-latched window never re-runs the fallback.
+                        if !stale || fallback_latched.swap(true, Ordering::SeqCst) {
+                            continue;
+                        }
+                        let _ = main.show();
+                        let _ = main.unminimize();
+                        let _ = main.set_decorations(true);
+                        let _ = main.set_focus();
+                        // Dev-only hint: in practice this fires when the Next dev
+                        // server is not ready or wedged (e.g. corrupt Turbopack
+                        // cache), leaving the webview on an error page.
+                        #[cfg(debug_assertions)]
+                        {
+                            use tauri_plugin_dialog::DialogExt;
+                            app_handle
+                                .dialog()
+                                .message(
+                                    "前端页面加载失败（next dev 未就绪或已挂起）。\n\
+                                     已为窗口启用原生标题栏，可直接点击关闭按钮退出。\n\
+                                     修复：重启 pnpm dev；若反复白屏，删除 apps/readest-app/.next 后重试。",
+                                )
+                                .title("Readest dev")
+                                .kind(tauri_plugin_dialog::MessageDialogKind::Warning)
+                                .show(|_| {});
+                        }
+                    }
+                });
             }
+
             // let win = win_builder.build().unwrap();
             // win.open_devtools();
 

@@ -17,6 +17,7 @@ import { useBackgroundTexture } from '@/hooks/useBackgroundTexture';
 import { useEinkMode } from '@/hooks/useEinkMode';
 import { getLocale } from '@/utils/misc';
 import { getDirFromUILanguage } from '@/utils/rtl';
+import { startMainWindowHeartbeat } from '@/utils/mainWindowHeartbeat';
 import { getAndroidPatchedViewportContent } from '@/utils/viewport';
 import { getLibraryViewSettings } from '@/helpers/settings';
 import { DropdownProvider } from '@/context/DropdownContext';
@@ -39,6 +40,10 @@ const Providers = ({ children }: { children: React.ReactNode }) => {
   const iconSize = useDefaultIconSize();
   useSafeAreaInsets(); // Initialize safe area insets
   useMouseNavigation(); // Mouse side-button (back/forward) navigation
+  // Dead-man switch for the main window: while this webview is alive it emits
+  // `main-window-alive`; the Rust watchdog (lib.rs) re-enables native
+  // decorations when the heartbeats stop (white screen / load failure).
+  useEffect(() => startMainWindowHeartbeat(), []);
   useSuppressDefaultContextMenu(); // Hide WebView2's browser context menu on non-editable areas
   useSettingsSync(); // Adopt global settings broadcast by other windows (#4580)
 
