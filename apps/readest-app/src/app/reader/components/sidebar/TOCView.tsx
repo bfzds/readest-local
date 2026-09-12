@@ -4,6 +4,7 @@ import { useOverlayScrollbars } from 'overlayscrollbars-react';
 import 'overlayscrollbars/overlayscrollbars.css';
 
 import { TOCItem } from '@/libs/document';
+import { filterWholeBookTocItems } from '@/services/virtualToc/apply';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { eventDispatcher } from '@/utils/event';
@@ -48,7 +49,13 @@ const TOCView: React.FC<{
   const progress = getProgress(bookKey);
   const isEink = !!getViewSettings(bookKey)?.isEink;
 
-  const [initialScrollTarget] = useState(() => getInitialScrollTarget(toc, progress?.sectionHref));
+  // 展示层过滤：退化 NCX 带进来的「书名条目」（全书级、无章节粒度）不进目录
+  // 列表。filterWholeBookTocItems 自带空目录守卫；nav 数据与持久化不受影响，
+  // 标注/书签视图的分组输入也保持原始 toc。
+  const visibleToc = useMemo(() => filterWholeBookTocItems(toc), [toc]);
+  const [initialScrollTarget] = useState(() =>
+    getInitialScrollTarget(visibleToc, progress?.sectionHref),
+  );
   const [expandedItems, setExpandedItems] = useState<Set<string>>(initialScrollTarget.expanded);
   const [containerHeight, setContainerHeight] = useState(400);
 
@@ -173,7 +180,10 @@ const TOCView: React.FC<{
   }, []);
 
   const activeHref = progress?.sectionHref ?? null;
-  const flatItems = useMemo(() => flattenTOC(toc, expandedItems), [toc, expandedItems]);
+  const flatItems = useMemo(
+    () => flattenTOC(visibleToc, expandedItems),
+    [visibleToc, expandedItems],
+  );
   // 虚拟条目的 href 是 CFI 串，与 sectionHref 永不相等 → 改用 location 区间判定。
   // 返回值是字符串（值稳定），只传给 memo 的 TOCItemView，避免每次渲染穿透它的 memo。
   const activeLocationKey = useMemo(
@@ -220,7 +230,7 @@ const TOCView: React.FC<{
     }
     if (userScrolledRef.current && initialAutoScrollProcessedRef.current) return;
     setExpandedItems((prev) => {
-      const next = computeExpandedSet(toc, progress?.sectionHref);
+      const next = computeExpandedSet(visibleToc, progress?.sectionHref);
       return setsHaveSameContents(prev, next) ? prev : next;
     });
     if (progress?.sectionHref) {
@@ -231,7 +241,7 @@ const TOCView: React.FC<{
       }
       initialAutoScrollProcessedRef.current = true;
     }
-  }, [isSideBarVisible, sideBarBookKey, bookKey, toc, progress]);
+  }, [isSideBarVisible, sideBarBookKey, bookKey, visibleToc, progress]);
 
   useEffect(() => {
     if (!pendingScrollRef.current || !activeHref || !isSideBarVisible) return;

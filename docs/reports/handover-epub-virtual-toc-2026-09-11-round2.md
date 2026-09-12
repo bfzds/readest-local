@@ -128,6 +128,8 @@ git push origin readest-local     # 会推 a02e52fb1..e7f2b1dcb 共 5 个
 
 按"四、问题 4"里的**可导航跨度占比**判据实现：这类条目**不参与当前章节高亮**（真实条目仍走原 href 相等判定）。要补守门测试：跨度占比 ≥ 阈值的真实条目不参与高亮、且不与虚拟条目的区间匹配抢 key。**不要**现在做"从列表里隐藏条目"那种启发式删除（太重，且对某些用户它是"回全文开头"的锚点）。
 
+> **裁定更新（2026-09-12 同日，用户推翻「保留锚点」）**：该锚点理由不成立——书名条目排在信息/目录等结构条目之后、指向正文文件起点而非全书开头，语义与位置均错误。已实现展示层隐藏 `filterWholeBookTocItems`（apply.ts，TOCView 接线）：复用 `isWholeBookTocItem` 判别器，守卫为「过滤会清空某一级则该级原样保留」；nav 计算与 nav.json 不经此路径，标注/书签视图分组输入不变。守门测试见 `virtual-toc-apply.test.ts` 的 `filterWholeBookTocItems` 套件。
+
 ### ④ 全分支终审 + 积压小问题 triage（✅ 2026-09-12 已完成：三路并行终审（A 引擎/B 接线/C 子模块）+ 52 条 triage 全量核实 + 修复轮 `fbb9af320`（终审 findings F-1/M1/M2/B-m1 等七处缺陷修复 + triage 建议修 4 项）+ 独立复审（B1 i18n、M1' 预检挪位由控制方亲手修）；R48 裁定短章书兜底暂不做（纯位置守卫经算术证明不可行），留 it.fails 绊线；triage 待定 2 条留用户）
 
 用最强模型跑 `MERGE_BASE..HEAD` 的整体审查（MERGE_BASE = 计划基线 `9dfd12d43`），把 ledger 里约 **40 条 `deferred minor`** 逐条 triage。终审要特别盯：

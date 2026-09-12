@@ -30,6 +30,29 @@ export const isWholeBookTocItem = (item: TOCItem): boolean => {
   return (loc.next - loc.current) / loc.total >= WHOLE_BOOK_SPAN_RATIO;
 };
 
+/** 目录展示过滤：把全书级条目（退化 NCX 带进来的「书名条目」）从侧栏目录里
+ *  隐藏。它排在章节列表中间、指向正文文件起点，既不是章节也当不了「回开头」
+ *  锚点（上面还有信息/目录等真正的结构条目）——原裁定保留它作锚点，用户裁定
+ *  推翻（2026-09-12）：语义错误的位置没有任何留存价值。仅限展示层：nav 计算
+ *  与 nav.json 缓存不经过本函数。守卫：某一级过滤后会清空该级时原样保留（退
+ *  化到只有结构残渣的书仍保底可见）；无任何全书级条目时返回原引用零开销。 */
+export const filterWholeBookTocItems = (items: TOCItem[]): TOCItem[] => {
+  const filterAt = (list: TOCItem[]): TOCItem[] | null => {
+    const kept = list.filter((item) => !isWholeBookTocItem(item));
+    if (!kept.length) return null;
+    let changed = kept.length !== list.length;
+    const next = kept.map((item) => {
+      if (!item.subitems?.length) return item;
+      const sub = filterAt(item.subitems);
+      if (sub === null || sub === item.subitems) return item;
+      changed = true;
+      return { ...item, subitems: sub };
+    });
+    return changed ? next : list;
+  };
+  return filterAt(items) ?? items;
+};
+
 /** 取 TOC href 的 section 路径。splitTOCHref 的返回形态随格式而异（EPUB 返回
  *  [路径, fragment]，PDF 是 async），拿不到数组时退回按 '#' 手拆，绝不抛错。 */
 const sectionPathOf = (bookDoc: BookDoc, href: string): string => {

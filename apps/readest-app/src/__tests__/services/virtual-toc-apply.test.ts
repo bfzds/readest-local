@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyVirtualToc,
+  filterWholeBookTocItems,
   isVirtualTocItem,
   isWholeBookTocItem,
   stripVirtualTocItems,
@@ -245,6 +246,73 @@ describe('isWholeBookTocItem', () => {
         location: { current: 5, next: 3, total: 179 },
       }),
     ).toBe(false);
+  });
+});
+
+describe('filterWholeBookTocItems', () => {
+  // 退化 NCX 的「书名条目」在目录列表中的展示过滤：它排在章节列表中间、指向
+  // 正文文件起点，既不是章节也当不了「回开头」锚点（上面还有信息/目录两条
+  // 结构条目），按用户裁定从目录展示中移除——但只在展示层，nav 数据不动。
+  it('全书级条目被隐藏，其余条目原样保留', () => {
+    const items = [
+      tocItem(0, 'OEBPS/info.html'),
+      tocItem(1, 'OEBPS/toc.html'),
+      { ...tocItem(2, 'OEBPS/page-0.html'), location: { current: 1, next: 179, total: 179 } },
+      tocItem(3, 'OEBPS/page-0.html#ch1'),
+    ];
+    const filtered = filterWholeBookTocItems(items);
+    expect(filtered).toHaveLength(3);
+    expect(filtered.map((i) => i.href)).toEqual([
+      'OEBPS/info.html',
+      'OEBPS/toc.html',
+      'OEBPS/page-0.html#ch1',
+    ]);
+  });
+
+  it('全部条目都是全书级 → 原样返回（守卫：目录不能被清空）', () => {
+    const items = [
+      { ...tocItem(0, 'OEBPS/page-0.html'), location: { current: 0, next: 90, total: 100 } },
+      { ...tocItem(1, 'OEBPS/body.html'), location: { current: 0, next: 100, total: 100 } },
+    ];
+    expect(filterWholeBookTocItems(items)).toBe(items);
+  });
+
+  it('过滤后为空 → 原样返回（守卫的同义形态：连同子项一起保留）', () => {
+    const items = [
+      {
+        ...tocItem(0, 'OEBPS/page-0.html', [tocItem(1, 'OEBPS/page-0.html#sec1')]),
+        location: { current: 0, next: 90, total: 100 },
+      },
+      { ...tocItem(2, 'OEBPS/body.html'), location: { current: 0, next: 100, total: 100 } },
+    ];
+    const filtered = filterWholeBookTocItems(items);
+    expect(filtered).toBe(items);
+    expect(filtered[0]!.subitems).toHaveLength(1);
+  });
+
+  it('无全书级条目 → 返回原数组引用（零拷贝快路径）', () => {
+    const items = [tocItem(0, 'OEBPS/page-0.html#ch1'), tocItem(1, 'OEBPS/chap-1.html')];
+    expect(filterWholeBookTocItems(items)).toBe(items);
+  });
+
+  it('子项里的全书级条目同样被隐藏，兄弟子项保留', () => {
+    const items = [
+      {
+        ...tocItem(0, 'OEBPS/part-1.html', [
+          { ...tocItem(1, 'OEBPS/part-1.html'), location: { current: 0, next: 95, total: 100 } },
+          tocItem(2, 'OEBPS/part-1.html#sec2'),
+        ]),
+      },
+    ];
+    const filtered = filterWholeBookTocItems(items);
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0]!.subitems).toHaveLength(1);
+    expect(filtered[0]!.subitems![0]!.href).toBe('OEBPS/part-1.html#sec2');
+  });
+
+  it('虚拟条目、缺 location 的条目不受影响（判别器语义原样复用）', () => {
+    const items = [tocItem(-1, 'epubcfi(/6/4!/4/2)'), tocItem(0, 'OEBPS/page-0.html')];
+    expect(filterWholeBookTocItems(items)).toBe(items);
   });
 });
 
