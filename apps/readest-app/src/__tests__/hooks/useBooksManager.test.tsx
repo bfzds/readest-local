@@ -323,4 +323,73 @@ describe('useBooksManager open-failure handling', () => {
     expect(h.setSideBarVisibleMock).toHaveBeenCalledWith(false);
     expect(h.setSideBarBookKeyMock).not.toHaveBeenCalled();
   });
+
+  // 连按侧键时切书必须串行：上一次 initViewState settle 之前，排队的下一次切
+  // 书不得开始——B2 会在下一次换书时 close 掉旧 key 的视图，若初始化仍在进行
+  // 中就会与它竞争（僵尸 viewState、误报 toast、渲染竞争）。旧实现用微任务
+  // 解锁，锁覆盖不到异步初始化，正是这里要防的竞态。
+  // 观测点说明：第二次后退的目标（book1）是挂载时的书，走 existing 同步分支
+  // （不再触发 initViewState），因此用 setSideBarBookKey 是否被调用来断言
+  // "排队中的切书是否提前执行"。
+  it('serializes rapid side-key switches: the next switch waits for the in-flight initViewState', async () => {
+    h.bookKeys = ['book1-abc'];
+    h.bookDataMap = {
+      book1: { hash: 'book1' },
+      book2: { hash: 'book2' },
+      book3: { hash: 'book3' },
+    };
+    renderHook(() => useBooksManager());
+    // 历史 [book1, book2, book3]，当前 = book3
+    await act(async () => {
+      eventDispatcher.dispatch('open-book-in-reader', { bookHash: 'book2' });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      eventDispatcher.dispatch('open-book-in-reader', { bookHash: 'book3' });
+      await Promise.resolve();
+    });
+    h.initViewStateMock.mockClear();
+
+    // 第一次后退：切到 book2，其 initViewState 挂起（模拟解析耗时）
+    let resolveSwitch!: () => void;
+    h.initViewStateMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSwitch = resolve;
+        }),
+    );
+    await act(async () => {
+      eventDispatcher.dispatch('library-nav-back');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(h.initViewStateMock).toHaveBeenCalledTimes(1);
+    expect(h.initViewStateMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'book2',
+      expect.any(String),
+      true,
+    );
+    // 清掉第一次切书（new-key 分支）留下的 setSideBarBookKey 调用记录
+    h.setSideBarBookKeyMock.mockClear();
+
+    // 挂起期间连按第二次后退：必须排队，不得立即执行 book1 的切换
+    await act(async () => {
+      eventDispatcher.dispatch('library-nav-back');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(h.initViewStateMock).toHaveBeenCalledTimes(1);
+    expect(h.setSideBarBookKeyMock).not.toHaveBeenCalled();
+
+    // 第一次初始化完成后，排队的切书才开始
+    await act(async () => {
+      resolveSwitch();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(h.initViewStateMock).toHaveBeenCalledTimes(1);
+    expect(h.setSideBarBookKeyMock).toHaveBeenCalledWith('book1-abc');
+  });
 });

@@ -143,7 +143,16 @@ const useBooksManager = () => {
     }
   };
 
-  const openBookInReader = (bookHash: string, cfi?: string, updateUrl = true, record = true) => {
+  // Returns a promise that settles when the book is actually open: the
+  // initViewState promise (new-key branch, errors already caught), or
+  // immediately (existing branch). Side-button switching awaits it so rapid
+  // presses serialize (see advanceSwitch); other callers may ignore it.
+  const openBookInReader = (
+    bookHash: string,
+    cfi?: string,
+    updateUrl = true,
+    record = true,
+  ): Promise<void> | void => {
     if (record) recordOpen(bookHash);
     const existing = bookKeys.find((key) => key.startsWith(bookHash));
     if (existing) {
@@ -167,11 +176,12 @@ const useBooksManager = () => {
       useReaderStore.getState().getView(k)?.close?.();
       useReaderStore.getState().clearViewState(k);
     }
-    initViewState(envConfig, bookHash, newKey, true).catch(handleOpenError);
+    const opening = initViewState(envConfig, bookHash, newKey, true).catch(handleOpenError);
     setBookKeys([newKey]);
     setSideBarBookKey(newKey);
     if (updateUrl) setShouldUpdateSearchParams(true);
     if (cfi) goToCfiWhenReady(newKey, cfi);
+    return opening;
   };
 
   // Stable ref so the listener calls the latest closure without re-subscribing.
@@ -213,13 +223,17 @@ const useBooksManager = () => {
     switchInFlightRef.current = true;
     navIndexRef.current = idx;
     // updateUrl:false —— 切书是原地内容替换（不产生历史记录、不触发 ViewTransitions）。
-    openBookRef.current(navHistoryRef.current[idx]!, undefined, false, false);
-    // 历史书已解析缓存，切换只是 focus/swap —— 下个微任务解锁并继续排空队列
-    // （防止切到一本已打开的书时 bookKeys 不变导致的死锁）。
-    queueMicrotask(() => {
-      switchInFlightRef.current = false;
-      void advanceSwitch();
-    });
+    // 锁必须覆盖到这次打开真正 settle（initViewState 完成/失败），而不是旧实现的
+    // 一个微任务：B2 会在下次换书时 close 掉旧 key 的视图，若上一次初始化仍在进行
+    // 中，连按侧键会让两次异步初始化互相踩踏（僵尸 viewState、误报 toast、渲染
+    // 竞争）。existing 分支（目标书仍挂载）同步返回，解锁在下一个微任务，无死锁。
+    const opened = openBookRef.current(navHistoryRef.current[idx]!, undefined, false, false);
+    void Promise.resolve(opened)
+      .catch(() => {}) // handleOpenError 已在 openBookInReader 内消化，此处兜底防未处理拒绝
+      .finally(() => {
+        switchInFlightRef.current = false;
+        void advanceSwitch();
+      });
   };
   const switchBook = (direction: -1 | 1) => {
     pendingDirRef.current += direction;
