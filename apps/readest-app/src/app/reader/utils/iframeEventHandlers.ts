@@ -409,9 +409,30 @@ export const handleMouseDown = (bookKey: string, event: MouseEvent) => {
   // main window, but the reading content lives in an iframe whose mousedown
   // never bubbles to it — forward the press so back/forward works there too.
   if (event.button === 3 || event.button === 4) {
+    // Same guard rails as the window-level listener (useMouseNavigation):
+    // presses inside editable fields shouldn't navigate, and a side-button
+    // press while the primary button is still held (drag/text-selection in
+    // progress) is almost always accidental.
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('input, textarea, select, [contenteditable]')) return;
+    if (event.buttons & 1) return;
     window.postMessage({ type: 'iframe-side-button', bookKey, button: event.button }, '*');
   }
 };
+
+// Side-button presses reach the app as an 'iframe-side-button' postMessage.
+// The producer (handleMouseDown) is a parent-realm function bound to the
+// iframe's document, so its `window.postMessage` resolves `window` to the MAIN
+// window: the message is an intra-window post whose `event.source` is the main
+// window, never the iframe. Accept that provenance — plus a genuine book
+// iframe for any future cross-window producer — and reject everything else.
+export const isTrustedSideButtonSource = (source: MessageEventSource | null): boolean =>
+  source === window || isTrustedBookIframeSource(source);
+
+// True when the source is one of the document's book iframes.
+export const isTrustedBookIframeSource = (source: MessageEventSource | null): boolean =>
+  !!source &&
+  Array.from(document.querySelectorAll('iframe')).some((frame) => frame.contentWindow === source);
 
 // A tappable media element under the pointer, resolved to the payload the image
 // gallery / table zoom viewers consume.

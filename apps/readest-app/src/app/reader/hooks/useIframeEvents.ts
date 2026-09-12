@@ -13,6 +13,7 @@ import {
   beginLayeredTurnTouch,
   cancelLayeredTurnTouch,
   endLayeredTurnTouch,
+  isTrustedSideButtonSource,
 } from '@/app/reader/utils/iframeEventHandlers';
 import { NATIVE_CAPTURED_TURN_ATTRIBUTE } from '@/app/reader/utils/turnGestureArena';
 import {
@@ -94,6 +95,9 @@ export const useMouseEvent = (
           // Reading iframe forwarded a mouse side-button press (see
           // handleMouseDown) — map it to app-level back/forward navigation,
           // with the same search-bar interlock as the window-level path.
+          // Verify the provenance: the intra-window producer shows up with
+          // source === window (see isTrustedSideButtonSource).
+          if (!isTrustedSideButtonSource(msg.source)) return;
           if (msg.data.button === 3) {
             if (!handleSideButtonBackInterlock()) {
               eventDispatcher.dispatch('library-nav-back');

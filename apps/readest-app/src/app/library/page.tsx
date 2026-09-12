@@ -18,6 +18,7 @@ import {
 import { debounce } from '@/utils/debounce';
 import { DEFAULT_NEARBY_WORDS } from '@/utils/searchConfig';
 import { clearLibrarySearchHistory, loadLibrarySearchHistory } from './utils/searchHistory';
+import { isStaleForwardTarget } from './utils/forwardStack';
 import type { LibrarySearchTarget } from '@/types/book';
 import { navigateToLibrary, navigateToReader } from '@/utils/nav';
 import { getBookWithUpdatedMetadata, listFormater } from '@/utils/book';
@@ -424,8 +425,13 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   // Next.js does commit. The trailing empty `group=` is stripped via a
   // cleanup effect below (purely cosmetic URL rewrite). See
   // https://github.com/readest/readest/issues/3782.
+  // 鼠标侧键"前进"栈（见 handleMouseNavBack/Forward）：后退时记录退出的分组，
+  // 前进时恢复。声明在 handleLibraryNavigation 之前——后者在每次新分支导航时
+  // 清空它（浏览器语义：新导航之后"前进"作废）。
+  const forwardGroupStackRef = useRef<{ group: string; groupBy?: string; from?: string }[]>([]);
+
   const handleLibraryNavigation = useCallback(
-    (targetGroup: string) => {
+    (targetGroup: string, options?: { clearForwardStack?: boolean }) => {
       // The selection is scoped to the view the user made it in; navigating
       // invalidates that context, so carry nothing over (and never let the
       // confirm dialogs reference books the user can no longer see).
@@ -433,14 +439,35 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       setIsSelectAll(false);
       setIsSelectNone(false);
 
+      // 默认视为一次新分支导航：清空侧键前进栈，避免"前进"跳到过期分组。
+      // 侧键后退链路经 handleBackUpOneGroupLevel 到达这里时传
+      // clearForwardStack:false，保留刚压栈的后退记录。
+      if (options?.clearForwardStack !== false) forwardGroupStackRef.current = [];
+
       const params = new URLSearchParams(window.location.search);
       const currentGroup = params.get('group') || '';
 
       // Save current scroll position BEFORE navigation
       saveScrollPosition(currentGroup);
 
-      // Detect and set navigation direction
-      const direction = currentGroup && !targetGroup ? 'back' : 'forward';
+      // Detect and set navigation direction. Compare folder depth (path
+      // segment count): retreating to a shallower folder — including the top
+      // level — is "back"; entering a deeper or sibling folder, or a virtual
+      // group, is "forward". The old check (`currentGroup && !targetGroup`)
+      // only recognised the retreat-to-top case, so backing out of a nested
+      // folder to its parent animated forward. Leaving a virtual group (its
+      // id never resolves to a folder path) always counts as "back".
+      const folderPath = currentGroup
+        ? useLibraryStore.getState().getGroupName(currentGroup)
+        : undefined;
+      const targetFolderPath = targetGroup
+        ? useLibraryStore.getState().getGroupName(targetGroup)
+        : undefined;
+      const groupDepth = (path: string | undefined) => (path ? path.split('/').length : 0);
+      const direction =
+        groupDepth(targetFolderPath) < groupDepth(folderPath) || (currentGroup && !folderPath)
+          ? 'back'
+          : 'forward';
       document.documentElement.setAttribute('data-nav-direction', direction);
 
       // Build query params — always `set` so the search string is non-empty
@@ -448,9 +475,6 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       params.set('group', targetGroup);
       // The callback is memoized on [router] only, so read fresh state here.
       const currentSettings = useSettingsStore.getState().settings;
-      const folderPath = currentGroup
-        ? useLibraryStore.getState().getGroupName(currentGroup)
-        : undefined;
       // Resolve the current dimension from the URL, not just the remembered /
       // global default: after a virtual-group back-navigation the top level sits
       // on a URL `groupBy` override (e.g. author), and ignoring it would re-derive
@@ -468,9 +492,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       // 同时把来源 group（'' = 顶层，或文件夹 id）记进 `from`，让退出虚拟分组能
       // 精确回到进入时的位置；否则在文件夹内打开的作者分组，退出后落到全库顶层，
       // 面包屑/导航头消失、回不到来源文件夹（用户曾报的"导航栏消失"bug）。
-      const targetFolderPath = targetGroup
-        ? useLibraryStore.getState().getGroupName(targetGroup)
-        : undefined;
+      // targetFolderPath 已在导航方向判定处解析。
       if (targetGroup && isVirtualDimension && !targetFolderPath) {
         params.set('groupBy', currentGroupBy);
         params.set('from', currentGroup);
@@ -519,7 +541,9 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       const parentGroupId = parentPath ? getGroupId(parentPath) || '' : '';
       setIsSelectAll(false);
       setIsSelectNone(false);
-      handleLibraryNavigation(parentGroupId);
+      // 后退链路：不清空侧键前进栈——handleMouseNavBack 刚压栈的记录就是
+      // 这次后退要保留的。
+      handleLibraryNavigation(parentGroupId, { clearForwardStack: false });
       return;
     }
     // 虚拟分组（作者/系列/标签/主题）内后退：回到进入时的来源 —— `from` 参数记录
@@ -538,6 +562,9 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     // 必须删掉 URL 上的 groupBy override——否则虚拟维度会被强加到来源视图上，回退
     // 到顶层/文件夹时仍按错误的维度渲染。
     params.delete('groupBy');
+    // 退出来源视图同理是"后退"方向；显式设置，避免沿用上一次导航残留的
+    // data-nav-direction（该属性驱动 ::view-transition 的滑动方向）。
+    document.documentElement.setAttribute('data-nav-direction', 'back');
     navigateToLibrary(router, params.toString());
   };
 
@@ -546,9 +573,9 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   const triggerBackUpOneGroupLevel = useCallback(() => handleBackUpOneGroupLevelRef.current(), []);
 
   // Mouse side-button navigation (see useMouseNavigation). The library maps
-  // back/forward to moving up/down one group level. A small forward stack
-  // remembers the group we stepped back from so "forward" can return to it.
-  const forwardGroupStackRef = useRef<{ group: string; groupBy?: string; from?: string }[]>([]);
+  // back/forward to moving up/down one group level; the forward stack
+  // (forwardGroupStackRef, declared above handleLibraryNavigation) remembers
+  // the group we stepped back from so "forward" can return to it.
   const handleMouseNavBack = () => {
     const currentGroup = searchParams?.get('group') || '';
     if (currentGroup) {
@@ -566,6 +593,13 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   const handleMouseNavForward = () => {
     const target = forwardGroupStackRef.current.pop();
     if (!target) return;
+    // 弹出的目标可能已失效（后退之后分组被删除，文件夹分组解析不到）：整栈
+    // 作废、"前进"归零，而不是继续弹出更早的条目跳到更久远的位置。虚拟分组
+    //（携带 groupBy 维度）由书目元数据实时推导，无法静态校验，直接放行。
+    if (isStaleForwardTarget(target, useLibraryStore.getState().getGroupName)) {
+      forwardGroupStackRef.current = [];
+      return;
+    }
     setIsSelectAll(false);
     setIsSelectNone(false);
     // 直接恢复记住的 group 与虚拟维度（走 handleLibraryNavigation 会从当前顶层
@@ -2035,9 +2069,8 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     const group = path ? getGroupId(path) || '' : '';
     setIsSelectAll(false);
     setIsSelectNone(false);
-    // A fresh explicit navigation starts a new branch — clear the mouse
-    // side-button forward stack so "forward" doesn't jump to a stale group.
-    forwardGroupStackRef.current = [];
+    // A fresh explicit navigation starts a new branch — handleLibraryNavigation
+    // clears the mouse side-button forward stack by default.
     handleLibraryNavigation(group);
   };
 
