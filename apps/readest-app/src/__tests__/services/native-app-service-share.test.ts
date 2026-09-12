@@ -1,5 +1,13 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 
+// 本文件每个用例都要 vi.resetModules + 动态 import 重建整个 NativeAppService
+// （loadServiceWithOS），模块依赖链被整条重新加载，真实工作量大，用例耗时天然
+// 贴近 vitest 默认 5s 超时；并行全量跑时的调度抖动会让个别用例偶发越过 5s
+// （同 HEAD 有绿有红、单跑必绿、与本分支无关）——这是抖动，不是回归信号。
+// 放宽到 15s 而非更大：足以吸收并行抖动，同时仍能在实现真的挂起或显著变慢
+// （数量级劣化）时及时失败，不至于把真回归拖到 CI 全局超时才暴露。
+vi.setConfig({ testTimeout: 15_000 });
+
 const osTypeMock = vi.fn().mockReturnValue('macos');
 const writeTextFileMock = vi.fn().mockResolvedValue(undefined);
 const writeFileMock = vi.fn().mockResolvedValue(undefined);

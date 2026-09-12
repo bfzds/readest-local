@@ -205,6 +205,13 @@ describe('VirtualTocDialog', () => {
       }),
       {},
     );
+    // persistAndApply 主张「viewSettings 等既有字段合并保留」：夹具 config 是
+    // `{ updatedAt: 1, viewSettings: { sideBarTab: 'toc' } }`，写盘参数必须原样
+    // 带上 viewSettings（不丢不改），且 updatedAt 被刷新（> 1），而非只写
+    // virtualToc 就把既有字段抹掉。
+    const savedConfig = saveSpy.mock.calls[0]![2];
+    expect(savedConfig.viewSettings).toEqual({ sideBarTab: 'toc' });
+    expect(savedConfig.updatedAt).toBeGreaterThan(1);
     expect(setSpy).toHaveBeenCalled();
     const after = useBookDataStore.getState().booksData['k1']!;
     // 刷新目录靠的是**外层 BookData 换新对象**：Content.tsx:25 用无选择器的

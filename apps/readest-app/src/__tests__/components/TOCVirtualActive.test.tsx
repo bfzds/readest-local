@@ -89,6 +89,24 @@ describe('findActiveLocationKey（虚拟条目的当前章节判定）', () => {
     expect(findActiveLocationKey([realWithLocation, virtual], 0.05)).toBeNull();
     expect(findActiveLocationKey([virtual, realWithLocation], 0.05)).toBeNull();
   });
+
+  it('total 探测只认虚拟条目的 total（真实条目 total 不同且前置时不被带偏）', () => {
+    // 真实条目的 total（500）与虚拟条目（1000）不同且被前置：若实现退化成全表
+    // 探测（items.filter(isVirtualTocItem) 丢掉过滤），total 会取到 500 →
+    // currentLoc = round(0.45 × 500) = 225 → 落进真实条目 [0,500) 的区间，
+    // 返回 '0:500' 而非虚拟条目的 key，本用例必红。
+    const real: TOCItem = {
+      id: 0,
+      label: '真实',
+      href: 'OEBPS/a.html',
+      index: 0,
+      location: { current: 0, next: 500, total: 500 },
+    };
+    const v1 = virtualItem('甲', { current: 0, next: 300, total: 1000 });
+    const v2 = virtualItem('乙', { current: 300, next: 600, total: 1000 });
+    // 0.45 × 1000 = 450 ∈ [300, 600) → 乙
+    expect(findActiveLocationKey([real, v1, v2], 0.45)).toBe(keyOf(v2));
+  });
 });
 
 describe('虚拟条目的书本图标（当前章节高亮）', () => {
