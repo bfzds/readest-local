@@ -1,6 +1,6 @@
 import { partialMD5 } from './md5';
 import { getBaseFilename } from './path';
-import { detectLanguage } from './lang';
+import { detectTxtLanguage } from './lang';
 import { configureZip } from './zip';
 import { parsePixivNovelFilename, parsePixivNovelMetaHeader } from './pixivNovel';
 import { CHAPTER_CANDIDATE_TITLE_RX, buildChapterRegexps } from './chapterRules';
@@ -260,7 +260,9 @@ export class TxtToEpubConverter {
     const headerAuthor = isPlausibleAuthorName(matchedAuthor) ? matchedAuthor : '';
     const author =
       headerMeta?.author || headerAuthor || filenameMeta.author || providedAuthor || '';
-    const language = providedLanguage || detectLanguage(fileHeader);
+    // 语言样本取全文而非头部：下载器的元数据头固定是中文（题名/作者/Tag列表…），
+    // 只看头部会把日文/韩文正文也判成 zh。书写系统判定在首个命中处即返回。
+    const language = providedLanguage || detectTxtLanguage(txtContent);
     // console.log(`Detected language: ${language}`);
     const identifier = await partialMD5(txtFile);
     const metadata = { bookTitle, author, language, identifier };
@@ -321,6 +323,9 @@ export class TxtToEpubConverter {
       fileHeader,
       headerMeta?.author || (filenameMeta.author ?? providedAuthor),
       providedLanguage,
+      // 语言样本额外带一段正文：下载器的元数据头固定是中文，只看头部会把日文/
+      // 韩文正文判成 zh。写入侧与 convertSmallFile 同口径（非日非韩即 zh）。
+      await this.readMidBodySampleFromFile(txtFile, runtimeEncoding),
     );
     // console.log(`Detected language: ${language}`);
     const identifier = await partialMD5(txtFile);
@@ -573,6 +578,15 @@ export class TxtToEpubConverter {
     return decoder.decode(headerBytes).slice(0, maxChars).trim();
   }
 
+  /** 正文中部的一小段样本，仅用于语言判定（书写系统识别，不需要干净边界）。 */
+  private async readMidBodySampleFromFile(file: File, encoding: string): Promise<string> {
+    const sampleSize = Math.min(ENCODING_MID_SAMPLE_BYTES, Math.max(0, file.size - 1));
+    if (sampleSize <= 0) return '';
+    const start = Math.floor((file.size - sampleSize) / 2);
+    const bytes = await file.slice(start, start + sampleSize).arrayBuffer();
+    return new TextDecoder(encoding).decode(bytes);
+  }
+
   private async *iterateSegmentsFromFile(
     file: File,
     encoding: string,
@@ -658,6 +672,7 @@ export class TxtToEpubConverter {
     fileHeader: string,
     providedAuthor?: string,
     providedLanguage?: string,
+    bodySample?: string,
   ): { author: string; language: string } {
     const authorMatch =
       fileHeader.match(/[【\[]?作者[】\]]?[:：\s]\s*(.+)\r?\n/) ||
@@ -668,7 +683,7 @@ export class TxtToEpubConverter {
     } catch {}
     const headerAuthor = isPlausibleAuthorName(matchedAuthor) ? matchedAuthor : '';
     const author = headerAuthor || providedAuthor || '';
-    const language = providedLanguage || detectLanguage(fileHeader);
+    const language = providedLanguage || detectTxtLanguage(`${fileHeader}\n${bodySample ?? ''}`);
     return { author, language };
   }
 

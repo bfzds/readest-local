@@ -6,6 +6,7 @@ import {
   buildChapterPatternFromSamples,
   extractTxtFilenameMetadata,
 } from '@/utils/txt';
+import { detectTxtLanguage } from '@/utils/lang';
 
 type TestChapter = {
   title: string;
@@ -34,6 +35,7 @@ type TxtConverterFlowPrivateAPI = TxtConverterPrivateAPI & {
   }): Promise<{
     chapterCount: number;
     usedFallback: boolean;
+    language: string;
   }>;
   extractChapters(
     txtContent: string,
@@ -504,6 +506,80 @@ describe('usedFallback：规则未命中时报告兜底切分（目录识别引�
     });
     expect(after.usedFallback).toBe(false);
     expect(after.chapterCount).toBe(4);
+  });
+});
+
+describe('章节规则语言判定：下载器头部不得把中文 TXT 判成英文', () => {
+  // 小说下载器导出的 TXT 头部：字段名 + 长 URL（含 pixiv jump.php 跳转链）。前
+  // 1000 字符里 ASCII 远多于汉字（真实样本 724 / 191，本夹具 504 / 263），franc
+  // 于是给出非中文结论（真实样本与本夹具都是 eng），zh 规则整条被换掉。
+  const downloaderHeader = [
+    '题名：测试书名',
+    '作者：某作者',
+    'Tag列表：标签一、标签二',
+    '原始网址：https://www.pixiv.net/novel/series/16177891',
+    '封面图片地址：https://i.pximg.net/novel-cover-original/img/2026/07/09/16/31/25/sci16177891_8cdab63a97837cb0e23273e5b3c50dd5.png',
+    '下载时间：2026-09-10T13:20:25.166Z',
+    '本文件由小说下载器生成，软件地址：https://github.com/404-novel-project/novel-downloader',
+    '完整版链接：',
+    '1-4章：https://www.pixiv.net/jump.php?https%3A%2F%2Fwww.fansky.co%2Flaonadididi%2F6',
+    '1-18章：https://www.pixiv.net/jump.php?https%3A%2F%2Fwww.fansky.co%2Flaonadididi%2F29',
+    '1-20章：https://www.pixiv.net/jump.php?https%3A%2F%2Fwww.fansky.co%2Flaonadididi%2F31',
+  ].join('\n');
+
+  const zhBody = (chapter: string) =>
+    Array.from({ length: 8 }, (_, i) => `${chapter}第${i + 1}段正文内容。`).join('\n');
+
+  it('keeps Chinese chapter detection when the header is URL-heavy', async () => {
+    const converter = new TxtToEpubConverter() as unknown as TxtConverterFlowPrivateAPI;
+    converter.detectEncoding = () => 'utf-8';
+    converter.createEpub = async () => new Blob();
+    const text = [
+      downloaderHeader,
+      '第一章 开端',
+      zhBody('开端'),
+      '第二章 发展',
+      zhBody('发展'),
+      '第三章 结局',
+      zhBody('结局'),
+    ].join('\n');
+
+    const result = await converter.convert({ file: new File([text], 'sample.txt') });
+
+    expect(result.language).toBe('zh');
+    expect(result.usedFallback).toBe(false);
+  });
+
+  it('detects the chapter-rule language from script, defaulting to zh', () => {
+    // 头部噪声（URL / 字段名）不参与判定
+    expect(detectTxtLanguage(downloaderHeader)).toBe('zh');
+    expect(detectTxtLanguage('第一章\n正文内容。')).toBe('zh');
+    // 假名/谚文优先于汉字：日文、韩文正文都夹汉字
+    expect(detectTxtLanguage('第一章\nこれはテストです。')).toBe('ja');
+    expect(detectTxtLanguage('第一章\n이것은 테스트입니다.')).toBe('ko');
+    // 本项目不导入英文书：纯拉丁文本也按 zh 处理（zh 规则集本身含 chapter N）
+    expect(detectTxtLanguage('Title\nPlain latin text only.')).toBe('zh');
+  });
+
+  it('大文件路径用「头部 + 正文样本」判语言，不被中文元数据头带偏', () => {
+    const converter = new TxtToEpubConverter() as unknown as {
+      extractAuthorAndLanguage(
+        header: string,
+        author?: string,
+        language?: string,
+        bodySample?: string,
+      ): { author: string; language: string };
+    };
+    const header = '题名：测试书名\n作者：某作者\n软件地址：https://example.com/downloader';
+
+    expect(
+      converter.extractAuthorAndLanguage(header, undefined, undefined, 'これはテストです。'),
+    ).toMatchObject({ language: 'ja' });
+    expect(converter.extractAuthorAndLanguage(header)).toMatchObject({ language: 'zh' });
+    // 调用方指定的语言优先，不参与判定
+    expect(converter.extractAuthorAndLanguage(header, undefined, 'ko')).toMatchObject({
+      language: 'ko',
+    });
   });
 });
 

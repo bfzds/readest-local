@@ -146,6 +146,25 @@ export const inferLangFromScript = (text: string, lang: string): string => {
   return lang;
 };
 
+/**
+ * TXT 导入的章节规则语言判定（本项目不导入英文书：非日非韩一律按中文）。
+ *
+ * 这里不能用 franc：小说下载器导出的 TXT 开头是「题名/作者/Tag列表/原始网址/
+ * 封面图片地址/简介/下载时间」加若干长 URL，前 1000 字符里 ASCII 往往多于汉字
+ * （实测样本 ASCII 724 / 汉字 191 → eng，同一段文本去掉 URL 后是 cmn）。语言一旦
+ * 判成 en，buildChapterRegexps 就整条换成英文规则，「第N章」零命中，整本书的目录
+ * 退化成「每 100 段一章」的序号，且这个 en 会随转换产物写进 dc:language，把侧栏
+ * 的虚拟目录扫描也一并带偏。按书写系统判定则头部的 ASCII 噪声完全不参与，与
+ * inferLangFromScript 同口径：假名/谚文优先于汉字——日文、韩文正文都夹汉字，
+ * 必须先排除才能落到 zh。
+ */
+export const detectTxtLanguage = (sample: string): string => {
+  const text = sample ?? '';
+  if (/[\p{Script=Hangul}]/u.test(text)) return 'ko';
+  if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) return 'ja';
+  return 'zh';
+};
+
 export const detectLanguage = (content: string): string => {
   try {
     const iso6393Lang = franc(content.substring(0, 1000));
