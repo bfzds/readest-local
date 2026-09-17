@@ -461,6 +461,30 @@ export function findBatchVersionConflicts(args: {
   return conflicts;
 }
 
+/**
+ * 把批后二次探测的结果并入冲突队列。
+ *
+ * 同一批里两本互为新旧版本时，**导入时刻的探针也可能已经报过一次**：先完成的
+ * 那个文件一旦入库，后完成的那个就看得见它（同批 4 个文件并发跑，共用同一个
+ * `books` 数组与索引）。于是同一对新旧版本会报两次，弹窗里出现两行说同一件事、
+ * 却挂着不同替换目标的冲突。按 `incoming` 去重：同一本新书只问一次；候选多的
+ * 那条留下（它列出的"另有 N 本同书号记录"更全）。
+ */
+export function mergeBatchVersionConflicts(
+  queued: BookVersionConflictInfo[],
+  batch: BookVersionConflictInfo[],
+): BookVersionConflictInfo[] {
+  if (batch.length === 0) return queued;
+  const byIncoming = new Map<string, BookVersionConflictInfo>();
+  for (const conflict of [...queued, ...batch]) {
+    const previous = byIncoming.get(conflict.incoming.hash);
+    if (!previous || conflict.candidates.length > previous.candidates.length) {
+      byIncoming.set(conflict.incoming.hash, conflict);
+    }
+  }
+  return [...byIncoming.values()];
+}
+
 // --- 撤销导入 ---
 
 /**
@@ -480,6 +504,13 @@ export async function discardImportedBook(
   args: { book: Book; books: Book[] },
 ): Promise<{ library: Book[] }> {
   const { book, books } = args;
+  // 记录已经不在了：同批另一次「用新版替换」把它当替换目标折进了新版（替换先
+  // 执行，旧行与旧目录都已经处理掉）。此时再追加墓碑只会在 library.json 里留一
+  // 行永远隐藏、却会进同步与后续比较的孤儿；而用户要的"这本书别再单独留着"
+  // 早已达成，所以这里什么都不做。
+  if (!books.some((item) => item.hash === book.hash)) {
+    return { library: books };
+  }
   try {
     await appService.deleteBook({ ...book }, 'purge');
   } catch (error) {

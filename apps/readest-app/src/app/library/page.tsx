@@ -34,6 +34,7 @@ import { ingestFile } from '@/services/ingestService';
 import {
   discardImportedBook,
   findBatchVersionConflicts,
+  mergeBatchVersionConflicts,
   planVersionConflictResolution,
   replaceBookVersion,
 } from '@/services/bookVersionService';
@@ -324,6 +325,21 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     if (queue.length === 0) return;
     openVersionConflicts(queue.splice(0));
   }, [openVersionConflicts]);
+  /**
+   * 静默路径（受监视文件夹重扫、双击/「打开方式」）攒下的冲突不弹模态框——那些
+   * 都发生在用户做别的事的时候。给一条可点击通知：点它，或下次回到书库页时
+   * 再问（见下面的 focus/visibilitychange 兜底）。
+   */
+  const notifyPendingVersionConflicts = useCallback(() => {
+    const pendingCount = versionConflictQueueRef.current.length;
+    if (pendingCount === 0) return;
+    eventDispatcher.dispatch('toast', {
+      message: `检测到 ${pendingCount} 本书库中已有同名版本 · 点击查看`,
+      timeout: 8000,
+      type: 'info',
+      actions: [{ label: '查看', onClick: () => drainVersionConflicts() }],
+    });
+  }, [drainVersionConflicts]);
   // 弹窗里的两栏对比数据（键为 incoming.hash）。取数是读缓存文件（nav.json /
   // config.json）与一次 stats，不解析任何书文件；每条冲突在弹窗打开后异步补齐，
   // 未到位的先渲染不依赖对比的部分。
@@ -860,6 +876,17 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
               file,
               books: library,
               transient: temp,
+              // 双击/「打开方式」也会认出书库里的旧版本，只是不弹模态框：这条
+              // 路径发生在应用启动时，打断用户不如给一条可点击通知（与受监视
+              // 文件夹重扫同策略）。transient（不自动入库）时不注册——没有落库
+              // 的记录，没什么可问的。
+              ...(temp
+                ? {}
+                : {
+                    onVersionConflict: (info: BookVersionConflictInfo) => {
+                      versionConflictQueueRef.current.push(info);
+                    },
+                  }),
             },
             { appService, settings },
           );
@@ -901,8 +928,10 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         if (gen !== libraryInitGeneration.current) return false;
         setLibrary(saved);
         setPendingNavigationBookIds(bookIds);
+        notifyPendingVersionConflicts();
         return true;
       }
+      notifyPendingVersionConflicts();
       return false;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1580,15 +1609,19 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     // 的记录两两互查一遍，命中补进冲突队列——同一对只报一次，导入时刻已经
     // 报过的冲突不会重复。
     if (newImportHashes.length > 1) {
-      for (const conflict of findBatchVersionConflicts({
+      const batchConflicts = findBatchVersionConflicts({
         importedHashes: newImportHashes,
         library: useLibraryStore.getState().library,
-      })) {
-        if (versionConflictQueueRef.current.length < MAX_PENDING_VERSION_CONFLICTS) {
-          versionConflictQueueRef.current.push(conflict);
-        } else {
+      });
+      if (batchConflicts.length > 0) {
+        // 并入而不是追加：同一对新旧版本可能已经被导入时刻的探针报过一次
+        // （先完成的文件已入库，后完成的那个就看得见它），去重后同一本新书
+        // 只问一次。见 mergeBatchVersionConflicts。
+        const merged = mergeBatchVersionConflicts(versionConflictQueueRef.current, batchConflicts);
+        if (merged.length > MAX_PENDING_VERSION_CONFLICTS) {
           versionConflictOverflowRef.current = true;
         }
+        versionConflictQueueRef.current = merged.slice(0, MAX_PENDING_VERSION_CONFLICTS);
       }
     }
 
@@ -1608,13 +1641,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     // 或下次回到书库页时再问（见 drainVersionConflicts 的调用点）。
     if (versionConflictQueueRef.current.length > 0) {
       if (options.silent) {
-        const pendingCount = versionConflictQueueRef.current.length;
-        eventDispatcher.dispatch('toast', {
-          message: `检测到 ${pendingCount} 本书库中已有同名版本 · 点击查看`,
-          timeout: 8000,
-          type: 'info',
-          actions: [{ label: '查看', onClick: () => drainVersionConflicts() }],
-        });
+        notifyPendingVersionConflicts();
       } else {
         drainVersionConflicts();
       }

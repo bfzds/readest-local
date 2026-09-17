@@ -436,9 +436,13 @@ export async function importBook(
           // TXT 先查重后转换：原始 TXT 的 partialMD5 只读文件首尾少数块，
           // 代价可忽略；而转换管线（章节正则、段落兜底、EPUB 打包）对大
           // 文件动辄数秒，且此前它在查重之前执行——同一 TXT 重复拖入每
-          // 次都要重转一遍才知道"已存在"。首导记录的 sourceHash 命中即
-          // 直接短路：转换与解析全部跳过。语义与下面的 byHash 去重分支完全
-          // 一致——存活记录原样返回（不改任何字段），墓碑记录复活。
+          // 次都要重转一遍才知道"已存在"。首导记录（存活）的 sourceHash 命中
+          // 即直接短路：转换与解析全部跳过，记录原样返回、一个字段都不改。
+          //
+          // 墓碑不进这条短路（`findTxtDedupMatch` 只认存活记录）：删过的 TXT
+          // 重导要走完整路径，转换产物的 `dc:identifier` 取自原始 TXT 的
+          // partialMD5，所以字节稳定、hash 不变，后面按 hash 命中的分支会把它
+          // 复活并如实上报 `revived`。
           txtSourceHash = await partialMD5(originalTxtFile);
           if (!transient && !overwrite) {
             const existingTxtBook = findTxtDedupMatch(books, txtSourceHash);
@@ -447,26 +451,10 @@ export async function importBook(
               // 书文件缺失（如被手动清理）时不能短路——完整路径会重新落盘。
               (await fs.exists(getLocalBookFilename(existingTxtBook), 'Books'))
             ) {
-              const wasDeleted = !!existingTxtBook.deletedAt;
-              const revived: Book = wasDeleted
-                ? {
-                    ...existingTxtBook,
-                    deletedAt: null,
-                    createdAt: Date.now(),
-                    updatedAt: Date.now(),
-                  }
-                : existingTxtBook;
-              if (wasDeleted) {
-                // 返回副本给调用方提交，原对象经 books/索引槽位替换对同批
-                // 后续文件可见。
-                const bi = books.findIndex((b) => b.hash === revived.hash);
-                if (bi >= 0) books[bi] = revived;
-                if (lookupIndex) lookupIndex.byHash.set(revived.hash, revived);
-              }
-              options.onDedupHit?.(wasDeleted ? 'revived' : 'already-in-library');
+              options.onDedupHit?.('already-in-library');
               perfMark('importBook', 'txtDedupSkip', t0);
               perfMark('importBook', 'total', t0);
-              return revived;
+              return existingTxtBook;
             }
           }
           // TXT→EPUB 转换走已有 worker 链路（120s 超时 + 失败回退主线程）。

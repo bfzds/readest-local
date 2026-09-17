@@ -176,7 +176,8 @@ fn parse_epub_metadata_sync(path: &Path) -> Result<ParsedEpubMetadata, String> {
     } else {
         toc
     };
-    let text_length = measure_spine_text(&mut zip, &opf_path, &spine.docs);
+    let text_length =
+        measure_spine_text(&mut zip, &opf_path, &spine.docs, spine.nav_href.as_deref());
     // 有自带目录就报目录条目数（两侧才可比：旧侧的数来自它自己的目录缓存）；
     // 没有目录时退回正文文档数，至少还能比"正文被切成了几份"。
     let section_count = if !toc.is_empty() {
@@ -867,23 +868,34 @@ fn is_text_document(media_type: &str) -> bool {
 
 /// 解压每个 spine 文档并统计正文非空白字符数。任何一个文档读失败都跳过；
 /// 一个都读不到时返回 None（"未记录"比一个骗人的 0 好）。
+///
+/// `nav_href` 是 EPUB3 导航文档：它允许被列在 spine 里，但那是目录页不是正文，
+/// 链接文字不能算字数（与已排除的 `<title>` 同一类口径）。
 fn measure_spine_text<R: Read + Seek>(
     zip: &mut ZipArchive<R>,
     opf_path: &str,
     docs: &[SpineDoc],
+    nav_href: Option<&str>,
 ) -> Option<u64> {
     if docs.is_empty() {
         return None;
     }
+    let nav_path = nav_href.map(|href| resolve_relative(opf_path, href));
     let mut total: u64 = 0;
     let mut read_any = false;
     for doc in docs {
         let path = resolve_relative(opf_path, &doc.href);
+        if nav_path.as_deref() == Some(path.as_str()) {
+            continue;
+        }
         let Ok(bytes) = read_zip_entry(zip, &path) else {
             continue;
         };
         read_any = true;
-        total += count_non_whitespace_text(&String::from_utf8_lossy(&bytes));
+        // 与 parse_opf_spine / parse_nav_toc / parse_ncx_toc 一致地先归一 BOM：
+        // UTF-16 的 XHTML 每个字符后面跟一个 NUL，那些 NUL 不是空白符、会被照数，
+        // 字数大约翻倍（EPUB 规范允许 UTF-16）；UTF-8 的 BOM 则多算 1。
+        total += count_non_whitespace_text(&String::from_utf8_lossy(&strip_xml_bom(&bytes)));
     }
     if read_any {
         Some(total)
@@ -1985,6 +1997,14 @@ mod tests {
     }
 
     #[test]
+    fn count_non_whitespace_text_does_not_mistake_header_for_head() {
+        // 按标签名比对：`<header>` 与 `<head` 前缀相同，前缀匹配会从 `<header>`
+        // 一路跳到 `</head`，把夹在中间的真实正文吞掉。
+        let html = "<header>甲</header><head><title>T</title></head>乙";
+        assert_eq!(count_non_whitespace_text(html), 2);
+    }
+
+    #[test]
     fn count_non_whitespace_text_handles_quoted_angle_brackets_in_attributes() {
         // 属性值里的 '>' 不是标签结束，按引号状态跳过的实现必须认出来。
         assert_eq!(
@@ -2051,6 +2071,55 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["One", "Two"]
         );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn parse_epub_metadata_excludes_the_nav_document_and_tolerates_a_bom() {
+        // EPUB3 允许把 nav.xhtml 列进 spine，它是目录页不是正文；UTF-8 BOM 也不该
+        // 多算一个字符。正文只有"一二三"3 个非空白字符。
+        use std::io::Write;
+        let opf = br#"<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="nav"/><itemref idref="ch1"/></spine>
+</package>"#;
+        let container = br#"<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>"#;
+        let nav = r#"<html><body><nav epub:type="toc"><ol><li><a href="ch1.xhtml">目录里的一长串字</a></li></ol></nav></body></html>"#;
+        let mut ch1 = vec![0xEFu8, 0xBB, 0xBF];
+        ch1.extend_from_slice("<html><body><p>一二三</p></body></html>".as_bytes());
+
+        let mut buf = Vec::<u8>::new();
+        {
+            let mut w = zip::ZipWriter::new(Cursor::new(&mut buf));
+            let opts: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored);
+            for (name, body) in [
+                ("META-INF/container.xml", container.to_vec()),
+                ("content.opf", opf.to_vec()),
+                ("nav.xhtml", nav.as_bytes().to_vec()),
+                ("ch1.xhtml", ch1),
+            ] {
+                w.start_file(name, opts).expect("start");
+                w.write_all(&body).expect("write");
+            }
+            w.finish().expect("finish");
+        }
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!("readest-epub-nav-bom-{}.epub", std::process::id()));
+        std::fs::write(&path, &buf).expect("write epub");
+
+        let parsed = parse_epub_metadata_sync(&path).expect("parses");
+
+        assert_eq!(parsed.text_length, Some(3));
+        // 目录里那串字仍然来自 nav 文档，只是不算进正文。
+        assert_eq!(parsed.toc.len(), 1);
         let _ = std::fs::remove_file(&path);
     }
 

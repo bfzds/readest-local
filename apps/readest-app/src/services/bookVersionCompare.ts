@@ -99,6 +99,15 @@ const describeCountChange = (label: string, oldValue?: number, newValue?: number
 const MIN_USABLE_CHAPTERS = 2;
 
 /**
+ * 会记录正文字数的格式。原生 EPUB 解析器与 TXT 转换器顺带统计这两类；PDF
+ * （pdf.js）、MOBI（foliate 的 PDB 解析）与其余格式都不经过那条路径，字号栏
+ * 对它们永远是"未记录"——弹窗要据实说明，而不是给一条修不好的建议。
+ */
+const TEXT_LENGTH_FORMATS = new Set(['EPUB', 'TXT']);
+const measuresTextLength = (side: VersionSideFacts): boolean =>
+  TEXT_LENGTH_FORMATS.has(side.format);
+
+/**
  * 组装两栏对比。纯函数：调用方负责把两侧事实取齐（见 `loadVersionSideFacts`），
  * 这里只做呈现决策，没有 I/O，因此分支可以逐个单测。
  */
@@ -161,7 +170,16 @@ export const buildVersionComparison = (
     summary.push(...describeCountChange('章节数', oldChapters, newChapters));
   }
   if (oldSide.textLength === undefined || newSide.textLength === undefined) {
-    summary.push('字数只有一侧有记录（老记录是加入这个字段之前导入的），再导入一次同一本即可补上');
+    // 分两种原因说，别把"这个格式根本不统计字数"说成"再导一次就有"——PDF 与
+    // MOBI 不走原生解析器（前者正文在 pdf.js、后者元数据在 foliate 的 PDB 解析
+    // 里），再导多少次都不会有字数，那种提示会让用户一直等一个不会发生的事。
+    // TXT 记录存的是转换产物、格式同样是 EPUB，不受这条分支影响。
+    const unsupported = [oldSide, newSide].find((side) => !measuresTextLength(side));
+    summary.push(
+      unsupported
+        ? `${unsupported.format} 不统计正文字数（只对 EPUB 与 TXT 统计），这一栏请结合书号、文件大小与修改时间判断`
+        : '字数只有一侧有记录（老记录是加入这个字段之前导入的），再导入一次同一本即可补上',
+    );
   }
 
   // 章节区只在两侧都有像样的目录数据时才并排：一侧缺数据时"章节数 34 / 未记录"

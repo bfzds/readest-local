@@ -4,6 +4,7 @@ import { detectTxtLanguage } from './lang';
 import { configureZip } from './zip';
 import { parsePixivNovelFilename, parsePixivNovelMetaHeader } from './pixivNovel';
 import { CHAPTER_CANDIDATE_TITLE_RX, buildChapterRegexps } from './chapterRules';
+import { countNonWhitespaceText } from './textLength';
 
 // 被抽取到共享模块 chapterRules 的对外导出，这里继续透传，保持 txt.ts
 // 的对外导出面不变（既有调用方仍从 '@/utils/txt' 导入）。
@@ -172,9 +173,17 @@ interface Chapter {
   detected?: boolean;
 }
 
-/** 章节正文的非空白字符数合计（标题行不计，它不在 `content` 里）。 */
+/**
+ * 章节正文的非空白字符数合计。
+ *
+ * `Chapter.content` 是转换器自己拼的 HTML（`<h2>标题</h2><p>正文</p>`，见
+ * `extractChapters`），所以必须**先剥标签**再数：直接取 `content` 长度会把标签
+ * 本身数进去，而多出来的量正比于段落数——同一段文字换个行分隔方式，字数就自己
+ * 变了，而那正是章节区收起时唯一让用户相信的信号。标题在 `<h2>` 里，与 Rust 侧
+ * 口径一致地计入正文（它确实占版面）。
+ */
 const countChapterTextLength = (chapters: Chapter[]): number =>
-  chapters.reduce((total, chapter) => total + chapter.content.replace(/\s+/g, '').length, 0);
+  chapters.reduce((total, chapter) => total + countNonWhitespaceText(chapter.content), 0);
 
 /**
  * 章节列表 → 目录条目。卷（`isVolume`）是顶层，其下的章低一层；没有卷的书

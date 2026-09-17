@@ -36,6 +36,8 @@ type TxtConverterFlowPrivateAPI = TxtConverterPrivateAPI & {
     chapterCount: number;
     usedFallback: boolean;
     language: string;
+    textLength: number;
+    toc: Array<{ label: string; depth: number }>;
   }>;
   extractChapters(
     txtContent: string,
@@ -756,5 +758,53 @@ describe('author resolution during conversion (issue #4390)', () => {
       '作者：月夜银狐\n第一章 初见\n正文内容……\n',
     );
     expect(metadata?.author).toBe('月夜银狐');
+  });
+});
+
+describe('正文字数：版本对比弹窗用的派生数据', () => {
+  // content 是转换器自己拼的 HTML，统计前必须剥标签——否则多出来的量正比于
+  // 段落数，同一段文字换个行分隔方式字数就自己变了。
+  const convertText = async (content: string, name = 'sample.txt') => {
+    const converter = new TxtToEpubConverter() as unknown as TxtConverterFlowPrivateAPI;
+    converter.detectEncoding = () => 'utf-8';
+    converter.createEpub = async () => new Blob();
+    return await converter.convert({ file: new File([content], name) });
+  };
+
+  const SOURCE = [
+    '第一章 开始',
+    '正文甲乙丙丁',
+    '正文戊己庚辛',
+    '第二章 继续',
+    '更多内容壬癸',
+    '第三章 结束',
+    '尾巴文字子丑寅卯',
+  ].join('\n\n');
+
+  it('剥掉标签后等于源文本的非空白字符数', async () => {
+    const result = await convertText(SOURCE);
+    // 章节标题与正文合起来就是源文本的全部可见字符：标签不算，标题只算一次。
+    // 修复前这里是 96——多出 3×9 的 <h2> 与 4×7 的 <p>。
+    expect(SOURCE.replace(/\s+/g, '').length).toBe(41);
+    expect(result.textLength).toBe(41);
+  });
+
+  it('同一段文字换行分隔方式不影响字数', async () => {
+    const [lf, crlf] = await Promise.all([
+      convertText(SOURCE),
+      convertText(SOURCE.replace(/\n/g, '\r\n')),
+    ]);
+    expect(crlf.textLength).toBe(lf.textLength);
+  });
+
+  it('章节数与章节标题随正文一起产出（供对比弹窗并排）', async () => {
+    const result = await convertText(SOURCE);
+    expect(result.chapterCount).toBe(3);
+    expect(result.toc.map((entry) => entry.label)).toEqual([
+      '第一章 开始',
+      '第二章 继续',
+      '第三章 结束',
+    ]);
+    expect(result.toc.every((entry) => entry.depth === 0)).toBe(true);
   });
 });

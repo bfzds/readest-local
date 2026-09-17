@@ -7,6 +7,7 @@ import {
   discardImportedBook,
   findBatchVersionConflicts,
   findIncomingVersionConflict,
+  mergeBatchVersionConflicts,
   planVersionConflictResolution,
   replaceBookVersion,
 } from '@/services/bookVersionService';
@@ -30,6 +31,20 @@ vi.mock('@/libs/document', async () => {
 });
 
 vi.mock('@/utils/txt', () => ({ TxtToEpubConverter: vi.fn() }));
+// TXT 导入会先把原始 TXT 转成 EPUB 再解析。这里给一个确定的转换产物，好让
+// "转换产物字节稳定"这件事从断言里隔离出去（真实转换器的 dc:identifier 取自
+// 原始 TXT 的 partialMD5、zip 时间戳被钉成 0，本来就是字节稳定的）。
+vi.mock('@/utils/txt-worker', () => ({
+  convertTxtToEpubWithFallback: vi.fn(async () => ({
+    file: new File(['converted epub'], 'Test Book.epub', { type: 'application/epub+zip' }),
+    bookTitle: 'Test Book',
+    chapterCount: 1,
+    language: 'zh',
+    textLength: 4,
+    toc: [{ label: '第一章', depth: 0 }],
+    usedFallback: false,
+  })),
+}));
 vi.mock('@/utils/svg', () => ({ svg2png: vi.fn() }));
 vi.mock('@/utils/simplecc', () => ({
   initSimpleCC: vi.fn(),
@@ -612,6 +627,37 @@ describe('importBook same-file re-import', () => {
     expect(fs.writeFile).not.toHaveBeenCalled();
   });
 
+  // TXT 的墓碑**不进** sourceHash 短路面（findTxtDedupMatch 只认存活记录），
+  // 但重导仍会复活它：转换产物的 dc:identifier 取自原始 TXT 的 partialMD5、
+  // zip 时间戳被钉成 0，所以转换是字节稳定的、hash 不变，后面按 hash 命中的
+  // 分支把它复活并如实上报 revived。这条锁住"TXT 删了也能拖回来"。
+  it('revives a tombstoned TXT record through the hash path', async () => {
+    const { service, fs } = makeService();
+    const tombstone = makeBook({
+      hash: 'txt-hash',
+      sourceHash: 'src-hash',
+      deletedAt: 999,
+      updatedAt: 111,
+    });
+    const books: Book[] = [tombstone];
+    const hits: string[] = [];
+
+    // 第一次：原始 TXT 的 partialMD5；第二次：转换产物的 hash（稳定 → 命中墓碑）。
+    mockPartialMD5.mockResolvedValueOnce('src-hash').mockResolvedValue('txt-hash');
+    setupMockBookDoc();
+    const before = Date.now();
+    const result = await service.importBook(new File(['txt body'], 'sample.txt'), books, {
+      onDedupHit: (kind) => hits.push(kind),
+    });
+
+    expect(hits).toEqual(['revived']);
+    expect(result!.hash).toBe('txt-hash');
+    expect(result!.deletedAt).toBeNull();
+    expect(result!.updatedAt).toBeGreaterThanOrEqual(before);
+    expect(books[0]!.deletedAt).toBeNull();
+    expect(fs.removeDir).not.toHaveBeenCalled();
+  });
+
   // 活记录但书文件不见了（用户手工清理过 Books/）：不能短路，得让完整路径
   // 把它重新落盘。
   it('falls through to a full import when the stored file is gone', async () => {
@@ -1042,5 +1088,64 @@ describe('findIncomingVersionConflict', () => {
         },
       }),
     ).toBeNull();
+  });
+});
+
+describe('mergeBatchVersionConflicts', () => {
+  const conflict = (incomingHash: string, candidateHashes: string[]): BookVersionConflictInfo => ({
+    incoming: makeBook({ hash: incomingHash }),
+    candidates: candidateHashes.map((hash) => makeBook({ hash })),
+    reason: 'same-identifier',
+  });
+
+  it('keeps the queue untouched when the batch probe found nothing', () => {
+    const queued = [conflict('n1', ['o1'])];
+    expect(mergeBatchVersionConflicts(queued, [])).toBe(queued);
+  });
+
+  // 同一对会被报两次：先完成的那个文件一旦入库，后完成的那个在导入时刻就看得见
+  // 它（同批共用同一个 books 数组与索引）。按 incoming 去重，同一本新书只问一次。
+  it('collapses two reports about the same incoming record', () => {
+    const fromImport = conflict('n2', ['o1', 'n1']);
+    const fromBatch = conflict('n2', ['n1']);
+
+    const merged = mergeBatchVersionConflicts([fromImport], [fromBatch]);
+
+    expect(merged).toHaveLength(1);
+    // 候选多的那条留下：它列出的"另有 N 本同书号记录"更全。
+    expect(merged[0]).toBe(fromImport);
+    expect(merged[0]!.candidates.map((b) => b.hash)).toEqual(['o1', 'n1']);
+  });
+
+  it('appends batch-only conflicts for other incoming records', () => {
+    const merged = mergeBatchVersionConflicts([conflict('n1', ['o1'])], [conflict('n2', ['n1'])]);
+
+    expect(merged.map((c) => c.incoming.hash)).toEqual(['n1', 'n2']);
+  });
+});
+
+describe('discardImportedBook when the record is already gone', () => {
+  // 同批里另一次「用新版替换」可能把这条记录当替换目标折进了新版（替换先执行，
+  // 旧行与旧目录都已处理）。此时再追加墓碑只会在 library.json 留一行永远隐藏、
+  // 却会进同步与后续比较的孤儿。
+  it('leaves the library untouched and writes nothing', async () => {
+    const saved: Book[][] = [];
+    const appService = {
+      deleteBook: vi.fn(async () => {}),
+      saveLibraryBooks: vi.fn(async (books: Book[]) => {
+        saved.push(books);
+        return books;
+      }),
+    } as unknown as AppService;
+    const survivor = makeBook({ hash: 'kept-hash' });
+    const gone = makeBook({ hash: 'folded-hash' });
+    const books = [survivor];
+
+    const result = await discardImportedBook(appService, { book: gone, books });
+
+    expect(result.library).toBe(books);
+    expect(appService.saveLibraryBooks).not.toHaveBeenCalled();
+    expect(appService.deleteBook).not.toHaveBeenCalled();
+    expect(saved).toHaveLength(0);
   });
 });

@@ -77,6 +77,29 @@ describe('buildVersionComparison', () => {
     expect(result.summary.some((line) => line.includes('只有一侧有记录'))).toBe(true);
   });
 
+  // PDF 与 MOBI 不走原生解析器，再导多少次都不会有字数。"再导一次同一本即可
+  // 补上"对它们是错误归因——用户会一直等一个不会发生的事。
+  it('explains the format when it never records a text length', () => {
+    const result = buildVersionComparison(
+      side({ format: 'PDF', textLength: undefined }),
+      side({ label: 'new', format: 'PDF', textLength: undefined }),
+    );
+
+    const note = result.summary.find((line) => line.includes('正文字数'))!;
+    expect(note).toContain('PDF 不统计正文字数');
+    expect(note).not.toContain('再导入一次');
+  });
+
+  // 反过来：EPUB 老记录缺字数是"这个字段晚出现"，再导一次确实能补上。
+  it('keeps the "import it once more" hint for EPUB', () => {
+    const result = buildVersionComparison(
+      side({ format: 'EPUB', textLength: undefined }),
+      side({ label: 'new', format: 'EPUB', textLength: 900 }),
+    );
+
+    expect(result.summary.some((line) => line.includes('再导入一次同一本即可补上'))).toBe(true);
+  });
+
   it('counts chapters from the TOC when there is one, else from the recorded count', () => {
     expect(countSideChapters(side({ toc: toc(12) }))).toBe(12);
     expect(countSideChapters(side({ toc: null, sectionCount: 7 }))).toBe(7);
