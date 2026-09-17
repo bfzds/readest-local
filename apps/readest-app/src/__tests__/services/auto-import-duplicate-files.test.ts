@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { Book } from '@/types/book';
+import type { Book, BookVersionConflictInfo } from '@/types/book';
 
 const mockOpen = vi.hoisted(() => vi.fn());
 const mockPartialMD5 = vi.hoisted(() => vi.fn());
@@ -122,7 +122,10 @@ describe('auto-import: watched folder with duplicated files', () => {
   });
 
   /** One auto-import pass: pick the files that look new, then ingest them. */
-  const runScan = async (library: Book[]) => {
+  const runScan = async (
+    library: Book[],
+    onVersionConflict?: (info: BookVersionConflictInfo) => void,
+  ) => {
     const existingPaths = collectKnownSourcePaths(library, 'linux');
     const fresh = selectNewImportableFiles(SCANNED, {
       extensions: ['epub'],
@@ -132,7 +135,11 @@ describe('auto-import: watched folder with duplicated files', () => {
     });
     const lookupIndex = buildBookLookupIndex(library, 'linux');
     for (const entry of fresh) {
-      await service.importBook(entry.fullPath, library, { lookupIndex, inPlace: true });
+      await service.importBook(entry.fullPath, library, {
+        lookupIndex,
+        inPlace: true,
+        ...(onVersionConflict ? { onVersionConflict } : {}),
+      });
     }
     return fresh.map((f) => f.fullPath);
   };
@@ -204,22 +211,27 @@ describe('auto-import: watched folder with duplicated files', () => {
     expect(library[0]!.altFilePaths).toEqual([ORIGINAL_PATH]);
   });
 
-  // The other dedup arm: two different files (different bytes, so different
-  // hashes) that describe the same book and collapse on `metaHash`.
-  it('remembers both paths when two different files share a metaHash', async () => {
+  // 另一个去重臂：字节不同（hash 不同）、但描述同一本书（metaHash 相同）的两个
+  // 文件。导入路径不再把旧记录折进新的那条——那是会连带删掉旧目录的静默删除。
+  // 两条记录各自记住自己的来源路径，所以重扫依旧安静：不会反复"发现新文件"，
+  // 冲突也只在第一次导入时上报一次。
+  it('keeps two records for two files sharing a metaHash and remembers both paths', async () => {
     mockPartialMD5.mockImplementation(async (file: File) =>
       file.name === ORIGINAL_PATH ? 'hash-a' : 'hash-b',
     );
 
     const library: Book[] = [];
-    const first = await runScan(library);
+    const conflicts: BookVersionConflictInfo[] = [];
+    const first = await runScan(library, (info) => conflicts.push(info));
     expect(first).toEqual([ORIGINAL_PATH, DUPLICATE_PATH]);
-    expect(library.filter((b) => !b.deletedAt)).toHaveLength(1);
+    expect(library.filter((b) => !b.deletedAt)).toHaveLength(2);
 
-    const book = library.find((b) => !b.deletedAt)!;
-    // The metaHash arm re-keys the survivor to the newest file's hash.
-    expect(book.hash).toBe('hash-b');
-    expect(book.altFilePaths).toEqual([ORIGINAL_PATH]);
+    expect(library.find((b) => b.hash === 'hash-a')!.filePath).toBe(ORIGINAL_PATH);
+    expect(library.find((b) => b.hash === 'hash-b')!.filePath).toBe(DUPLICATE_PATH);
+    // 静默重扫没有回调就不会问，但判定结果照样产出（调用方决定何时弹）。
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]!.reason).toBe('same-identifier');
+    expect(conflicts[0]!.candidates.map((b) => b.hash)).toEqual(['hash-a']);
     expect(await runScan(library)).toEqual([]);
   });
 

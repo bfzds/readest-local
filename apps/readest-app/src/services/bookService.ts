@@ -6,9 +6,10 @@ import {
   BookContent,
   BookFormat,
   BookLookupIndex,
-  BookNote,
+  BookVersionConflictReason,
   FIXED_LAYOUT_FORMATS,
   ImportBookOptions,
+  IncomingVersionFacts,
 } from '@/types/book';
 import {
   getDir,
@@ -25,9 +26,6 @@ import {
   getMetadataHashInfo,
   getBookVersionIdentities,
   getBookVersionIndexKey,
-  isSameBookVersion,
-  findBookVersionCandidates,
-  type VersionIdentitySource,
 } from '@/utils/book';
 import type { BookNav } from '@/services/nav';
 import { filterVirtualTocItems } from '@/services/virtualToc/apply';
@@ -55,6 +53,7 @@ import {
   resolveBookContentSource,
   type BookFileContentSource,
 } from './bookContent';
+import { findIncomingVersionConflict } from './bookVersionService';
 
 export function buildBookLookupIndex(books: Book[], osPlatform?: OsPlatform): BookLookupIndex {
   const byHash = new Map<string, Book>();
@@ -112,41 +111,6 @@ export function normalizeFilePathForIndex(path: string, osPlatform?: OsPlatform)
     osPlatform === 'macos' || osPlatform === 'ios' || osPlatform === 'windows';
   const n = path.replace(/\\/g, '/').replace(/\/+$/, '');
   return caseInsensitive ? n.toLowerCase() : n;
-}
-
-/**
- * First library book that could be an earlier release of an incoming file.
- *
- * Probes `lookupIndex.byVersionKey` when the index carries one (batch imports
- * build it once per run) and falls back to a linear scan otherwise — a caller
- * that assembled only a partial index must not silently stop matching. The
- * index key holds the normalized title alone, so every hit is re-checked with
- * `isSameBookVersion` (the author may be unknown on either side).
- *
- * Ties resolve to the earliest entry in `books`, so the same library state
- * always offers the same "old version" for a given import.
- */
-function findVersionCandidateInLibrary(
-  books: Book[],
-  lookupIndex: BookLookupIndex | undefined,
-  incoming: VersionIdentitySource & { hash?: string; format: BookFormat },
-): Book | undefined {
-  const identities = getBookVersionIdentities(incoming);
-  if (identities.length === 0) return undefined;
-  const index = lookupIndex?.byVersionKey;
-  if (!index) return findBookVersionCandidates(books, incoming)[0];
-  const matches = new Set<Book>();
-  for (const identity of identities) {
-    for (const book of index.get(getBookVersionIndexKey(identity)) ?? []) {
-      if (book.deletedAt || book.hash === incoming.hash) continue;
-      const sameVersion = getBookVersionIdentities(book).some((stored) =>
-        identities.some((probe) => isSameBookVersion(stored, probe)),
-      );
-      if (sameVersion) matches.add(book);
-    }
-  }
-  if (matches.size === 0) return undefined;
-  return books.find((book) => matches.has(book)) ?? [...matches][0];
 }
 
 export interface ScannedFileEntry {
@@ -347,89 +311,6 @@ export async function computeCoverHash(fs: FileSystem, book: Book): Promise<stri
   return partialMD5(coverFile);
 }
 
-// --- Book Merge ---
-
-/**
- * Merge duplicate book entries that share the same metaHash and format as `book`.
- * Finds all other matching books in the array, selects the base config with the
- * largest reading progress page number, merges booknotes from all configs
- * (deduplicating by id, latest updatedAt wins), soft-deletes duplicates
- * (sets deletedAt), and cleans up their directories.
- *
- * @returns The merged config as a JSON string, or undefined if no duplicates were found.
- */
-export interface MergeBooksResult {
-  /** Aggregated best config JSON string (undefined when candidates have no configs). */
-  config?: string;
-  /** Duplicate books folded into `book`. Caller tombstones + deletes their dirs only after persistence succeeds. */
-  duplicates: Book[];
-}
-
-export async function mergeBooks(
-  fs: FileSystem,
-  books: Book[],
-  book: Book,
-  lookupIndex?: BookLookupIndex,
-): Promise<MergeBooksResult> {
-  if (!book.metaHash) return { duplicates: [] };
-
-  const metaKey = `${book.metaHash}:${book.format}`;
-  const duplicates = lookupIndex
-    ? (lookupIndex.byMetaKey.get(metaKey) ?? []).filter(
-        (b) => !b.deletedAt && b !== book && b.hash !== book.hash,
-      )
-    : books.filter(
-        (b) =>
-          b.metaHash === book.metaHash &&
-          b.format === book.format &&
-          !b.deletedAt &&
-          b !== book &&
-          b.hash !== book.hash,
-      );
-  if (duplicates.length === 0) return { duplicates: [] };
-
-  const allCandidates = [book, ...duplicates];
-  const configs: Partial<BookConfig>[] = [];
-  for (const candidate of allCandidates) {
-    const configPath = getConfigFilename(candidate);
-    if (await fs.exists(configPath, 'Books')) {
-      try {
-        const str = (await fs.readFile(configPath, 'Books', 'text')) as string;
-        configs.push(JSON.parse(str));
-      } catch {
-        /* ignore corrupt configs */
-      }
-    }
-  }
-
-  let mergedConfigData: string | undefined;
-  if (configs.length > 0) {
-    const base = configs.reduce((best, cfg) => {
-      const bestPage = best.progress?.[0] ?? 0;
-      const cfgPage = cfg.progress?.[0] ?? 0;
-      return cfgPage > bestPage ? cfg : best;
-    });
-
-    const noteMap = new Map<string, BookNote>();
-    for (const cfg of configs) {
-      for (const note of cfg.booknotes ?? []) {
-        const existing = noteMap.get(note.id);
-        if (!existing || (note.updatedAt || 0) > (existing.updatedAt || 0)) {
-          noteMap.set(note.id, note);
-        }
-      }
-    }
-    base.booknotes = [...noteMap.values()];
-
-    mergedConfigData = serializeRawConfig(base);
-  }
-
-  // B-5：这里不设置 deletedAt、不删除任何重复书目录 — 那属于"提交/清理"阶段。
-  // 目录清理必须等 merged config 与目标文件全部落盘成功后执行，否则中途失败
-  // 会丢失重复书的目录（书/书签/进度）。tombstone 与目录清理交给调用方 commit。
-  return { config: mergedConfigData, duplicates };
-}
-
 // --- Book Import ---
 
 /**
@@ -448,6 +329,39 @@ export interface ImportBookInternalOptions extends ImportBookOptions {
    * import will proceed down the slow path as before).
    */
   osPlatform?: OsPlatform;
+}
+
+/**
+ * 弹窗要用的"新文件"事实（大小/修改时间/字数/章节数）。
+ *
+ * 全部来自导入时已经拿到的东西：源文件的大小与 mtime 现读一次（一次 `stats`），
+ * 字数与章节数由原生解析器或 TXT 转换器顺带算出。任何一项取不到都留空——弹窗
+ * 按"未记录"显示，判定与安全都不受影响（不变量 3：弹窗打开时不解析任何文件）。
+ */
+async function collectIncomingVersionFacts(
+  fs: FileSystem,
+  file: string | File,
+  fileobj: File | undefined,
+  parsed: { textLength?: number; sectionCount?: number } = {},
+): Promise<IncomingVersionFacts | undefined> {
+  let sizeBytes = fileobj?.size ?? 0;
+  let mtime: number | undefined;
+  if (typeof file === 'string' && !isValidURL(file)) {
+    try {
+      const info = await fs.stats(file, 'None');
+      if (!sizeBytes) sizeBytes = info.size;
+      mtime = info.mtime?.getTime();
+    } catch {
+      // 源文件读不到（已被移走、权限不足）——少一栏而已，不影响判定。
+    }
+  }
+  if (!sizeBytes && mtime === undefined && parsed.textLength === undefined) return undefined;
+  return {
+    sizeBytes,
+    mtime,
+    textLength: parsed.textLength,
+    sectionCount: parsed.sectionCount,
+  };
 }
 
 export async function importBook(
@@ -515,7 +429,8 @@ export async function importBook(
           // 代价可忽略；而转换管线（章节正则、段落兜底、EPUB 打包）对大
           // 文件动辄数秒，且此前它在查重之前执行——同一 TXT 重复拖入每
           // 次都要重转一遍才知道"已存在"。首导记录的 sourceHash 命中即
-          // 直接短路：刷新时间戳返回既有条目，转换与解析全部跳过。
+          // 直接短路：转换与解析全部跳过。语义与下面的 byHash 去重分支完全
+          // 一致——存活记录原样返回（不改任何字段），墓碑记录复活。
           txtSourceHash = await partialMD5(originalTxtFile);
           if (!transient && !overwrite) {
             const existingTxtBook = findTxtDedupMatch(books, txtSourceHash);
@@ -524,22 +439,26 @@ export async function importBook(
               // 书文件缺失（如被手动清理）时不能短路——完整路径会重新落盘。
               (await fs.exists(getLocalBookFilename(existingTxtBook), 'Books'))
             ) {
-              // 时间戳语义与 byHash 去重分支（下方 582-587 行）保持一致；
-              // 返回副本给调用方提交，原对象经 books/索引槽位替换对同批
-              // 后续文件可见。
-              const refreshed: Book = {
-                ...existingTxtBook,
-                deletedAt: null,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-                downloadedAt: Date.now(),
-              };
-              const bi = books.findIndex((b) => b.hash === refreshed.hash);
-              if (bi >= 0) books[bi] = refreshed;
-              if (lookupIndex) lookupIndex.byHash.set(refreshed.hash, refreshed);
+              const wasDeleted = !!existingTxtBook.deletedAt;
+              const revived: Book = wasDeleted
+                ? {
+                    ...existingTxtBook,
+                    deletedAt: null,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                  }
+                : existingTxtBook;
+              if (wasDeleted) {
+                // 返回副本给调用方提交，原对象经 books/索引槽位替换对同批
+                // 后续文件可见。
+                const bi = books.findIndex((b) => b.hash === revived.hash);
+                if (bi >= 0) books[bi] = revived;
+                if (lookupIndex) lookupIndex.byHash.set(revived.hash, revived);
+              }
+              options.onDedupHit?.(wasDeleted ? 'revived' : 'already-in-library');
               perfMark('importBook', 'txtDedupSkip', t0);
               perfMark('importBook', 'total', t0);
-              return refreshed;
+              return revived;
             }
           }
           // TXT→EPUB 转换走已有 worker 链路（120s 超时 + 失败回退主线程）。
@@ -652,19 +571,47 @@ export async function importBook(
     let existingBook = lookupIndex
       ? lookupIndex.byHash.get(hash)
       : books.find((b) => b.hash === hash);
-    let originalExistingHash: string | undefined;
-    let metaHashMatch = false;
     // B-6 复核：路径索引延迟到最终提交点。提前 set 会在 cover URL 生成等
     // 后续异步失败时留下"索引指向草稿/新路径"的脏态。
     let pendingFilePathKey: string | undefined;
     let pendingFilePathBook: Book | null = null;
-    let oldBookDir: string | undefined;
+
+    // 同一个文件重导：命中既有记录就到此为止，绝不再往下走复制/落盘。
+    //
+    // 存活 → **什么都不改**：不复制文件、不新建记录、不刷新时间戳。此前这条
+    // 路径会顺手抬 createdAt/updatedAt 并重写元数据，于是"把同一本书再拖一次"
+    // 就悄悄改了书库排序与同步时钟。唯一例外是书文件确实丢了（用户手工清理过
+    // Books/）——那种情况继续往下走，让完整路径把它重新落盘。
+    //
+    // 墓碑 → **复活**：删过的书拖回来必须能回到书库，否则删掉的书永远拿不回来。
+    // 这是导入路径上唯一会改动既有记录的地方，且只动 deletedAt 与行时钟。
+    //
+    // `overwrite` 是显式的"重新导入这一本"，不受此短路约束；in-place 的同一份
+    // 文件出现在**新路径**上时也继续走完整路径，好让 `altFilePaths` 记住它，
+    // 否则受监视文件夹的重扫会把这个已知重复一遍遍当新文件解析。
+    const filePathUnchanged =
+      !inPlace || typeof file !== 'string' || existingBook?.filePath === file;
+    if (existingBook && !transient && !overwrite && filePathUnchanged) {
+      const wasDeleted = !!existingBook.deletedAt;
+      if (wasDeleted || (await isBookAvailable(fs, existingBook))) {
+        const revived: Book = wasDeleted
+          ? { ...existingBook, deletedAt: null, createdAt: Date.now(), updatedAt: Date.now() }
+          : existingBook;
+        if (wasDeleted) {
+          // B-6：数组与索引槽位都换成复活后的副本，同批后续文件才看得见它。
+          const bi = books.findIndex((b) => b.hash === hash);
+          if (bi >= 0) books[bi] = revived;
+          lookupIndex?.byHash.set(hash, revived);
+        }
+        options.onDedupHit?.(wasDeleted ? 'revived' : 'already-in-library');
+        perfMark('importBook', 'total', t0);
+        return revived;
+      }
+    }
+
     if (existingBook) {
       // B-6：已存在书的所有字段更新都写在副本上，成功后再提交 ——
       // 中途抛错不污染调用方传入的 library 数组 / lookupIndex 的原对象。
-      // 记忆克隆前的 hash：后续 metaHashMatch 会把副本的 hash 改成目标值，
-      // 提交时需要按原 hash 回写数组/索引单元。
-      originalExistingHash = existingBook.hash;
       existingBook = { ...existingBook };
       if (!transient) {
         existingBook.deletedAt = null;
@@ -685,91 +632,33 @@ export async function importBook(
     loadedBook.metadata.title = simplifiedTitle;
     loadedBook.metadata.author = simplifiedAuthor;
 
-    // --- The one place that decides whether records may be folded ---
+    // 冲突探针：库里可能已有这本书的旧版本。判定只有一处产出（见
+    // bookVersionService.findIncomingVersionConflict），这里只把结果交给调用
+    // 方；导入路径本身既不折叠也不删除任何既有记录（不变量 1）。
     //
-    // Folding (importBook's aggregation below, and the `mergeBooks` sweep it
-    // triggers) deletes the records it absorbs: tombstone + removeDir of the
-    // whole Books/<hash>/ directory. It may therefore only run on an identity
-    // that is BOTH explicit and unambiguous:
-    //
-    //   1. explicit — the key must contain something that identifies the
-    //      publication, not merely describe it (getMetadataHashInfo
-    //      .hasExplicitIdentity). A title|authors-only digest collides for
-    //      "same author, same title, different work", e.g. the two pairs of
-    //      duplicate-identity records a real library accumulates; folding on it
-    //      silently deletes a book the user still wants.
-    //   2. unambiguous — the library must hold at most ONE live record for that
-    //      key. Once two live records share a key (the user chose "keep both"
-    //      after a version conflict, or a legacy/synced pair), the identity no
-    //      longer locates a single book, and folding would pick an arbitrary
-    //      winner and delete the other.
-    //
-    // Both conditions are checked HERE and nowhere else: `mergeDuplicates` and
-    // the `firstMatch` re-key below must not grow independent predicates. This
-    // gate is unconditional — a registered `onVersionConflict` callback only
-    // decides whether the USER gets asked, never whether a record may be
-    // swallowed, so the silent paths (watched-folder rescan, open-with) are
-    // protected too. When the gate closes, the file simply lands as its own
-    // book; the loose title+author probe below offers the user the choice.
-    const metaKey = metaHash ? `${metaHash}:${format}` : undefined;
-    const sameIdentityBooks =
-      !transient && metaKey
-        ? (lookupIndex
-            ? (lookupIndex.byMetaKey.get(metaKey) ?? [])
-            : books.filter((b) => b.metaHash === metaHash && b.format === format)
-          ).filter((b) => !b.deletedAt)
-        : [];
-    const identityIsExplicit = !!metaHashInfo?.hasExplicitIdentity;
-    const identityIsUnique = sameIdentityBooks.length < 2;
-    const mayFold = identityIsExplicit && identityIsUnique;
-
-    // Cross-version conflict probe: no hash match, but the library holds a book
-    // with the same normalized title + author — another release of the same
-    // novel (re-downloaded / re-edited / from a different source). The file is
-    // imported as its own book and the caller decides; the import path must not
-    // block on UI (batches run 4 files concurrently) and a declined prompt has
-    // to leave a fully working library behind. EPUB only: PDF metadata is
-    // boilerplate (#5411). Callers that don't register the callback keep the
-    // old import outcome byte for byte.
-    const reportVersionConflict = !!options.onVersionConflict && !transient && format === 'EPUB';
-    let versionConflict: Book | undefined;
-
-    // Aggregate all books with same metaHash and format, deduplicating into one entry
-    let bestConfigData: string | undefined;
-    let mergeDuplicates: Book[] = [];
-    if (!transient && mayFold && metaKey) {
-      if (!existingBook) {
-        const firstMatch = sameIdentityBooks[0];
-        if (firstMatch) {
-          oldBookDir = getDir(firstMatch);
-          metaHashMatch = true;
-          // 提交点 818 按原 hash 回写数组/索引槽位——先记下 firstMatch
-          // 的原 hash（副本随后会把 hash 改成新值，否则找不到原槽位）。
-          originalExistingHash = firstMatch.hash;
-          // B-6：metaHash 聚合命中的书同样写副本——firstMatch 是 books /
-          // lookupIndex 的原对象，直接改 createdAt/updatedAt 会在后续 IO
-          // 失败时（提交点 818 未执行）污染调用方数组。失败时原对象保持。
-          existingBook = { ...firstMatch };
-          if (!transient) existingBook.deletedAt = null;
-          existingBook.createdAt = Date.now();
-          existingBook.updatedAt = Date.now();
-        }
-      }
-      if (existingBook) {
-        const mergeResult = await mergeBooks(fs, books, existingBook, lookupIndex);
-        bestConfigData = mergeResult.config;
-        mergeDuplicates = mergeResult.duplicates;
-      }
-    }
-
-    if (reportVersionConflict && !existingBook) {
-      const candidate = findVersionCandidateInLibrary(books, lookupIndex, {
-        title: simplifiedTitle,
-        author: simplifiedAuthor,
-        format,
-        hash,
-      });
-      if (candidate) versionConflict = candidate;
+    // `existingBook` 存在时不报——那条路径是"同一个文件重导"或显式覆盖，用户
+    // 已经看见这本书了，再问一次没有意义。批内两本互为新旧版本的情况由批后
+    // 二次探测补上（findBatchVersionConflicts）。
+    const reportVersionConflict = !!options.onVersionConflict && !transient && !existingBook;
+    let versionConflict: { candidates: Book[]; reason: BookVersionConflictReason } | undefined;
+    if (reportVersionConflict) {
+      versionConflict =
+        findIncomingVersionConflict({
+          books,
+          lookupIndex,
+          incoming: {
+            hash,
+            format,
+            metaHash,
+            metaHashIsIdentity: !!metaHashInfo?.hasExplicitIdentity,
+            title: simplifiedTitle,
+            author: simplifiedAuthor,
+            // PDF 的元数据是样板文字（#5411），退到"同名同作者"会把一堆不相关
+            // 的导出物凑成冲突；它的书号是文件名字盐，所以"同名 PDF"仍然被
+            // 第一层（书号一致）认出来。TXT 走转换后的 EPUB，同样被覆盖。
+            allowLooseMatch: format === 'EPUB',
+          },
+        }) ?? undefined;
     }
 
     const book: Book = {
@@ -803,20 +692,7 @@ export async function importBook(
       }
     }
     // update book metadata when reimporting the same book
-    if (existingBook && metaHashMatch) {
-      // MetaHash match (different file, same book): override metadata and hash
-      existingBook.hash = hash;
-      existingBook.format = book.format;
-      existingBook.metaHash = metaHash;
-      existingBook.title = book.title;
-      existingBook.sourceTitle = book.sourceTitle;
-      existingBook.author = book.author;
-      existingBook.primaryLanguage = book.primaryLanguage;
-      existingBook.metadata = book.metadata;
-      existingBook.sourceHash = book.sourceHash ?? existingBook.sourceHash;
-      existingBook.uploadedAt = null;
-      existingBook.downloadedAt = Date.now();
-    } else if (existingBook) {
+    if (existingBook) {
       // Same file hash: preserve user edits
       existingBook.format = book.format;
       existingBook.metaHash = metaHash;
@@ -912,8 +788,8 @@ export async function importBook(
         }
         // Keep the version index current for the rest of the batch: the next
         // file may be another release of the book we just added. Skipped when
-        // the caller assembled a partial index (the linear fallback in
-        // findVersionCandidateInLibrary stays correct, just slower).
+        // the caller assembled a partial index (the linear fallback inside
+        // findIncomingVersionConflict stays correct, just slower).
         const versionIndex = lookupIndex.byVersionKey as Map<string, Book[]> | undefined;
         if (versionIndex) {
           for (const identity of getBookVersionIdentities(book)) {
@@ -925,36 +801,6 @@ export async function importBook(
           }
         }
       }
-    } else if (metaHashMatch && oldBookDir && oldBookDir !== getDir(book)) {
-      // Migrate config from old directory to new directory, updating bookHash and metaHash
-      // Use aggregated best config when available from deduplication
-      if (bestConfigData) {
-        const config: Partial<BookConfig> = JSON.parse(bestConfigData);
-        config.bookHash = hash;
-        config.metaHash = metaHash;
-        await fs.writeFile(getConfigFilename(book), 'Books', serializeRawConfig(config));
-      } else {
-        const oldConfigPath = `${oldBookDir}/config.json`;
-        if (await fs.exists(oldConfigPath, 'Books')) {
-          const configData = (await fs.readFile(oldConfigPath, 'Books', 'text')) as string;
-          const config: Partial<BookConfig> = JSON.parse(configData);
-          config.bookHash = hash;
-          config.metaHash = metaHash;
-          await fs.writeFile(getConfigFilename(book), 'Books', serializeRawConfig(config));
-        } else {
-          await saveBookConfigFn(book, INIT_BOOK_CONFIG);
-        }
-      }
-      // Clean up old directory
-      if (await fs.exists(oldBookDir, 'Books')) {
-        await fs.removeDir(oldBookDir, 'Books', true);
-      }
-    } else if (bestConfigData) {
-      // Exact hash match with duplicates removed — adopt the best config
-      const config: Partial<BookConfig> = JSON.parse(bestConfigData);
-      config.bookHash = hash;
-      config.metaHash = metaHash;
-      await fs.writeFile(getConfigFilename(book), 'Books', serializeRawConfig(config));
     }
 
     // update file links with url or path or content uri
@@ -998,53 +844,17 @@ export async function importBook(
     }
     book.coverImageUrl = await generateCoverImageUrlFn(book);
 
-    // B-5 / B-6：此时目标书文件与 config 已全部落盘成功，才执行提交与清理：
-    //   - 同步现有书副本引用到索引（后续批次不会再拿到过时对象）；
-    //   - 对合并掉的重复书设置 tombstone（副本）并删除其目录；清理失败仅告警，
-    //     tombstone 保留，下次导入可重试清理。
+    // B-5 / B-6：此时目标书文件与 config 已全部落盘成功，才执行提交：
+    // 把现有书的副本同步进数组与索引，后续批次不会再拿到过时对象。
+    // 导入路径不删除任何记录——合并与否由用户在弹窗里决定（不变量 1）。
     if (existingBook) {
-      const targetHash = originalExistingHash ?? existingBook.hash;
-      const bi = books.findIndex((b) => b.hash === targetHash);
+      const bi = books.findIndex((b) => b.hash === existingBook!.hash);
       if (bi >= 0) books[bi] = existingBook!;
       if (lookupIndex) {
         lookupIndex.byHash.set(existingBook.hash, existingBook);
         for (const list of lookupIndex.byMetaKey.values()) {
-          const i = list.findIndex((b) => b.hash === targetHash);
+          const i = list.findIndex((b) => b.hash === existingBook!.hash);
           if (i >= 0) list[i] = existingBook!;
-        }
-      }
-    }
-    if (mergeDuplicates.length > 0) {
-      for (const dup of mergeDuplicates) {
-        if (dup.deletedAt) continue;
-        let tombstoned: Book | null = null;
-        if (lookupIndex) {
-          tombstoned = { ...dup, deletedAt: Date.now() };
-          if (lookupIndex.byHash.get(dup.hash)) {
-            lookupIndex.byHash.set(dup.hash, tombstoned);
-          }
-          const dupKey = `${dup.metaHash}:${dup.format}`;
-          const list = lookupIndex.byMetaKey.get(dupKey);
-          if (list) {
-            const i = list.findIndex((b) => b.hash === dup.hash);
-            if (i >= 0) list[i] = tombstoned;
-          }
-        } else {
-          tombstoned = { ...dup, deletedAt: Date.now() };
-        }
-        const bi = books.findIndex((b) => b.hash === dup.hash);
-        if (bi >= 0) books[bi] = tombstoned;
-        try {
-          const dupDir = getDir(dup);
-          if (await fs.exists(dupDir, 'Books')) {
-            await fs.removeDir(dupDir, 'Books', true);
-          }
-        } catch (e) {
-          console.warn(
-            'merge: failed to clean duplicate book dir (tombstone kept, retry next import):',
-            dup.hash,
-            e,
-          );
         }
       }
     }
@@ -1057,11 +867,16 @@ export async function importBook(
     perfMark('importBook', 'total', t0);
     // B-6：existingBook 是副本；调用方将以该对象更新 store，原对象未被动过。
     const importedBook = existingBook || book;
-    // Report last, with the record that actually persisted: the caller shows it
-    // in the confirmation dialog and hands it back to replaceBookVersion() when
-    // the user opts to fold the old release into the new file.
+    // Report last, with the record that actually persisted: the caller shows the
+    // two sides in the confirmation dialog, then hands them to
+    // replaceBookVersion() (replace) or discardImportedBook() (undo).
     if (versionConflict) {
-      options.onVersionConflict?.({ existing: versionConflict, incoming: importedBook });
+      options.onVersionConflict?.({
+        incoming: importedBook,
+        candidates: versionConflict.candidates,
+        reason: versionConflict.reason,
+        incomingFacts: await collectIncomingVersionFacts(fs, file, fileobj),
+      });
     }
     return importedBook;
   } catch (error) {

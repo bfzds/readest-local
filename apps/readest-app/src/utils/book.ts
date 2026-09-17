@@ -566,6 +566,27 @@ export const isSameBookVersion = (a: BookVersionIdentity, b: BookVersionIdentity
 };
 
 /**
+ * Whether a STORED record's `metaHash` carries an explicit identity rather than
+ * a title+authors digest — i.e. whether it is a "书号" two releases of the same
+ * publication would share.
+ *
+ * `Book.metadata` can answer this for most formats, but PDF's salt is the
+ * *import filename* (#5411) and is deliberately not persisted: recomputing from
+ * metadata would report "no identity" for a record whose hash is in fact
+ * filename-derived. PDF always gets that salt, so the format alone settles it.
+ */
+export const hasStoredExplicitIdentity = (book: {
+  format: BookFormat;
+  metaHash?: string;
+  metadata?: BookMetadata;
+}): boolean => {
+  if (!book.metaHash) return false;
+  if (book.format === 'PDF') return true;
+  if (!book.metadata) return false;
+  return !!getMetadataHashInfo(book.metadata)?.hasExplicitIdentity;
+};
+
+/**
  * Library books that could be an earlier release of `incoming` (same title,
  * compatible author, same format). Pure; tombstoned books and any hash in
  * `excludeHashes` (typically the incoming file's own hash) are never

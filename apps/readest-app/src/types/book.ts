@@ -100,29 +100,64 @@ export interface ImportBookOptions {
    */
   onTxtChapterFallback?: (file: File) => void;
   /**
-   * EPUB 导入时发现书库里可能已有这本书的旧版本（换源/改版重下）时触发：
-   * 文件已按自己的 hash 落盘，但库里有另一本"归一化后同名同作者"的 EPUB。
+   * 发现书库里可能已有这本书的旧版本（同书号、换源重下、同名同作者）时触发：
+   * 新文件已按自己的 hash 落盘成独立记录，库里那条原封不动，是否合并由用户
+   * 在弹窗里决定。
    *
-   * 注意这条回调只决定**要不要问用户**，不决定能不能合并：导入器是否允许
-   * 折叠记录由身份判据单独把关（见 bookService 里 mayFold 的注释），无回调
-   * 的静默路径（受监视文件夹重扫等）同样受那道闸门保护。
-   *
-   * 调用方可用 `replaceBookVersion()` 把旧的折叠进新文件并保留进度。
+   * 导入器自身不折叠、不删除任何既有记录（不变量 1），所以没注册回调的静默
+   * 路径最多"晚点问"，绝不会"不问就删"。调用方可用 `replaceBookVersion()`
+   * 替换、或 `discardImportedBook()` 撤销这次导入。
    */
   onVersionConflict?: (info: BookVersionConflictInfo) => void;
+  /**
+   * 同一个文件重复导入命中既有记录时上报（存活 / 已删待复活）。导入器本身
+   * 不改任何东西，调用方据此区分"已在书库中"与"已从书库恢复"两种提示。
+   */
+  onDedupHit?: (kind: 'already-in-library' | 'revived') => void;
 }
 
 /**
- * 一次「导入的书可能是库里某本书的新版本」的上报。两边都是已落盘的记录：
- * `existing` 是书库里的旧版本，`incoming` 是刚导入的新文件。
+ * 判定依据：为什么认为"导入的这本和库里那本是同一本书"。四种取值对应弹窗里
+ * 并列展示的两边书号，用户据此判断到底该不该替换。
+ */
+export type BookVersionConflictReason =
+  // 书号相同（metaHash 完全一致；PDF 的"书号"是文件名字盐，即同名 PDF）。
+  | 'same-identifier'
+  // 书号不同：新文件带显式身份，但与库里那条不一致（换源重下）。
+  | 'identifier-differs'
+  // 导入的文件根本没有书号，只能靠同名同作者判定。
+  | 'incoming-without-identifier'
+  // 兜底：同名同作者，库里那条没有可比的书号。
+  | 'same-title-author';
+
+/**
+ * 导入时顺带取得的"新文件"事实，供弹窗零成本取用（不变量 3：弹窗打开时不解析
+ * 任何文件）。这些值不写回记录——旧侧的字数取 `Book.textLength`，章节数取
+ * nav.json 缓存。
+ */
+export interface IncomingVersionFacts {
+  sizeBytes: number;
+  /** 源文件的修改时间（ms）。取不到时为 undefined。 */
+  mtime?: number;
+  textLength?: number;
+  /** 自带目录的条目数（Rust 解析器顺带统计）。 */
+  sectionCount?: number;
+}
+
+/**
+ * 一次「导入的书可能是库里某本书的新版本」的上报。`incoming` 是本次导入新建的
+ * 记录，`candidates` 是书库里判定为同一本的存活记录（按阅读进度降序，`[0]` 是
+ * 替换目标）。同 hash 命中的重导不进候选——那条路径只提示「已在书库中」。
  */
 export interface BookVersionConflictInfo {
-  existing: Book;
   incoming: Book;
+  candidates: Book[];
+  reason: BookVersionConflictReason;
+  incomingFacts?: IncomingVersionFacts;
 }
 
 /** 确认框里用户对单条冲突的选择。 */
-export type BookVersionConflictChoice = 'replace' | 'keep';
+export type BookVersionConflictChoice = 'replace' | 'keep' | 'discard';
 
 export interface Book {
   // if Book is a remote book we just lazy load the book content via url
@@ -182,6 +217,11 @@ export interface Book {
   // library can badge it without opening the file. Derived from the file on
   // every import, like `format` — not user data, so it needs no LWW timestamp.
   hasNarration?: boolean;
+  // 正文字数（非空白字符数），导入时由原生解析器或 TXT 转换器顺带算出。
+  // 派生字段，同 hasNarration：不是用户数据、不需要 LWW 时钟。用于版本对比弹窗
+  // 在"目录退化"时改比正文规模——两侧都不能为此现场解析文件。
+  // 历史记录没有这个字段时按"未记录"显示，下次刷新元数据补上。
+  textLength?: number;
 
   metadata?: BookMetadata;
   // Field-level LWW timestamp for the metadata group (title, author, tags,

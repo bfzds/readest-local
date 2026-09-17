@@ -1,8 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Book, BookConfig, BookVersionConflictInfo } from '@/types/book';
+import type { BookMetadata } from '@/libs/document';
 import { AppService } from '@/types/system';
 import { getMetadataHash } from '@/utils/book';
-import { replaceBookVersion, selectVersionReplacements } from '@/services/bookVersionService';
+import {
+  discardImportedBook,
+  findBatchVersionConflicts,
+  findIncomingVersionConflict,
+  planVersionConflictResolution,
+  replaceBookVersion,
+} from '@/services/bookVersionService';
 
 const mockOpen = vi.hoisted(() => vi.fn());
 const mockPartialMD5 = vi.hoisted(() => vi.fn());
@@ -129,7 +136,22 @@ function makeService() {
   fs.writeFile.mockResolvedValue(undefined);
   fs.removeDir.mockResolvedValue(undefined);
   fs.readFile.mockResolvedValue('{}');
+  fs.stats.mockResolvedValue({
+    isFile: true,
+    isDirectory: false,
+    size: 0,
+    mtime: null,
+    atime: null,
+    birthtime: null,
+  });
   return { service, fs };
+}
+
+type StubFs = ReturnType<TestAppService['getFs']>;
+
+/** 让"书文件还在盘上"这条判据成立，byHash 命中才会走不打扰的短路路径。 */
+function makeManagedFileExist(fs: StubFs) {
+  fs.exists.mockImplementation(async (path: string) => path === 'old-hash-123/Test Book.epub');
 }
 
 /**
@@ -189,8 +211,9 @@ describe('importBook version conflict reporting', () => {
       if (withCallback) {
         // The dialog still asks: the loose title+author probe covers it.
         expect(conflicts).toHaveLength(1);
-        expect(conflicts[0]!.existing).toBe(existing);
+        expect(conflicts[0]!.candidates[0]).toBe(existing);
         expect(conflicts[0]!.incoming.hash).toBe('new-hash-456');
+        expect(conflicts[0]!.reason).toBe('incoming-without-identifier');
       } else {
         expect(conflicts).toHaveLength(0);
       }
@@ -223,9 +246,9 @@ describe('importBook version conflict reporting', () => {
     expect(fs.removeDir).not.toHaveBeenCalled();
   });
 
-  // 不变量 1（显式身份的正常路径必须保住）：Pixiv 这类带标识符的书，静默路径
-  // 上仍走自动合并——受监视文件夹里重新下载的同一篇会原地更新，进度保留。
-  it('still auto-merges a same-identifier import without a callback', async () => {
+  // 显式身份也同样不折叠了：以前"书号相同"会自动原地替换并删掉旧目录，现在
+  // 一律落成独立记录、交给用户在弹窗里决定——导入路径不再删除任何东西。
+  it('does not fold a same-identifier import even without a callback', async () => {
     const { service, fs } = makeService();
     fs.exists.mockImplementation(async (path: string) => path === 'old-hash-123');
     const existing = makeBook({
@@ -236,16 +259,16 @@ describe('importBook version conflict reporting', () => {
 
     await importConflict({ service, books, metadata: TEST_METADATA });
 
-    expect(books.filter((b) => !b.deletedAt)).toHaveLength(1);
-    expect(books[0]!.hash).toBe('new-hash-456');
-    expect(fs.removeDir).toHaveBeenCalledWith('old-hash-123', 'Books', true);
+    expect(books.filter((b) => !b.deletedAt)).toHaveLength(2);
+    expect(books[0]!.hash).toBe('old-hash-123');
+    expect(books[0]!.progress).toEqual([40, 200]);
+    expect(fs.removeDir).not.toHaveBeenCalled();
   });
 
   // 不变量 2 / §5 护栏：同一个身份在本库里对应两条存活记录时，身份不再能定位
-  // 唯一的一本书，折叠只能靠"谁排在前面"，因此一律不折、改为询问。这条同时
-  // 覆盖"用户选过保留为两本"留下的状态、历史遗留的同键重复、以及同步带进来的
-  // 同键记录。
-  it('refuses to fold when the library holds two live records for the same identity', async () => {
+  // 唯一的一本书，因此一律不折、改为询问。这条同时覆盖"用户选过保留为两本"留下
+  // 的状态、历史遗留的同键重复、以及同步带进来的同键记录。
+  it('leaves both live records for the same identity untouched', async () => {
     const { service, fs } = makeService();
     fs.exists.mockImplementation(async (path: string) => path === 'kept-hash');
     const metaHash = getMetadataHash(TEST_METADATA);
@@ -267,6 +290,29 @@ describe('importBook version conflict reporting', () => {
     expect(books.find((b) => b.hash === 'old-hash-123')!.deletedAt).toBeFalsy();
     expect(fs.removeDir).not.toHaveBeenCalled();
     expect(conflicts).toHaveLength(1);
+    // 两条同书号记录都进候选：[0] 按进度排在前面（这里都没有进度，取书库顺序）。
+    expect(conflicts[0]!.candidates.map((b) => b.hash)).toEqual(['old-hash-123', 'kept-hash']);
+    expect(conflicts[0]!.reason).toBe('same-identifier');
+  });
+
+  // 候选按阅读进度降序：书库里那条读得最远的才是"替换目标"，否则用户看到的
+  // [0] 会随书库顺序抖动。
+  it('orders candidates by reading progress', async () => {
+    const { service } = makeService();
+    const metaHash = getMetadataHash(TEST_METADATA);
+    const barelyStarted = makeBook({ hash: 'b-hash', metaHash, progress: [1, 300] });
+    const farAlong = makeBook({ hash: 'a-hash', metaHash, progress: [250, 300] });
+    const books: Book[] = [barelyStarted, farAlong];
+    const conflicts: BookVersionConflictInfo[] = [];
+
+    await importConflict({
+      service,
+      books,
+      metadata: TEST_METADATA,
+      onVersionConflict: (info) => conflicts.push(info),
+    });
+
+    expect(conflicts[0]!.candidates.map((b) => b.hash)).toEqual(['a-hash', 'b-hash']);
   });
 
   // Same guard, other entry: the ambiguous identity stays untouched even when the
@@ -318,6 +364,8 @@ describe('importBook version conflict reporting', () => {
     });
 
     expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]!.reason).toBe('identifier-differs');
+    expect(conflicts[0]!.candidates).toEqual([existing]);
     expect(books.filter((b) => !b.deletedAt)).toHaveLength(2);
   });
 
@@ -339,7 +387,7 @@ describe('importBook version conflict reporting', () => {
     });
 
     expect(conflicts).toHaveLength(1);
-    expect(conflicts[0]!.existing).toBe(existing);
+    expect(conflicts[0]!.candidates[0]).toBe(existing);
   });
 
   it('ignores a tombstoned book', async () => {
@@ -358,8 +406,9 @@ describe('importBook version conflict reporting', () => {
     expect(conflicts).toHaveLength(0);
   });
 
-  // 格式闸门：PDF 元数据是样板文字（#5411），不参与候选匹配。
-  it('does not report conflicts for non-EPUB formats', async () => {
+  // PDF 的"书号"是文件名字盐（#5411），所以同名 PDF 必然同书号。以前它会被
+  // 静默原地替换掉旧记录（连带删掉旧目录），现在同样进弹窗、由用户决定。
+  it('reports a conflict for a same-named PDF and keeps both records', async () => {
     const { service, fs } = makeService();
     fs.exists.mockImplementation(async (path: string) => path === 'old-hash-123');
     const pdfMetadata = {
@@ -371,7 +420,6 @@ describe('importBook version conflict reporting', () => {
       format: 'PDF',
       title: 'PowerPoint Presentation',
       author: 'Alice Author',
-      // PDF metaHash is salted with the extension-less filename (#5411).
       metaHash: getMetadataHash(pdfMetadata, 'deck'),
     });
     const books: Book[] = [existing];
@@ -386,10 +434,46 @@ describe('importBook version conflict reporting', () => {
       onVersionConflict: (info) => conflicts.push(info),
     });
 
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]!.reason).toBe('same-identifier');
+    expect(conflicts[0]!.candidates).toEqual([existing]);
+    // 旧记录原封不动：不再被原地替换、目录不再被删。
+    expect(books.filter((b) => !b.deletedAt)).toHaveLength(2);
+    expect(books[0]!.hash).toBe('old-hash-123');
+    expect(fs.removeDir).not.toHaveBeenCalled();
+  });
+
+  // 反过来：不同名的两个 PDF 即使元数据是同一段样板文字（"PowerPoint
+  // Presentation"），也绝不能互相认作版本——那正是 #5411 要防的误判。宽松的
+  // "同名同作者"那一层只对 EPUB 开放。
+  it('does not report a conflict for differently-named PDFs sharing boilerplate metadata', async () => {
+    const { service, fs } = makeService();
+    fs.exists.mockImplementation(async (path: string) => path === 'old-hash-123');
+    const pdfMetadata = {
+      title: 'PowerPoint Presentation',
+      author: 'Alice Author',
+      language: 'en',
+    };
+    const existing = makeBook({
+      format: 'PDF',
+      title: 'PowerPoint Presentation',
+      author: 'Alice Author',
+      metaHash: getMetadataHash(pdfMetadata, 'quarterly-report'),
+    });
+    const books: Book[] = [existing];
+    const conflicts: BookVersionConflictInfo[] = [];
+
+    mockPartialMD5.mockResolvedValue('pdf-hash-3');
+    mockOpen.mockResolvedValue({
+      book: { metadata: pdfMetadata, getCover: vi.fn().mockResolvedValue(null) },
+      format: 'PDF',
+    });
+    await service.importBook(new File(['v3'], 'handout.pdf', { type: 'application/pdf' }), books, {
+      onVersionConflict: (info) => conflicts.push(info),
+    });
+
     expect(conflicts).toHaveLength(0);
-    // Still the old silent auto-merge path.
-    expect(books.filter((b) => !b.deletedAt)).toHaveLength(1);
-    expect(books[0]!.hash).toBe('pdf-hash-2');
+    expect(books.filter((b) => !b.deletedAt)).toHaveLength(2);
   });
 
   it('does not report conflicts for transient imports', async () => {
@@ -428,6 +512,125 @@ describe('importBook version conflict reporting', () => {
     );
 
     expect(conflicts).toHaveLength(1);
+  });
+
+  // 判定输入里的"新文件事实"由调用方拼装，用于弹窗的并列展示。
+  it('reports the incoming file facts alongside the conflict', async () => {
+    const { service, fs } = makeService();
+    fs.stats.mockResolvedValue({
+      isFile: true,
+      isDirectory: false,
+      size: 4242,
+      mtime: new Date(1_700_000_000_000),
+      atime: null,
+      birthtime: null,
+    });
+    fs.openFile.mockResolvedValue(new File(['content'], 'test.epub'));
+    const existing = makeBook({ metaHash: 'unrelated' });
+    const books: Book[] = [existing];
+    const conflicts: BookVersionConflictInfo[] = [];
+
+    mockPartialMD5.mockResolvedValue('new-hash-456');
+    setupMockBookDoc({ title: 'Test Book', author: 'Test Author', language: 'en' });
+    await service.importBook('/books/test.epub', books, {
+      onVersionConflict: (info) => conflicts.push(info),
+    });
+
+    // 大小取内存里那份 File（已经在手上，无需再读盘），mtime 现读一次源文件。
+    expect(conflicts[0]!.incomingFacts).toEqual({
+      sizeBytes: 7,
+      mtime: 1_700_000_000_000,
+      textLength: undefined,
+      sectionCount: undefined,
+    });
+  });
+});
+
+// 决策 #1：同一个文件重复导入不再打扰书库。记录还在时字段一个都不许动，
+// 记录被删过则复活——否则删掉的书永远拿不回来。
+describe('importBook same-file re-import', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('leaves a live record byte for byte alone', async () => {
+    const { service, fs } = makeService();
+    makeManagedFileExist(fs);
+    const existing = makeBook({
+      hash: 'old-hash-123',
+      progress: [7, 100],
+      title: '我自己改的书名',
+      updatedAt: 111,
+      createdAt: 222,
+    });
+    const books: Book[] = [existing];
+    const hits: string[] = [];
+
+    mockPartialMD5.mockResolvedValue('old-hash-123');
+    setupMockBookDoc();
+    const result = await service.importBook(
+      new File(['same bytes'], 'test.epub', { type: 'application/epub+zip' }),
+      books,
+      { onDedupHit: (kind) => hits.push(kind) },
+    );
+
+    expect(result).toBe(existing);
+    expect(hits).toEqual(['already-in-library']);
+    expect(existing.updatedAt).toBe(111);
+    expect(existing.createdAt).toBe(222);
+    expect(existing.title).toBe('我自己改的书名');
+    expect(existing.progress).toEqual([7, 100]);
+    // 不复制文件、不建目录、不重写 config、不刷新封面。
+    expect(fs.writeFile).not.toHaveBeenCalled();
+    expect(fs.copyFile).not.toHaveBeenCalled();
+    expect(fs.createDir).not.toHaveBeenCalled();
+  });
+
+  it('revives a tombstoned record', async () => {
+    const { service, fs } = makeService();
+    const existing = makeBook({ hash: 'old-hash-123', deletedAt: 999, updatedAt: 111 });
+    const books: Book[] = [existing];
+    const hits: string[] = [];
+
+    mockPartialMD5.mockResolvedValue('old-hash-123');
+    setupMockBookDoc();
+    const before = Date.now();
+    const result = await service.importBook(
+      new File(['same bytes'], 'test.epub', { type: 'application/epub+zip' }),
+      books,
+      { onDedupHit: (kind) => hits.push(kind) },
+    );
+
+    expect(hits).toEqual(['revived']);
+    expect(result!.deletedAt).toBeNull();
+    expect(result!.updatedAt).toBeGreaterThanOrEqual(before);
+    // 复活的那份必须回到调用方的数组里，否则同批后续文件看到的还是墓碑。
+    expect(books[0]!.deletedAt).toBeNull();
+    expect(books[0]).toBe(result);
+    // 用户数据保留，且没有为此重写任何文件。
+    expect(result!.title).toBe('Test Book');
+    expect(fs.writeFile).not.toHaveBeenCalled();
+  });
+
+  // 活记录但书文件不见了（用户手工清理过 Books/）：不能短路，得让完整路径
+  // 把它重新落盘。
+  it('falls through to a full import when the stored file is gone', async () => {
+    const { service, fs } = makeService();
+    const existing = makeBook({ hash: 'old-hash-123', updatedAt: 111 });
+    const books: Book[] = [existing];
+    const hits: string[] = [];
+
+    mockPartialMD5.mockResolvedValue('old-hash-123');
+    setupMockBookDoc();
+    const result = await service.importBook(
+      new File(['same bytes'], 'test.epub', { type: 'application/epub+zip' }),
+      books,
+      { onDedupHit: (kind) => hits.push(kind) },
+    );
+
+    expect(hits).toEqual([]);
+    expect(result!.hash).toBe('old-hash-123');
+    expect(fs.createDir).toHaveBeenCalledWith('old-hash-123', 'Books', true);
   });
 });
 
@@ -660,27 +863,184 @@ describe('replaceBookVersion', () => {
   });
 });
 
-describe('selectVersionReplacements', () => {
-  const conflict = (oldHash: string, newHash: string): BookVersionConflictInfo => ({
-    existing: makeBook({ hash: oldHash }),
-    incoming: makeBook({ hash: newHash }),
+describe('discardImportedBook', () => {
+  function makeFakeAppService() {
+    const saved: Book[][] = [];
+    const appService = {
+      deleteBook: vi.fn(async () => {}),
+      saveLibraryBooks: vi.fn(async (books: Book[]) => {
+        saved.push(books);
+        return books;
+      }),
+    } as unknown as AppService;
+    return { appService, saved };
+  }
+
+  it('tombstones the imported row, purges its directory and persists a replace write', async () => {
+    const { appService, saved } = makeFakeAppService();
+    const kept = makeBook({ hash: 'kept-hash', progress: [40, 200] });
+    const imported = makeBook({ hash: 'new-hash-456', filePath: '/library/new.epub' });
+
+    const result = await discardImportedBook(appService, {
+      book: imported,
+      books: [kept, imported],
+    });
+
+    // purge 只清 Readest 自己管的 Books/<hash>/；in-place 的源文件不在其中，
+    // 用户的原始文件不会被这次"撤销"碰掉。
+    expect(appService.deleteBook).toHaveBeenCalledWith(imported, 'purge');
+    const tombstone = result.library.find((book) => book.hash === 'new-hash-456')!;
+    expect(tombstone.deletedAt).toBeGreaterThan(0);
+    expect(tombstone.downloadedAt).toBeNull();
+    // 墓碑保留 filePath：重扫的"已知路径"集合靠它认得这个文件，否则同一个文件
+    // 会被反复当作新文件扫出来、反复弹窗。
+    expect(tombstone.filePath).toBe('/library/new.epub');
+    expect(result.library.find((book) => book.hash === 'kept-hash')).toBe(kept);
+    // 必须 replace 写，否则默认的 read-merge-write 会把这条记录从磁盘带回来。
+    expect(appService.saveLibraryBooks).toHaveBeenCalledWith(result.library, { replace: true });
+    expect(saved[0]!.filter((book) => !book.deletedAt).map((book) => book.hash)).toEqual([
+      'kept-hash',
+    ]);
   });
 
-  it('keeps only the chosen items', () => {
-    const conflicts = [conflict('o1', 'n1'), conflict('o2', 'n2')];
-    const { replacements, skipped } = selectVersionReplacements(conflicts, ['replace', 'keep']);
+  it('still tombstones the row when the directory cleanup fails', async () => {
+    const { appService } = makeFakeAppService();
+    (appService.deleteBook as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('EBUSY'));
+    const imported = makeBook({ hash: 'new-hash-456' });
 
-    expect(replacements.map((c) => c.incoming.hash)).toEqual(['n1']);
-    expect(skipped.map((c) => c.incoming.hash)).toEqual(['n2']);
+    const result = await discardImportedBook(appService, { book: imported, books: [imported] });
+
+    expect(result.library[0]!.deletedAt).toBeGreaterThan(0);
+    expect(appService.saveLibraryBooks).toHaveBeenCalled();
+  });
+});
+
+describe('planVersionConflictResolution', () => {
+  const conflict = (oldHash: string, newHash: string): BookVersionConflictInfo => ({
+    incoming: makeBook({ hash: newHash }),
+    candidates: [makeBook({ hash: oldHash })],
+    reason: 'same-identifier',
+  });
+
+  it('splits the choices into replacements and discards', () => {
+    const conflicts = [conflict('o1', 'n1'), conflict('o2', 'n2'), conflict('o3', 'n3')];
+    const plan = planVersionConflictResolution(conflicts, ['replace', 'keep', 'discard']);
+
+    expect(plan.replacements.map((c) => c.incoming.hash)).toEqual(['n1']);
+    expect(plan.discards.map((c) => c.incoming.hash)).toEqual(['n3']);
+    expect(plan.skipped).toEqual([]);
   });
 
   // 同一本旧书只能被折一次：后面的即使选了"替换"也不能执行，否则会把旧数据
   // 重复搬到第二个新记录上（旧行那时已经不在库里）。
   it('lets only the first conflict claim a given old book', () => {
     const conflicts = [conflict('o1', 'n1'), conflict('o1', 'n2')];
-    const { replacements, skipped } = selectVersionReplacements(conflicts, ['replace', 'replace']);
+    const plan = planVersionConflictResolution(conflicts, ['replace', 'replace']);
 
-    expect(replacements.map((c) => c.incoming.hash)).toEqual(['n1']);
-    expect(skipped.map((c) => c.incoming.hash)).toEqual(['n2']);
+    expect(plan.replacements.map((c) => c.incoming.hash)).toEqual(['n1']);
+    expect(plan.skipped.map((c) => c.incoming.hash)).toEqual(['n2']);
+  });
+
+  // 撤销不需要仲裁：它只动这次导入新建的那一本，两条冲突不可能共享同一个
+  // incoming 记录。
+  it('does not arbitrate discards', () => {
+    const conflicts = [conflict('o1', 'n1'), conflict('o1', 'n2')];
+    const plan = planVersionConflictResolution(conflicts, ['discard', 'discard']);
+
+    expect(plan.discards.map((c) => c.incoming.hash)).toEqual(['n1', 'n2']);
+    expect(plan.skipped).toEqual([]);
+  });
+
+  it('skips a replace with nothing to replace', () => {
+    const plan = planVersionConflictResolution(
+      [{ ...conflict('o1', 'n1'), candidates: [] }],
+      ['replace'],
+    );
+
+    expect(plan.replacements).toEqual([]);
+    expect(plan.skipped).toHaveLength(1);
+  });
+});
+
+describe('findBatchVersionConflicts', () => {
+  it('pairs two releases imported in the same batch', () => {
+    const earlier = makeBook({ hash: 'v-old', author: 'Test Author' });
+    const later = makeBook({ hash: 'v-new', author: 'Test Author' });
+    const library = [makeBook({ hash: 'x-pre-existing' }), earlier, later];
+
+    const conflicts = findBatchVersionConflicts({
+      importedHashes: ['v-old', 'v-new'],
+      library,
+    });
+
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]!.incoming.hash).toBe('v-new');
+    expect(conflicts[0]!.candidates.map((b) => b.hash)).toEqual(['v-old']);
+  });
+
+  // 每对只报一次，且只报"本次新建"之间的配对——导入时刻已经报过的冲突
+  // （新记录 vs 库里本来就有那条）不会在这里重复出现。
+  it('never pairs a new record with a pre-existing library record', () => {
+    const preExisting = makeBook({ hash: 'x-pre-existing' });
+    const fresh = makeBook({ hash: 'v-new' });
+
+    const conflicts = findBatchVersionConflicts({
+      importedHashes: ['v-new'],
+      library: [preExisting, fresh],
+    });
+
+    expect(conflicts).toEqual([]);
+  });
+
+  it('ignores tombstoned records', () => {
+    const earlier = makeBook({ hash: 'v-old', deletedAt: Date.now() });
+    const later = makeBook({ hash: 'v-new' });
+
+    const conflicts = findBatchVersionConflicts({
+      importedHashes: ['v-old', 'v-new'],
+      library: [earlier, later],
+    });
+
+    expect(conflicts).toEqual([]);
+  });
+
+  // 同名同作者的两本书批内互判同样成立：换源重下时两条记录的书号本来就不一样。
+  it('pairs by title and author when the identifiers differ', () => {
+    const earlier = makeBook({ hash: 'v-old', metaHash: getMetadataHash(TEST_METADATA) });
+    const later = makeBook({
+      hash: 'v-new',
+      metaHash: getMetadataHash({ ...TEST_METADATA, identifier: 'other-uuid' }),
+      // 记录上留着 metadata，"这条记录有没有真书号"才判得出来。
+      metadata: { ...TEST_METADATA, identifier: 'other-uuid' } as BookMetadata,
+    });
+
+    const conflicts = findBatchVersionConflicts({
+      importedHashes: ['v-old', 'v-new'],
+      library: [earlier, later],
+    });
+
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]!.reason).toBe('identifier-differs');
+  });
+});
+
+describe('findIncomingVersionConflict', () => {
+  it('returns null when nothing in the library matches', () => {
+    const books = [makeBook({ hash: 'other', title: '另一本书', author: '别人' })];
+
+    expect(
+      findIncomingVersionConflict({
+        books,
+        incoming: {
+          hash: 'new',
+          format: 'EPUB',
+          metaHash: undefined,
+          metaHashIsIdentity: false,
+          title: 'Test Book',
+          author: 'Test Author',
+          allowLooseMatch: true,
+        },
+      }),
+    ).toBeNull();
   });
 });

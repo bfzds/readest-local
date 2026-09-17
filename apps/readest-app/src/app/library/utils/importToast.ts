@@ -1,6 +1,7 @@
 /**
  * Toast decision for a completed import batch, kept pure so the counting
- * rules (new / already-in-library / failed / save-failed) are unit-testable.
+ * rules (new / already-in-library / revived / failed / save-failed) are
+ * unit-testable.
  */
 export interface ImportToastSpec {
   type: 'success' | 'info' | 'error';
@@ -8,24 +9,31 @@ export interface ImportToastSpec {
 }
 
 export const resolveImportToast = (counts: {
-  newCount: number;
-  existingCount: number;
+  newTitles: string[];
+  /** 同一个文件重导、命中存活记录——什么都没改。 */
+  existingTitles: string[];
+  /** 同一个文件重导、复活了一条已删除的记录。 */
+  revivedTitles: string[];
   failedCount: number;
   saveFailed: boolean;
+  formatList: (titles: string[]) => string;
   t: (key: string, values?: Record<string, unknown>) => string;
 }): ImportToastSpec | null => {
-  const { newCount, existingCount, failedCount, saveFailed, t } = counts;
+  const { newTitles, existingTitles, revivedTitles, failedCount, saveFailed, formatList, t } =
+    counts;
   // The save failure already surfaced its own error toast; a success line on
   // top would be misleading (the books would vanish on restart).
   if (saveFailed) return null;
-  if (newCount > 0 && existingCount > 0) {
+  const newCount = newTitles.length;
+  const knownCount = existingTitles.length + revivedTitles.length;
+  if (newCount > 0 && knownCount > 0) {
     // Partial result: info (not success) so the "{{existing}} already in
     // library" half is not lost on a green success flash.
     return {
       type: 'info',
       message: t('Successfully imported {{count}} book(s), {{existing}} already in library', {
         count: newCount,
-        existing: existingCount,
+        existing: knownCount,
       }),
     };
   }
@@ -35,10 +43,24 @@ export const resolveImportToast = (counts: {
       message: t('Successfully imported {{count}} book(s)', { count: newCount }),
     };
   }
-  // Nothing new landed: only tell the user in the interactive path (silent
-  // auto-import re-scans must not toast on every book already in the library).
-  if (existingCount > 0 && failedCount === 0) {
-    return { type: 'info', message: t('Already in library') };
+  // 一本都没新建：把"认出来了"和"复活了"分开讲——用户需要知道刚才那次拖放到底
+  // 做了什么。静默重扫走不到这里（它压根不调这个函数），否则每次扫描都会为同一
+  // 批已在库的书弹提示。
+  if (revivedTitles.length > 0) {
+    return {
+      type: 'info',
+      message: t('Restored from library: {{titles}}', {
+        titles: formatList(revivedTitles),
+      }),
+    };
+  }
+  if (existingTitles.length > 0 && failedCount === 0) {
+    return {
+      type: 'info',
+      message: t('Already in library: {{titles}}', {
+        titles: formatList(existingTitles),
+      }),
+    };
   }
   return null;
 };

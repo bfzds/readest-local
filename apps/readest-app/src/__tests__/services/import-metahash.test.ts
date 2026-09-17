@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Book } from '@/types/book';
-import type { BookFormat } from '@/types/book';
+import type { BookFormat, BookVersionConflictInfo } from '@/types/book';
 import { getMetadataHash } from '@/utils/book';
 
 const mockOpen = vi.hoisted(() => vi.fn());
@@ -34,7 +34,6 @@ vi.mock('@/utils/simplecc', () => ({
 import { BaseAppService } from '@/services/appService';
 import {
   buildBookLookupIndex,
-  mergeBooks,
   normalizeFilePathForIndex,
   refreshBookMetadata,
 } from '@/services/bookService';
@@ -139,10 +138,12 @@ describe('importBook metaHash deduplication', () => {
     fs.readFile.mockResolvedValue('{}');
   });
 
-  it('should detect metaHash match and override existing book with new hash', async () => {
+  // 命中同一身份（同书号、不同文件）不再原地接管旧记录：新文件落成自己的
+  // 记录，旧记录连字段都不动，是否合并改由用户在弹窗里决定。
+  it('lands a same-identity import as its own record instead of taking over', async () => {
     const metaHash = getMetadataHash(TEST_METADATA);
 
-    const existingBook = makeBook({ hash: 'old-hash-123', metaHash });
+    const existingBook = makeBook({ hash: 'old-hash-123', metaHash, updatedAt: 111 });
     const books: Book[] = [existingBook];
 
     mockPartialMD5.mockResolvedValue('new-hash-456');
@@ -151,27 +152,21 @@ describe('importBook metaHash deduplication', () => {
     const mockFile = new File(['new content'], 'test.epub', { type: 'application/epub+zip' });
     const result = await service.importBook(mockFile, books);
 
-    // B-6：合并写副本并提交快照——数组元素被替换为更新后的副本，原对象
-    // 不被原地改写（失败时也不会污染 library）。
-    expect(books.length).toBe(1);
-    expect(result).toBe(books[0]);
-    expect(books[0]!.hash).toBe('new-hash-456');
-    expect(books[0]!.metadata).toEqual(TEST_METADATA);
-    expect(books[0]!.metaHash).toBe(metaHash);
+    expect(books.length).toBe(2);
+    expect(result!.hash).toBe('new-hash-456');
+    expect(result!.metadata).toEqual(TEST_METADATA);
+    expect(result!.metaHash).toBe(metaHash);
+    // 旧记录一个字段都没变。
     expect(existingBook.hash).toBe('old-hash-123');
+    expect(existingBook.updatedAt).toBe(111);
   });
 
-  // Cross-device file-update convergence (issue #4544 §E): re-importing an
-  // edited file re-keys the hash and clears uploadedAt so the new bytes get
-  // re-uploaded; the old entry is soft-deleted. Peers then pull the deleted
-  // old-hash row (remove old) + the uploaded new-hash row (download new).
-  it('clears uploadedAt on a metaHash re-import so the new file re-uploads', async () => {
+  // 记录上传状态的语义随之改变：新记录是全新的一行（uploadedAt 为空，会自己
+  // 上传一次），旧记录保持它原有的上传状态——它没有被删，也没有被换掉。
+  it('leaves the existing record’s upload state alone on a same-identity import', async () => {
     const metaHash = getMetadataHash(TEST_METADATA);
-    const existingBook = makeBook({
-      hash: 'old-hash-123',
-      metaHash,
-      uploadedAt: Date.now() - 5000,
-    });
+    const uploadedAt = Date.now() - 5000;
+    const existingBook = makeBook({ hash: 'old-hash-123', metaHash, uploadedAt });
     const books: Book[] = [existingBook];
 
     mockPartialMD5.mockResolvedValue('new-hash-456');
@@ -180,14 +175,11 @@ describe('importBook metaHash deduplication', () => {
     const mockFile = new File(['new content'], 'test.epub', { type: 'application/epub+zip' });
     const result = await service.importBook(mockFile, books);
 
-    expect(books.length).toBe(1);
-    expect(result).toBe(books[0]);
-    expect(books[0]!.hash).toBe('new-hash-456');
-    // uploadedAt cleared → book sync / manual upload re-pushes the new file.
-    expect(books[0]!.uploadedAt).toBeNull();
-    // 原件引用未被原地改写（不可变提交）。
+    expect(books.length).toBe(2);
+    expect(result!.hash).toBe('new-hash-456');
+    expect(result!.uploadedAt).toBeNull();
+    expect(existingBook.uploadedAt).toBe(uploadedAt);
     expect(existingBook.hash).toBe('old-hash-123');
-    expect(existingBook.uploadedAt).not.toBeNull();
   });
 
   it('should not match metaHash for deleted books', async () => {
@@ -211,9 +203,11 @@ describe('importBook metaHash deduplication', () => {
     expect(books.length).toBe(2);
   });
 
-  it('should migrate config to new directory with updated bookHash and metaHash', async () => {
+  // 旧记录连同它的 Books/<hash>/（书文件、阅读位置、书签、封面、nav 缓存）一律
+  // 不动：这条路径曾经会搬走旧 config 再删掉整个旧目录，用户没被问过就丢了书。
+  it('no longer migrates the old config nor deletes the old directory', async () => {
     const metaHash = getMetadataHash(TEST_METADATA);
-    const existingBook = makeBook({ hash: 'old-hash-123', metaHash });
+    const existingBook = makeBook({ hash: 'old-hash-123', metaHash, progress: [40, 200] });
     const books: Book[] = [existingBook];
 
     mockPartialMD5.mockResolvedValue('new-hash-456');
@@ -230,18 +224,15 @@ describe('importBook metaHash deduplication', () => {
     const mockFile = new File(['new content'], 'test.epub', { type: 'application/epub+zip' });
     await service.importBook(mockFile, books);
 
-    // Should have read config from old directory
-    expect(fs.readFile).toHaveBeenCalledWith('old-hash-123/config.json', 'Books', 'text');
-    // Should have written config to new directory with updated bookHash and metaHash
-    const writeCalls = fs.writeFile.mock.calls;
-    const configWrite = writeCalls.find((c: unknown[]) => c[0] === 'new-hash-456/config.json');
+    expect(fs.readFile).not.toHaveBeenCalledWith('old-hash-123/config.json', 'Books', 'text');
+    expect(fs.removeDir).not.toHaveBeenCalled();
+    // 新记录拿到的是自己的初始 config，而不是旧记录那份阅读位置。
+    const configWrite = fs.writeFile.mock.calls.find(
+      (c: unknown[]) => c[0] === 'new-hash-456/config.json',
+    );
     expect(configWrite).toBeDefined();
-    const writtenConfig = JSON.parse(configWrite![2] as string);
-    expect(writtenConfig.bookHash).toBe('new-hash-456');
-    expect(writtenConfig.metaHash).toBe(metaHash);
-    expect(writtenConfig.readProgress).toBe(0.5);
-    // Should have removed old directory
-    expect(fs.removeDir).toHaveBeenCalledWith('old-hash-123', 'Books', true);
+    expect(JSON.parse(configWrite![2] as string).readProgress).toBeUndefined();
+    expect(existingBook.progress).toEqual([40, 200]);
   });
 
   it('should prefer exact file hash match over metaHash match', async () => {
@@ -373,132 +364,6 @@ describe('importBook metaHash aggregation', () => {
     expect(book2.deletedAt).toBeNull();
     expect(book3.deletedAt).toBeNull();
     expect(unrelated.deletedAt).toBeNull();
-  });
-
-  // 下面这组用例锁定的是 `mergeBooks` 自己的契约（给一批同键记录选出基准配置、
-  // 并集书签）。导入路径只在"身份显式且在本库唯一"时才走折叠，所以多条同键
-  // 记录的合并永远不会从导入触发——这里直接调用该函数，保持这段逻辑被覆盖。
-  it('selects the base config with the largest progress pagenum', async () => {
-    const metaHash = getMetadataHash(TEST_METADATA);
-
-    const book1 = makeBook({ hash: 'hash-1', metaHash });
-    const book2 = makeBook({ hash: 'hash-2', metaHash });
-    const book3 = makeBook({ hash: 'hash-3', metaHash });
-    const books: Book[] = [book1, book2, book3];
-
-    const fs = service.getFs();
-    fs.exists.mockResolvedValue(true);
-    fs.readFile.mockImplementation(async (path: string) => {
-      if (path === 'hash-1/config.json')
-        return JSON.stringify({ updatedAt: 3000, progress: [10, 200], location: 'loc1' });
-      if (path === 'hash-2/config.json')
-        return JSON.stringify({ updatedAt: 1000, progress: [50, 200], location: 'loc2' });
-      if (path === 'hash-3/config.json')
-        return JSON.stringify({ updatedAt: 2000, progress: [30, 200], location: 'loc3' });
-      return '{}';
-    });
-
-    const merged = await mergeBooks(fs as never, books, book1);
-
-    // Base config should be from hash-2 (largest progress page 50)
-    const config = JSON.parse(merged.config!) as { location: string; progress: number[] };
-    expect(config.location).toBe('loc2');
-    expect(config.progress).toEqual([50, 200]);
-    expect(merged.duplicates.map((b) => b.hash)).toEqual(['hash-2', 'hash-3']);
-  });
-
-  it('merges booknotes with unique id from all configs', async () => {
-    const metaHash = getMetadataHash(TEST_METADATA);
-
-    const book1 = makeBook({ hash: 'hash-1', metaHash });
-    const book2 = makeBook({ hash: 'hash-2', metaHash });
-    const books: Book[] = [book1, book2];
-
-    const fs = service.getFs();
-    fs.exists.mockResolvedValue(true);
-    fs.readFile.mockImplementation(async (path: string) => {
-      if (path === 'hash-1/config.json')
-        return JSON.stringify({
-          updatedAt: 1000,
-          progress: [80, 200],
-          booknotes: [
-            {
-              id: 'note-a',
-              type: 'annotation',
-              cfi: 'cfi-a',
-              note: 'A',
-              createdAt: 1,
-              updatedAt: 1,
-            },
-            {
-              id: 'note-shared',
-              type: 'annotation',
-              cfi: 'cfi-s',
-              note: 'old',
-              createdAt: 1,
-              updatedAt: 1,
-            },
-          ],
-        });
-      if (path === 'hash-2/config.json')
-        return JSON.stringify({
-          updatedAt: 2000,
-          progress: [20, 200],
-          booknotes: [
-            { id: 'note-b', type: 'bookmark', cfi: 'cfi-b', note: 'B', createdAt: 2, updatedAt: 2 },
-            {
-              id: 'note-shared',
-              type: 'annotation',
-              cfi: 'cfi-s',
-              note: 'newer',
-              createdAt: 1,
-              updatedAt: 5,
-            },
-          ],
-        });
-      return '{}';
-    });
-
-    const merged = await mergeBooks(fs as never, books, book1);
-
-    const config = JSON.parse(merged.config!) as {
-      progress: number[];
-      booknotes: Array<{ id: string; note: string; updatedAt: number }>;
-    };
-    // Base should be hash-1 (progress page 80 > 20)
-    expect(config.progress).toEqual([80, 200]);
-    // Booknotes merged: note-a, note-b, and note-shared (latest updatedAt wins)
-    expect(config.booknotes).toHaveLength(3);
-    expect(config.booknotes.find((n) => n.id === 'note-a')).toBeDefined();
-    expect(config.booknotes.find((n) => n.id === 'note-b')).toBeDefined();
-    const shared = config.booknotes.find((n) => n.id === 'note-shared');
-    expect(shared!.note).toBe('newer');
-    expect(shared!.updatedAt).toBe(5);
-  });
-
-  it('handles configs with missing progress when merging', async () => {
-    const metaHash = getMetadataHash(TEST_METADATA);
-
-    const book1 = makeBook({ hash: 'hash-1', metaHash });
-    const book2 = makeBook({ hash: 'hash-2', metaHash });
-    const books: Book[] = [book1, book2];
-
-    const fs = service.getFs();
-    fs.exists.mockResolvedValue(true);
-    fs.readFile.mockImplementation(async (path: string) => {
-      if (path === 'hash-1/config.json')
-        return JSON.stringify({ updatedAt: 1000, location: 'loc1' });
-      if (path === 'hash-2/config.json')
-        return JSON.stringify({ updatedAt: 2000, progress: [5, 100], location: 'loc2' });
-      return '{}';
-    });
-
-    const merged = await mergeBooks(fs as never, books, book1);
-
-    const config = JSON.parse(merged.config!) as { location: string; progress: number[] };
-    // hash-2 has progress [5, 100], hash-1 has none (treated as 0) — hash-2 wins
-    expect(config.progress).toEqual([5, 100]);
-    expect(config.location).toBe('loc2');
   });
 
   it('should not aggregate books with different formats', async () => {
@@ -674,7 +539,9 @@ describe('importBook PDF filename-aware dedup', () => {
     expect(books.filter((b) => !b.deletedAt)).toHaveLength(2);
   });
 
-  it('still dedupes a PDF re-imported with the same filename and metadata', async () => {
+  // 同名 PDF 以前会被静默原地替换——旧记录连带它的整个 Books/<hash>/ 目录一起
+  // 消失。现在它和其他格式一样落成两条记录，是否替换交给用户在弹窗里决定。
+  it('keeps a same-named PDF re-import as a separate record and asks', async () => {
     const books: Book[] = [];
 
     mockPartialMD5.mockResolvedValue('pdf-hash-1');
@@ -686,18 +553,20 @@ describe('importBook PDF filename-aware dedup', () => {
 
     mockPartialMD5.mockResolvedValue('pdf-hash-2');
     setupMockPdfDoc();
+    const conflicts: BookVersionConflictInfo[] = [];
     const book2 = await service.importBook(
       new File(['v2'], 'deck.pdf', { type: 'application/pdf' }),
       books,
+      { onVersionConflict: (info) => conflicts.push(info) },
     );
 
-    // B-6：合并写副本并提交快照——返回的对象不再是原引用（books 数组元素被
-    // 替换为更新后的副本），原对象不被原地改写；失败时也不会污染原数组。
     expect(book2).not.toBe(book1);
-    expect(books.filter((b) => !b.deletedAt)).toHaveLength(1);
-    const merged = books.find((b) => !b.deletedAt)!;
-    expect(merged.hash).toBe('pdf-hash-2');
     expect(book1!.hash).toBe('pdf-hash-1');
+    expect(books.filter((b) => !b.deletedAt)).toHaveLength(2);
+    // 文件名字盐一致 → 判据是"书号相同"，两侧书号并列给用户看。
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]!.reason).toBe('same-identifier');
+    expect(conflicts[0]!.candidates[0]).toBe(book1);
   });
 
   it('refreshBookMetadata preserves the salted metaHash for PDFs', async () => {

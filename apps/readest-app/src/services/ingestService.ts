@@ -156,6 +156,12 @@ function shouldImportInPlace(
  * callers save per item. The shared logic that must NOT diverge — importing,
  * group/tag metadata — lives here.
  */
+/**
+ * 一个文件导入之后的三种结果。`imported` 之外的两条都是"没有新建记录"，但
+ * 提示语不同——用户需要知道自己的书是被"认出来了"还是被"复活了"。
+ */
+export type IngestOutcome = 'imported' | 'already-in-library' | 'revived';
+
 export interface IngestFileResult {
   book: Book;
   /**
@@ -164,6 +170,12 @@ export interface IngestFileResult {
    * say "already in library" instead of a misleading "successfully imported".
    */
   existed: boolean;
+  /**
+   * 三态结果，供调用方选择提示语：`imported` 现有成功提示；
+   * `already-in-library` 什么都不改，只提示「已在书库中」；`revived` 复活了
+   * 一条墓碑记录，提示「已从书库恢复」。
+   */
+  outcome: IngestOutcome;
   /**
    * 仅 TXT：内置/自定义规则一条标题都没匹配上、章节由段落兜底切出时，
    * 携带原始 TXT File（file 字段是 File 对象时即其本身；路径字符串时是
@@ -229,13 +241,16 @@ export async function ingestFile(
         existing.sourceTitle = pixivMeta.title;
         if (pixivMeta.author) existing.author = pixivMeta.author;
       }
-      return { book: existing, existed: true };
+      return { book: existing, existed: true, outcome: 'already-in-library' };
     }
   }
 
   // TXT 段落兜底切分时 bookService 会回调原始 TXT File（见
   // ImportBookOptions.onTxtChapterFallback）；带回给调用方决定是否引导重切。
   let txtFallbackFile: File | undefined;
+  // 同一个文件重导命中既有记录（存活/墓碑）时 importBook 会回调这里。捕获成
+  // 局部变量再随结果返回，写法与 onTxtChapterFallback 一致。
+  let dedupOutcome: IngestOutcome | undefined;
 
   const book = await appService.importBook(opts.file, opts.books, {
     lookupIndex: opts.lookupIndex,
@@ -243,6 +258,9 @@ export async function ingestFile(
     inPlace,
     onTxtChapterFallback: (file) => {
       txtFallbackFile = file;
+    },
+    onDedupHit: (kind) => {
+      dedupOutcome = kind;
     },
     // 转发而非替换：调用方（书库页）靠这个回调把冲突入队，落地弹窗。
     // 注意 onTxtChapterFallback 是"把回调换成捕获、由返回字段带回"的写法，
@@ -284,5 +302,5 @@ export async function ingestFile(
     }
   }
 
-  return { book, existed: false, txtFallbackFile };
+  return { book, existed: false, outcome: dedupOutcome ?? 'imported', txtFallbackFile };
 }

@@ -1,12 +1,22 @@
 import {
   Book,
   BookConfig,
+  BookFormat,
+  BookLookupIndex,
   BookNote,
   BookVersionConflictChoice,
   BookVersionConflictInfo,
+  BookVersionConflictReason,
 } from '@/types/book';
 import { AppService } from '@/types/system';
-import { getConfigFilename } from '@/utils/book';
+import {
+  findBookVersionCandidates,
+  getBookVersionIdentities,
+  getBookVersionIndexKey,
+  getConfigFilename,
+  hasStoredExplicitIdentity,
+  isSameBookVersion,
+} from '@/utils/book';
 import { serializeRawConfig } from '@/utils/serializer';
 import { StatisticsDb } from '@/services/statistics/statisticsDb';
 
@@ -127,32 +137,57 @@ export async function replaceBookVersion(
   return { book: merged, library: nextLibrary };
 }
 
+export interface VersionConflictPlan {
+  /** 要把旧记录折进新版的（按弹窗顺序）。 */
+  replacements: BookVersionConflictInfo[];
+  /** 要丢弃本次导入那一本的。 */
+  discards: BookVersionConflictInfo[];
+  /**
+   * 用户选了"替换"却没法执行的：同一批里两条冲突指向同一条旧记录，旧记录只能
+   * 被折一次，后面那些保持原样——调用方据此说明"你选的替换没生效"。
+   */
+  skipped: BookVersionConflictInfo[];
+}
+
 /**
- * Turn the dialog's per-item choices into the replacements to perform.
+ * Turn the dialog's per-item choices into the work to perform.
  *
  * When several conflicts point at the SAME old record — one import batch holding
  * two releases of a book the library already has — only the first may replace it;
  * the rest fall back to "keep", because the old record can only be folded once
  * (replaceBookVersion would otherwise run against a row that is already gone).
  * Returned in dialog order so the caller can report what it skipped.
+ *
+ * `discard` needs no such arbitration: it only touches the record this batch
+ * just created, and two conflicts never share an incoming record.
  */
-export function selectVersionReplacements(
+export function planVersionConflictResolution(
   conflicts: BookVersionConflictInfo[],
   choices: BookVersionConflictChoice[],
-): { replacements: BookVersionConflictInfo[]; skipped: BookVersionConflictInfo[] } {
+): VersionConflictPlan {
   const replacements: BookVersionConflictInfo[] = [];
+  const discards: BookVersionConflictInfo[] = [];
   const skipped: BookVersionConflictInfo[] = [];
   const claimed = new Set<string>();
   conflicts.forEach((conflict, index) => {
-    const chosen = choices[index] === 'replace';
-    if (!chosen || claimed.has(conflict.existing.hash)) {
+    const choice = choices[index];
+    if (choice === 'discard') {
+      discards.push(conflict);
+      return;
+    }
+    const target = conflict.candidates[0];
+    if (choice !== 'replace' || !target) {
+      if (choice === 'replace') skipped.push(conflict);
+      return;
+    }
+    if (claimed.has(target.hash)) {
       skipped.push(conflict);
       return;
     }
-    claimed.add(conflict.existing.hash);
+    claimed.add(target.hash);
     replacements.push(conflict);
   });
-  return { replacements, skipped };
+  return { replacements, discards, skipped };
 }
 
 async function readConfig(appService: AppService, book: Book): Promise<Partial<BookConfig>> {
@@ -249,4 +284,216 @@ function pickFresherProgress(a: Book, b: Book): Book['progress'] {
     book.progress && book.progress[1] > 0 ? book.progress[0] / book.progress[1] : -1;
   if (fraction(a) >= fraction(b)) return a.progress;
   return b.progress;
+}
+
+// --- 冲突判定（唯一的候选产出点） ---
+
+/**
+ * 「导入的这本和库里哪本可能是同一本书」的判定输入。
+ */
+export interface VersionProbeInput {
+  hash: string;
+  format: BookFormat;
+  metaHash?: string;
+  /** `metaHash` 是否含显式身份（标识符或文件名盐），即它是不是一个"书号"。 */
+  metaHashIsIdentity: boolean;
+  title?: string;
+  sourceTitle?: string;
+  author?: string;
+  /**
+   * 是否允许退到"同名同作者"这种宽匹配。仅 EPUB（含 TXT 转换产物）为 true：
+   * PDF 的元数据是样板文字（#5411），按标题匹配会把一堆不相关的 PPT 导出物
+   * 凑成冲突，因此 PDF 只认书号一致那一条路径。
+   */
+  allowLooseMatch: boolean;
+}
+
+export interface VersionProbeResult {
+  /** 存活候选，按阅读进度降序；`[0]` 是替换目标。 */
+  candidates: Book[];
+  reason: BookVersionConflictReason;
+}
+
+const progressFraction = (book: Book): number =>
+  book.progress && book.progress[1] > 0 ? book.progress[0] / book.progress[1] : -1;
+
+/**
+ * 按阅读进度降序排候选，进度相同（或都没有进度）时保持书库顺序——同一份书库
+ * 状态必须每次给出同一个"替换目标"，否则用户看到的 [0] 会随批次抖动。
+ */
+const byProgressDesc = (library: Book[], list: Book[]): Book[] => {
+  const order = new Map(library.map((book, index) => [book.hash, index]));
+  return [...list].sort(
+    (a, b) =>
+      progressFraction(b) - progressFraction(a) ||
+      (order.get(a.hash) ?? 0) - (order.get(b.hash) ?? 0),
+  );
+};
+
+const isLiveCandidate = (book: Book, incomingHash: string): boolean =>
+  !book.deletedAt && book.hash !== incomingHash;
+
+/**
+ * 同名同作者的宽匹配。探 `lookupIndex.byVersionKey` 时命中集合可能含重复，
+ * 最后按书库顺序归一，保证结果与线性扫描完全一致（调用方只看到一份顺序）。
+ */
+function findLooseCandidates(args: {
+  books: Book[];
+  lookupIndex?: BookLookupIndex;
+  incoming: VersionProbeInput;
+}): Book[] {
+  const { books, lookupIndex, incoming } = args;
+  const identities = getBookVersionIdentities(incoming);
+  if (identities.length === 0) return [];
+  const index = lookupIndex?.byVersionKey;
+  if (!index) {
+    return findBookVersionCandidates(books, incoming).filter((book) =>
+      isLiveCandidate(book, incoming.hash),
+    );
+  }
+  const matches = new Set<Book>();
+  for (const identity of identities) {
+    for (const book of index.get(getBookVersionIndexKey(identity)) ?? []) {
+      if (!isLiveCandidate(book, incoming.hash)) continue;
+      const sameVersion = getBookVersionIdentities(book).some((stored) =>
+        identities.some((probe) => isSameBookVersion(stored, probe)),
+      );
+      if (sameVersion) matches.add(book);
+    }
+  }
+  if (matches.size === 0) return [];
+  return books.filter((book) => matches.has(book));
+}
+
+/**
+ * 判定一次导入是否命中书库里的旧版本。**候选判定只有这一处产出**，导入路径与
+ * 批后二次探测都调它，弹窗只消费结果。
+ *
+ * 两层，先强后弱：
+ *   1. 书号一致（`metaHash` + 格式）——PDF 的"书号"是文件名字盐，所以这一层
+ *      恰好就是「同名 PDF」；任何格式都参与。
+ *   2. 同名同作者——只有 `allowLooseMatch` 的格式才走，用于"换源重下"这类
+ *      书号变了但确实是同一本书的情况。
+ *
+ * 同 hash 的重导不进候选：那是"同一个文件"，走 `onDedupHit` 那条不打扰的路。
+ * 墓碑记录同样不算候选（用户已经删过它）。
+ */
+export function findIncomingVersionConflict(args: {
+  books: Book[];
+  lookupIndex?: BookLookupIndex;
+  incoming: VersionProbeInput;
+}): VersionProbeResult | null {
+  const { books, lookupIndex, incoming } = args;
+
+  if (incoming.metaHash && incoming.metaHashIsIdentity) {
+    const key = `${incoming.metaHash}:${incoming.format}`;
+    const pool =
+      lookupIndex?.byMetaKey.get(key) ??
+      books.filter(
+        (book) => book.metaHash === incoming.metaHash && book.format === incoming.format,
+      );
+    const identityCandidates = pool.filter((book) => isLiveCandidate(book, incoming.hash));
+    if (identityCandidates.length > 0) {
+      return {
+        candidates: byProgressDesc(books, identityCandidates),
+        reason: 'same-identifier',
+      };
+    }
+  }
+
+  if (!incoming.allowLooseMatch) return null;
+  const loose = findLooseCandidates({ books, lookupIndex, incoming });
+  if (loose.length === 0) return null;
+  const candidates = byProgressDesc(books, loose);
+  // 判定依据只看"导入的这本有没有书号"，以及库里那条有没有 metaHash 可比。
+  // 不去反推库里那条的 metaHash 里装的是不是真身份：那要看它的 metadata，
+  // 而 PDF 的文件名盐根本不落在记录上（见 hasStoredExplicitIdentity）。
+  const reason: BookVersionConflictReason = !incoming.metaHashIsIdentity
+    ? 'incoming-without-identifier'
+    : candidates.every((candidate) => !candidate.metaHash)
+      ? 'same-title-author'
+      : 'identifier-differs';
+  return { candidates, reason };
+}
+
+/**
+ * 批后二次探测：一次拖入多个版本时，批内两本互为新旧版本，但导入那一刻的探针
+ * 看不见对方（对方还没入库）。整批结束后在最终书库上把本次新建的记录两两互查，
+ * 命中补进冲突队列。
+ *
+ * 只有"本次新建"的记录参与，且只在批内配对（后入库的那本作为 `incoming`，
+ * 先入库的作为候选），所以每对最多报一次，也不会重复导入时刻已经报过的冲突。
+ */
+export function findBatchVersionConflicts(args: {
+  /** 本次真正新建的记录 hash（去重命中的不算）。 */
+  importedHashes: Iterable<string>;
+  library: Book[];
+}): BookVersionConflictInfo[] {
+  const { importedHashes, library } = args;
+  const imported = new Set(importedHashes);
+  const books = library.filter((book) => !book.deletedAt);
+  // 书库顺序就是入库顺序，所以"前面那些"正好是本批更早进来的版本。第 j 本只
+  // 和它前面的比：一对只会被报一次，方向也固定为"后进来的那本是新版"，不会
+  // 因为遍历方向不同给出两个互为镜像的冲突。
+  const fresh = books.filter((book) => imported.has(book.hash));
+  const conflicts: BookVersionConflictInfo[] = [];
+  for (let index = 1; index < fresh.length; index++) {
+    const incoming = fresh[index]!;
+    const earlier = new Set(fresh.slice(0, index).map((book) => book.hash));
+    const probe = findIncomingVersionConflict({
+      books,
+      incoming: {
+        hash: incoming.hash,
+        format: incoming.format,
+        metaHash: incoming.metaHash,
+        metaHashIsIdentity: hasStoredExplicitIdentity(incoming),
+        title: incoming.title,
+        sourceTitle: incoming.sourceTitle,
+        author: incoming.author,
+        allowLooseMatch: incoming.format === 'EPUB',
+      },
+    });
+    if (!probe) continue;
+    const candidates = probe.candidates.filter((candidate) => earlier.has(candidate.hash));
+    if (candidates.length === 0) continue;
+    conflicts.push({ incoming, candidates, reason: probe.reason });
+  }
+  return conflicts;
+}
+
+// --- 撤销导入 ---
+
+/**
+ * 撤销一次刚完成的导入：把这条记录丢开，书库其余部分保持原样。
+ *
+ * 用墓碑而不是真删。两件事都依赖记录还在：受监视文件夹重扫的"已知路径"集合
+ * 包含软删记录（`collectKnownSourcePaths`），真删会让同一个文件被反复当作新文件
+ * 扫出来、反复弹窗；而保留 `filePath` 之后，用户再拖同一个文件进来还能走
+ * `onDedupHit` 的复活路径把它拿回来。
+ *
+ * 目录按 `purge` 删——in-place 导入的源文件在用户自己的目录里，purge 不碰它。
+ * 写盘必须 `{ replace: true }`：默认的 read-merge-write 会把刚删掉的记录从
+ * library.json 带回内存快照里。
+ */
+export async function discardImportedBook(
+  appService: AppService,
+  args: { book: Book; books: Book[] },
+): Promise<{ library: Book[] }> {
+  const { book, books } = args;
+  try {
+    await appService.deleteBook({ ...book }, 'purge');
+  } catch (error) {
+    // 目录没清干净不影响"这本书被撤销"这件事：记录已是墓碑，书架不再显示它，
+    // 残留的 Books/<hash>/ 下次删除同一本书时会再被清一次。
+    console.warn('discardImportedBook: failed to remove the book directory', error);
+  }
+  const tombstone: Book = {
+    ...book,
+    deletedAt: Date.now(),
+    downloadedAt: null,
+    coverDownloadedAt: null,
+  };
+  const nextLibrary = [...books.filter((item) => item.hash !== book.hash), tombstone];
+  await appService.saveLibraryBooks(nextLibrary, { replace: true });
+  return { library: nextLibrary };
 }

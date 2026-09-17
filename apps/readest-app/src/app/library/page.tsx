@@ -31,7 +31,12 @@ import { getBookWithUpdatedMetadata, listFormater } from '@/utils/book';
 import { startReaderWindowWatchdog } from '@/utils/readerWindowWatchdog';
 import { getImportErrorMessage } from '@/services/errors';
 import { ingestFile } from '@/services/ingestService';
-import { replaceBookVersion, selectVersionReplacements } from '@/services/bookVersionService';
+import {
+  discardImportedBook,
+  findBatchVersionConflicts,
+  planVersionConflictResolution,
+  replaceBookVersion,
+} from '@/services/bookVersionService';
 import { eventDispatcher } from '@/utils/event';
 import { getFilename, getFolderImportGroupName, joinScannedPath } from '@/utils/path';
 import { parseOpenWithFiles } from '@/helpers/openWith';
@@ -296,6 +301,40 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   // 本批冲突数超过上限、有冲突没被询问过时置位（一次导入只提示一次）。
   const versionConflictOverflowRef = useRef(false);
   const [versionConflicts, setVersionConflicts] = useState<BookVersionConflictInfo[] | null>(null);
+  // setVersionConflicts 的镜像：回调里要判断"弹窗是不是已经开着"，而 state 在
+  // 闭包里是过时的。
+  const versionConflictsRef = useRef<BookVersionConflictInfo[] | null>(null);
+  const openVersionConflicts = useCallback((next: BookVersionConflictInfo[] | null) => {
+    versionConflictsRef.current = next;
+    setVersionConflicts(next);
+  }, []);
+  /**
+   * 把排队的冲突交给弹窗。队列为空、或已经有一个冲突弹窗开着时什么都不做——
+   * 后者的冲突留在队列里，等本次弹窗收尾后再问。
+   */
+  const drainVersionConflicts = useCallback(() => {
+    if (versionConflictsRef.current) return;
+    const queue = versionConflictQueueRef.current;
+    if (queue.length === 0) return;
+    openVersionConflicts(queue.splice(0));
+  }, [openVersionConflicts]);
+
+  // 静默路径攒下的冲突：点通知以外，用户回到书库（窗口重新聚焦、或页面重新
+  // 可见）时也应当被问到——通知可能已经被划走或超时消失。别的模态框正在用时
+  // 排队，等它关掉后下一次聚焦再试。
+  useEffect(() => {
+    const tryDrain = () => {
+      if (document.visibilityState === 'hidden') return;
+      if (failedImportsModal || guideItem || importFromFolderState) return;
+      drainVersionConflicts();
+    };
+    window.addEventListener('focus', tryDrain);
+    document.addEventListener('visibilitychange', tryDrain);
+    return () => {
+      window.removeEventListener('focus', tryDrain);
+      document.removeEventListener('visibilitychange', tryDrain);
+    };
+  }, [drainVersionConflicts, failedImportsModal, guideItem, importFromFolderState]);
   const [currentGroupPath, setCurrentGroupPath] = useState<string | undefined>(undefined);
   const [currentVirtualGroup, setCurrentVirtualGroup] = useState<{
     groupBy:
@@ -1159,6 +1198,9 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     const failedPaths: string[] = [];
     const successfulImports: string[] = [];
     const existingImports: string[] = [];
+    const revivedImports: string[] = [];
+    // 本次真正新建的记录 hash，供批后二次探测在"本批新建"之间配对。
+    const newImportHashes: string[] = [];
 
     // Readest's own Books/ prefix is resolved once at app init and persisted
     // in `settings.localBooksDir`. We hand it to `ingestFile` so the in-place
@@ -1200,31 +1242,32 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
             lookupIndex,
             groupId: resolvedGroupId,
             groupName: resolvedGroupName,
-            // 静默重扫（受监视文件夹）不弹确认框：那是窗口重新获得焦点时的
-            // 后台动作，弹模态框会打断用户正在做的事——保持既有行为（不注册
-            // 回调即无冲突识别）。手动导入/拖放/文件选择器才收集冲突。
-            ...(options.silent
-              ? {}
-              : {
-                  onVersionConflict: (info) => {
-                    if (versionConflictQueueRef.current.length < MAX_PENDING_VERSION_CONFLICTS) {
-                      versionConflictQueueRef.current.push(info);
-                    } else if (!versionConflictOverflowRef.current) {
-                      // The cap only exists to keep one batch's dialog readable;
-                      // silently dropping the rest would hide real conflicts, so
-                      // say it once per batch.
-                      versionConflictOverflowRef.current = true;
-                    }
-                  },
-                }),
+            // 静默重扫（受监视文件夹）同样收集冲突——它和手动导入唯一的区别是
+            // "什么时候问"：静默路径整批结束后只给一条可点击通知，不弹模态框
+            // （那时用户正在做别的事）。判定与入队逻辑完全共用。
+            onVersionConflict: (info) => {
+              if (versionConflictQueueRef.current.length < MAX_PENDING_VERSION_CONFLICTS) {
+                versionConflictQueueRef.current.push(info);
+              } else if (!versionConflictOverflowRef.current) {
+                // The cap only exists to keep one batch's dialog readable;
+                // silently dropping the rest would hide real conflicts, so
+                // say it once per batch.
+                versionConflictOverflowRef.current = true;
+              }
+            },
           },
           { appService, settings: liveSettings, appBooksPrefix },
         );
         if (!result) return null;
-        if (result.existed) {
+        // 三态结果决定提示语：复活与"已存在"都不能算成功导入，否则用户会以为
+        // 书库多了本书（而实际上什么都没变）。
+        if (result.outcome === 'revived') {
+          revivedImports.push(result.book.title);
+        } else if (result.outcome === 'already-in-library') {
           existingImports.push(result.book.title);
         } else {
           successfulImports.push(result.book.title);
+          newImportHashes.push(result.book.hash);
         }
         // 按作者自动归组：仅当用户没有明确指定目标分组、目录导入也没推导出
         // 分组（书本来会落在根目录）时才生效。优先级：
@@ -1388,8 +1431,9 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     }
 
     // Persist the full library once after every file in the batch is done.
+    // 复活也算改动（清了墓碑），必须落盘，否则重启后那本书又是"已删除"。
     let saveFailed = false;
-    if (successfulImports.length > 0) {
+    if (successfulImports.length > 0 || revivedImports.length > 0) {
       const finalLibrary = useLibraryStore.getState().library;
       const finalAppService = await envConfig.getAppService();
       try {
@@ -1435,10 +1479,12 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           }
         : null
       : resolveImportToast({
-          newCount: successfulImports.length,
-          existingCount: existingImports.length,
+          newTitles: successfulImports,
+          existingTitles: existingImports,
+          revivedTitles: revivedImports,
           failedCount: failedImports.length,
           saveFailed,
+          formatList: (titles) => listFormater(false).format(titles),
           t: _,
         });
     // 有书被自动归组时，toast 升级为带去向的版本（逐分组列出书名），并附
@@ -1489,8 +1535,23 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     if (txtGuideQueueRef.current.length > 0) {
       setGuideItem(txtGuideQueueRef.current.shift()!);
     }
-    // 有疑似旧版本的冲突 → 整批一次弹窗。此时两条记录都已入库落盘，用户
-    // 关掉窗口不做选择的结果就是"两本都留着"，不会有任何东西被删。
+    // 批后二次探测：一次拖入多个版本时，批内两本互为新旧版本，而导入那一刻
+    // 的探针看不见对方（对方还不存在）。整批落盘后在最终书库上把"本次新建"
+    // 的记录两两互查一遍，命中补进冲突队列——同一对只报一次，导入时刻已经
+    // 报过的冲突不会重复。
+    if (newImportHashes.length > 1) {
+      for (const conflict of findBatchVersionConflicts({
+        importedHashes: newImportHashes,
+        library: useLibraryStore.getState().library,
+      })) {
+        if (versionConflictQueueRef.current.length < MAX_PENDING_VERSION_CONFLICTS) {
+          versionConflictQueueRef.current.push(conflict);
+        } else {
+          versionConflictOverflowRef.current = true;
+        }
+      }
+    }
+
     if (versionConflictOverflowRef.current) {
       versionConflictOverflowRef.current = false;
       eventDispatcher.dispatch('toast', {
@@ -1499,8 +1560,24 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         type: 'info',
       });
     }
+    // 有疑似旧版本的冲突 → 整批一次弹窗。此时新书记录已入库落盘、旧记录原封
+    // 不动，用户关掉窗口不做选择的结果就是"两本都留着"，不会有任何东西被删。
+    //
+    // 静默路径（受监视文件夹重扫、双击/「打开方式」）不弹模态框：那是窗口重新
+    // 获得焦点时的后台动作，弹窗会打断用户手里的事。改成一条可点击通知，点它
+    // 或下次回到书库页时再问（见 drainVersionConflicts 的调用点）。
     if (versionConflictQueueRef.current.length > 0) {
-      setVersionConflicts(versionConflictQueueRef.current.splice(0));
+      if (options.silent) {
+        const pendingCount = versionConflictQueueRef.current.length;
+        eventDispatcher.dispatch('toast', {
+          message: `检测到 ${pendingCount} 本书库中已有同名版本 · 点击查看`,
+          timeout: 8000,
+          type: 'info',
+          actions: [{ label: '查看', onClick: () => drainVersionConflicts() }],
+        });
+      } else {
+        drainVersionConflicts();
+      }
     }
     return { failedPaths };
   };
@@ -1520,19 +1597,20 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     // releases of a book the library already has). An old record can only be
     // folded once; the rest stay as separate books, and saying so beats the
     // user thinking the second "replace" silently did nothing.
-    const { replacements, skipped } = selectVersionReplacements(conflicts, choices);
-    if (replacements.length === 0) return;
+    const { replacements, discards, skipped } = planVersionConflictResolution(conflicts, choices);
+    if (replacements.length === 0 && discards.length === 0) return;
     setLoading(true);
-    setImportProgress({ done: 0, total: replacements.length });
+    setImportProgress({ done: 0, total: replacements.length + discards.length });
     const app = appService ?? (await envConfig.getAppService());
     let done = 0;
     const failed: string[] = [];
+    const undoFailed: string[] = [];
     try {
       for (const conflict of replacements) {
         try {
           const { library } = useLibraryStore.getState();
           const result = await replaceBookVersion(app, {
-            oldBook: conflict.existing,
+            oldBook: conflict.candidates[0]!,
             newBook: conflict.incoming,
             books: library,
           });
@@ -1542,7 +1620,24 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           failed.push(conflict.incoming.title);
         }
         done += 1;
-        setImportProgress({ done, total: replacements.length });
+        setImportProgress({ done, total: replacements.length + discards.length });
+      }
+      // 撤销导入：只丢开刚导入的那一本，库里原来那条原封不动（留给它一条
+      // 墓碑，好让受监视文件夹的重扫不再把这个文件当新文件反复弹窗）。
+      for (const conflict of discards) {
+        try {
+          const { library } = useLibraryStore.getState();
+          const result = await discardImportedBook(app, {
+            book: conflict.incoming,
+            books: library,
+          });
+          setLibrary(result.library);
+        } catch (error) {
+          console.error('Failed to discard imported book:', conflict.incoming.title, error);
+          undoFailed.push(conflict.incoming.title);
+        }
+        done += 1;
+        setImportProgress({ done, total: replacements.length + discards.length });
       }
     } finally {
       setLoading(false);
@@ -1556,6 +1651,14 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         type: 'success',
       });
     }
+    const undone = discards.length - undoFailed.length;
+    if (undone > 0) {
+      eventDispatcher.dispatch('toast', {
+        message: `已撤销 ${undone} 本导入，书库保持原样`,
+        timeout: 3000,
+        type: 'success',
+      });
+    }
     if (failed.length > 0) {
       eventDispatcher.dispatch('toast', {
         message: `《${failed.join('》《')}》替换失败，旧版本已保留`,
@@ -1563,21 +1666,27 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         type: 'error',
       });
     }
+    if (undoFailed.length > 0) {
+      eventDispatcher.dispatch('toast', {
+        message: `《${undoFailed.join('》《')}》撤销失败，已保留为独立书目`,
+        timeout: 6000,
+        type: 'error',
+      });
+    }
     // Only report the ones the user actually asked to replace — the default
     // "keep" choices are not worth mentioning.
-    const lostToSameOldBook = conflicts.filter(
-      (conflict, index) =>
-        choices[index] === 'replace' && skipped.includes(conflict) && replacements.length > 0,
-    );
-    if (lostToSameOldBook.length > 0) {
+    if (skipped.length > 0) {
       eventDispatcher.dispatch('toast', {
-        message: `《${lostToSameOldBook
+        message: `《${skipped
           .map((conflict) => conflict.incoming.title)
           .join('》《')}》指向的旧版本已被另一本替换，这两本保留为独立书目`,
         timeout: 6000,
         type: 'info',
       });
     }
+    // 队列里可能还有本次弹窗期间攒下的冲突（静默重扫与手动导入撞在一起），
+    // 收尾后接着问。
+    drainVersionConflicts();
   };
 
   /**
@@ -2506,12 +2615,15 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         <BookVersionConflictDialog
           // Remount on a new batch: `choices` is seeded at mount, so reusing the
           // instance would leave freshly added conflicts showing stale defaults.
-          key={versionConflicts[0]?.incoming.hash ?? 'version-conflicts'}
+          key={`${versionConflicts[0]?.incoming.hash ?? 'version-conflicts'}:${versionConflicts.length}`}
           conflicts={versionConflicts}
-          onCancel={() => setVersionConflicts(null)}
+          onCancel={() => {
+            openVersionConflicts(null);
+            drainVersionConflicts();
+          }}
           onConfirm={(choices) => {
             const pending = versionConflicts;
-            setVersionConflicts(null);
+            openVersionConflicts(null);
             void resolveVersionConflicts(pending, choices);
           }}
         />
