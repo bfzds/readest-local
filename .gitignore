@@ -90,6 +90,8 @@ docs/superpowers/
 apps/readest-app/src/__tests__/**/zz-*.test.ts
 # 本机脱敏词表（用户名/书名/设备名等，只在本地生效）
 .desensitize-terms
+# 会话技能：本地调试用，不属于项目（仓库根限定，不影响 apps/readest-app/.claude/skills 下上游的技能）
+/.claude/skills/
 # ZCode 会话目录
 .zcode/
 

@@ -14,9 +14,14 @@
 | `docs/superpowers/**` | 规划材料 |
 | `新版导入测试/**` | 手工验收样本（自造的 epub / pdf / txt） |
 | `apps/readest-app/src/__tests__/**/zz-*.test.ts` | 临时探针（按前缀命名，跑完即删） |
+| `.claude/skills/**`（仓库根） | 会话技能，本地调试用 |
 
 这些路径写在 `.gitignore` 里：`git status` 不再显示、`git add -A`／`git add .` 抓不走。
 **已在仓库中的历史文档**（`docs/README.md`、`docs/git-setup.md`、早期 `docs/reports/*.md`）保持跟踪状态，不受本条影响。
+
+`/.claude/skills/perf-debug/SKILL.md` 在 2026-09-17 之前是被跟踪的（随一次 docs 提交入库），现已用
+`git rm --cached` 移出跟踪：文件仍在工作区、仍然可用，只是不再随推送出去。**但它仍留在远端历史里**
+（提交 `976cff632`）——"从当前树移除"不等于"从历史抹掉"，后者要重写已推送历史。
 
 某份报告确实要给外人看（必须推送）时：`git add -f <路径>`——`-f` 是有意为之的动作，之后按下一节脱敏。
 
