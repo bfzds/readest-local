@@ -96,6 +96,36 @@ declare global {
   }
 }
 
+/**
+ * Whether a saved reading location can be placed inside the file currently
+ * loaded. An EPUB CFI addresses the file's internal structure, so a re-imported
+ * release of the same book (see `replaceBookVersion`) can leave the stored CFI
+ * pointing at a spine item that no longer exists — `resolveCFI` then reports
+ * index -1 and moving there would either throw or land on the wrong page.
+ *
+ * Only CFI-shaped locations are probed; anything else (an href, a PDF page
+ * target) keeps the previous behavior of being handed straight to the view.
+ */
+export const isResolvableLocation = (view: FoliateView, location: string): boolean => {
+  if (!/^\s*epubcfi\(/i.test(location)) return true;
+  try {
+    return view.resolveCFI(location).index >= 0;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Fraction of the book the saved page progress corresponds to, clamped into
+ * [0, 1]. Used to land near the previous position when the exact location no
+ * longer resolves; page numbers themselves are not comparable across releases.
+ */
+export const getProgressFraction = (progress: BookConfig['progress']): number => {
+  const [current, total] = progress ?? [];
+  if (!current || !total || total <= 0) return 0;
+  return Math.min(1, Math.max(0, current / total));
+};
+
 const FoliateViewer: React.FC<{
   bookKey: string;
   bookDoc: BookDoc;
@@ -710,9 +740,43 @@ const FoliateViewer: React.FC<{
       const thisId = bookKey.split('-')[0];
       const overrideLocation = cfiParam && primaryId === thisId ? cfiParam : null;
 
-      const lastLocation = overrideLocation ?? config.location;
-      if (lastLocation) {
-        await view.init({ lastLocation });
+      // Land on the proportion of the book the saved page progress points at.
+      // The last resort when the SAVED location cannot be used: without it a
+      // reader whose CFI went stale (re-imported release, see
+      // replaceBookVersion) would open on page one with no hint that the
+      // position was lost.
+      const goToProgressFraction = async () => {
+        await view.goToFraction(getProgressFraction(config.progress));
+      };
+
+      if (overrideLocation) {
+        // A deep link (?cfi=..., e.g. an exported annotation link) asks for one
+        // specific spot. It must never quietly become "wherever I left off" —
+        // that reads as the app ignoring the link, and the view is in preview
+        // mode, so nothing would correct it. Unresolvable links land on the text
+        // start, as they did before the saved-location fallback existed.
+        try {
+          await view.init({ lastLocation: overrideLocation });
+        } catch (error) {
+          console.warn('Could not open the linked location, showing the text start', error);
+          await view.goToFraction(0);
+        }
+      } else if (config.location && isResolvableLocation(view, config.location)) {
+        try {
+          await view.init({ lastLocation: config.location });
+        } catch (error) {
+          // init() awaits renderer.goTo() with no try/catch of its own, so a CFI
+          // that resolves to a spine item but not to a range inside it surfaces
+          // here as a rejection. Fall back rather than leave the reader blank.
+          console.warn('Failed to restore the saved reading position, using progress', error);
+          await goToProgressFraction();
+        }
+      } else if (config.location) {
+        // The saved location cannot be placed in THIS file — the usual cause is
+        // a re-imported release whose internal structure changed (see
+        // replaceBookVersion). Land on the equivalent fraction of the book
+        // instead of the first page.
+        await goToProgressFraction();
       } else {
         await view.goToFraction(0);
       }

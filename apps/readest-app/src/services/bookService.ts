@@ -16,11 +16,18 @@ import {
   getCoverFilename,
   getConfigFilename,
   getBookNavFilename,
+  findTxtDedupMatch,
   INIT_BOOK_CONFIG,
   formatTitle,
   formatAuthors,
   getPrimaryLanguage,
   getMetadataHash,
+  getMetadataHashInfo,
+  getBookVersionIdentities,
+  getBookVersionIndexKey,
+  isSameBookVersion,
+  findBookVersionCandidates,
+  type VersionIdentitySource,
 } from '@/utils/book';
 import type { BookNav } from '@/services/nav';
 import { filterVirtualTocItems } from '@/services/virtualToc/apply';
@@ -53,6 +60,7 @@ export function buildBookLookupIndex(books: Book[], osPlatform?: OsPlatform): Bo
   const byHash = new Map<string, Book>();
   const byMetaKey = new Map<string, Book[]>();
   const byFilePath = new Map<string, Book>();
+  const byVersionKey = new Map<string, Book[]>();
   for (const book of books) {
     byHash.set(book.hash, book);
     if (book.metaHash && !book.deletedAt) {
@@ -60,6 +68,17 @@ export function buildBookLookupIndex(books: Book[], osPlatform?: OsPlatform): Bo
       const list = byMetaKey.get(key);
       if (list) list.push(book);
       else byMetaKey.set(key, [book]);
+    }
+    // Cross-version matching: one slot per comparable title, so a renamed book
+    // is still found by its import-time title (and vice versa).
+    if (!book.deletedAt) {
+      for (const identity of getBookVersionIdentities(book)) {
+        const key = getBookVersionIndexKey(identity);
+        const list = byVersionKey.get(key);
+        if (list) {
+          if (!list.includes(book)) list.push(book);
+        } else byVersionKey.set(key, [book]);
+      }
     }
     // In-place books carry the absolute source path on `filePath` (set by
     // importBook below). Indexing them here lets a re-import of the exact
@@ -70,7 +89,7 @@ export function buildBookLookupIndex(books: Book[], osPlatform?: OsPlatform): Bo
       if (key) byFilePath.set(key, book);
     }
   }
-  return { byHash, byMetaKey, byFilePath };
+  return { byHash, byMetaKey, byFilePath, byVersionKey };
 }
 
 /**
@@ -93,6 +112,41 @@ export function normalizeFilePathForIndex(path: string, osPlatform?: OsPlatform)
     osPlatform === 'macos' || osPlatform === 'ios' || osPlatform === 'windows';
   const n = path.replace(/\\/g, '/').replace(/\/+$/, '');
   return caseInsensitive ? n.toLowerCase() : n;
+}
+
+/**
+ * First library book that could be an earlier release of an incoming file.
+ *
+ * Probes `lookupIndex.byVersionKey` when the index carries one (batch imports
+ * build it once per run) and falls back to a linear scan otherwise — a caller
+ * that assembled only a partial index must not silently stop matching. The
+ * index key holds the normalized title alone, so every hit is re-checked with
+ * `isSameBookVersion` (the author may be unknown on either side).
+ *
+ * Ties resolve to the earliest entry in `books`, so the same library state
+ * always offers the same "old version" for a given import.
+ */
+function findVersionCandidateInLibrary(
+  books: Book[],
+  lookupIndex: BookLookupIndex | undefined,
+  incoming: VersionIdentitySource & { hash?: string; format: BookFormat },
+): Book | undefined {
+  const identities = getBookVersionIdentities(incoming);
+  if (identities.length === 0) return undefined;
+  const index = lookupIndex?.byVersionKey;
+  if (!index) return findBookVersionCandidates(books, incoming)[0];
+  const matches = new Set<Book>();
+  for (const identity of identities) {
+    for (const book of index.get(getBookVersionIndexKey(identity)) ?? []) {
+      if (book.deletedAt || book.hash === incoming.hash) continue;
+      const sameVersion = getBookVersionIdentities(book).some((stored) =>
+        identities.some((probe) => isSameBookVersion(stored, probe)),
+      );
+      if (sameVersion) matches.add(book);
+    }
+  }
+  if (matches.size === 0) return undefined;
+  return books.find((book) => matches.has(book)) ?? [...matches][0];
 }
 
 export interface ScannedFileEntry {
@@ -425,6 +479,8 @@ export async function importBook(
   let loadedBook: BookDoc | undefined;
   let fileobj: File | undefined;
   let pixivMeta: PixivNovelMetadata | null = null;
+  // 仅 TXT 导入：原始 TXT 的 partialMD5，写入 book.sourceHash 供重导短路。
+  let txtSourceHash: string | undefined;
   try {
     let format: BookFormat;
     let filename: string;
@@ -454,10 +510,41 @@ export async function importBook(
           fileobj = file;
         }
         if (isTxt && fileobj) {
+          const originalTxtFile = fileobj;
+          // TXT 先查重后转换：原始 TXT 的 partialMD5 只读文件首尾少数块，
+          // 代价可忽略；而转换管线（章节正则、段落兜底、EPUB 打包）对大
+          // 文件动辄数秒，且此前它在查重之前执行——同一 TXT 重复拖入每
+          // 次都要重转一遍才知道"已存在"。首导记录的 sourceHash 命中即
+          // 直接短路：刷新时间戳返回既有条目，转换与解析全部跳过。
+          txtSourceHash = await partialMD5(originalTxtFile);
+          if (!transient && !overwrite) {
+            const existingTxtBook = findTxtDedupMatch(books, txtSourceHash);
+            if (
+              existingTxtBook &&
+              // 书文件缺失（如被手动清理）时不能短路——完整路径会重新落盘。
+              (await fs.exists(getLocalBookFilename(existingTxtBook), 'Books'))
+            ) {
+              // 时间戳语义与 byHash 去重分支（下方 582-587 行）保持一致；
+              // 返回副本给调用方提交，原对象经 books/索引槽位替换对同批
+              // 后续文件可见。
+              const refreshed: Book = {
+                ...existingTxtBook,
+                deletedAt: null,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                downloadedAt: Date.now(),
+              };
+              const bi = books.findIndex((b) => b.hash === refreshed.hash);
+              if (bi >= 0) books[bi] = refreshed;
+              if (lookupIndex) lookupIndex.byHash.set(refreshed.hash, refreshed);
+              perfMark('importBook', 'txtDedupSkip', t0);
+              perfMark('importBook', 'total', t0);
+              return refreshed;
+            }
+          }
           // TXT→EPUB 转换走已有 worker 链路（120s 超时 + 失败回退主线程）。
           // 此前主线程同步 convert 无超时：病态章节正则在引擎上灾难性回溯
           // 会永久冻结 UI，只能杀进程。
-          const originalTxtFile = fileobj;
           const { file: convertedFile, usedFallback } = await convertTxtToEpubWithFallback({
             file: fileobj,
             chapterPatterns: options.chapterPatterns,
@@ -559,10 +646,9 @@ export async function importBook(
     // is titled "PowerPoint Presentation" by the same author), so metadata
     // alone wrongly collapses distinct files into one book (issue #5411).
     // Salt the hash with the original filename so only same-named PDFs dedupe.
-    const metaHash = getMetadataHash(
-      loadedBook.metadata,
-      format === 'PDF' ? getBaseFilename(filename) : undefined,
-    );
+    const filenameSalt = format === 'PDF' ? getBaseFilename(filename) : undefined;
+    const metaHashInfo = getMetadataHashInfo(loadedBook.metadata, filenameSalt);
+    const metaHash = metaHashInfo?.metaHash;
     let existingBook = lookupIndex
       ? lookupIndex.byHash.get(hash)
       : books.find((b) => b.hash === hash);
@@ -587,15 +673,73 @@ export async function importBook(
       existingBook.updatedAt = Date.now();
     }
 
+    const primaryLanguage = getPrimaryLanguage(loadedBook.metadata.language);
+    // metaHash was computed above from the original metadata; only display fields
+    // are simplified so re-importing the same file still dedupes by original title.
+    // The simplification must land BEFORE the matching blocks below: they compare
+    // the incoming title/author against stored (already simplified) book fields.
+    const simplifiedTitle = await simplifyChineseText(formatTitle(loadedBook.metadata.title));
+    const simplifiedAuthor = await simplifyChineseText(
+      formatAuthors(loadedBook.metadata.author, primaryLanguage),
+    );
+    loadedBook.metadata.title = simplifiedTitle;
+    loadedBook.metadata.author = simplifiedAuthor;
+
+    // --- The one place that decides whether records may be folded ---
+    //
+    // Folding (importBook's aggregation below, and the `mergeBooks` sweep it
+    // triggers) deletes the records it absorbs: tombstone + removeDir of the
+    // whole Books/<hash>/ directory. It may therefore only run on an identity
+    // that is BOTH explicit and unambiguous:
+    //
+    //   1. explicit — the key must contain something that identifies the
+    //      publication, not merely describe it (getMetadataHashInfo
+    //      .hasExplicitIdentity). A title|authors-only digest collides for
+    //      "same author, same title, different work", e.g. the two pairs of
+    //      duplicate-identity records a real library accumulates; folding on it
+    //      silently deletes a book the user still wants.
+    //   2. unambiguous — the library must hold at most ONE live record for that
+    //      key. Once two live records share a key (the user chose "keep both"
+    //      after a version conflict, or a legacy/synced pair), the identity no
+    //      longer locates a single book, and folding would pick an arbitrary
+    //      winner and delete the other.
+    //
+    // Both conditions are checked HERE and nowhere else: `mergeDuplicates` and
+    // the `firstMatch` re-key below must not grow independent predicates. This
+    // gate is unconditional — a registered `onVersionConflict` callback only
+    // decides whether the USER gets asked, never whether a record may be
+    // swallowed, so the silent paths (watched-folder rescan, open-with) are
+    // protected too. When the gate closes, the file simply lands as its own
+    // book; the loose title+author probe below offers the user the choice.
+    const metaKey = metaHash ? `${metaHash}:${format}` : undefined;
+    const sameIdentityBooks =
+      !transient && metaKey
+        ? (lookupIndex
+            ? (lookupIndex.byMetaKey.get(metaKey) ?? [])
+            : books.filter((b) => b.metaHash === metaHash && b.format === format)
+          ).filter((b) => !b.deletedAt)
+        : [];
+    const identityIsExplicit = !!metaHashInfo?.hasExplicitIdentity;
+    const identityIsUnique = sameIdentityBooks.length < 2;
+    const mayFold = identityIsExplicit && identityIsUnique;
+
+    // Cross-version conflict probe: no hash match, but the library holds a book
+    // with the same normalized title + author — another release of the same
+    // novel (re-downloaded / re-edited / from a different source). The file is
+    // imported as its own book and the caller decides; the import path must not
+    // block on UI (batches run 4 files concurrently) and a declined prompt has
+    // to leave a fully working library behind. EPUB only: PDF metadata is
+    // boilerplate (#5411). Callers that don't register the callback keep the
+    // old import outcome byte for byte.
+    const reportVersionConflict = !!options.onVersionConflict && !transient && format === 'EPUB';
+    let versionConflict: Book | undefined;
+
     // Aggregate all books with same metaHash and format, deduplicating into one entry
     let bestConfigData: string | undefined;
     let mergeDuplicates: Book[] = [];
-    if (!transient && metaHash) {
+    if (!transient && mayFold && metaKey) {
       if (!existingBook) {
-        const metaKey = `${metaHash}:${format}`;
-        const firstMatch = lookupIndex
-          ? (lookupIndex.byMetaKey.get(metaKey) ?? []).find((b) => !b.deletedAt)
-          : books.find((b) => b.metaHash === metaHash && b.format === format && !b.deletedAt);
+        const firstMatch = sameIdentityBooks[0];
         if (firstMatch) {
           oldBookDir = getDir(firstMatch);
           metaHashMatch = true;
@@ -618,19 +762,21 @@ export async function importBook(
       }
     }
 
-    const primaryLanguage = getPrimaryLanguage(loadedBook.metadata.language);
-    // metaHash was computed above from the original metadata; only display fields
-    // are simplified so re-importing the same file still dedupes by original title.
-    const simplifiedTitle = await simplifyChineseText(formatTitle(loadedBook.metadata.title));
-    const simplifiedAuthor = await simplifyChineseText(
-      formatAuthors(loadedBook.metadata.author, primaryLanguage),
-    );
-    loadedBook.metadata.title = simplifiedTitle;
-    loadedBook.metadata.author = simplifiedAuthor;
+    if (reportVersionConflict && !existingBook) {
+      const candidate = findVersionCandidateInLibrary(books, lookupIndex, {
+        title: simplifiedTitle,
+        author: simplifiedAuthor,
+        format,
+        hash,
+      });
+      if (candidate) versionConflict = candidate;
+    }
+
     const book: Book = {
       hash,
       format,
       metaHash,
+      sourceHash: txtSourceHash,
       title: formatTitle(loadedBook.metadata.title),
       sourceTitle: formatTitle(loadedBook.metadata.title),
       primaryLanguage,
@@ -667,6 +813,7 @@ export async function importBook(
       existingBook.author = book.author;
       existingBook.primaryLanguage = book.primaryLanguage;
       existingBook.metadata = book.metadata;
+      existingBook.sourceHash = book.sourceHash ?? existingBook.sourceHash;
       existingBook.uploadedAt = null;
       existingBook.downloadedAt = Date.now();
     } else if (existingBook) {
@@ -686,6 +833,7 @@ export async function importBook(
       existingBook.author = pixivMeta?.title ? book.author : (existingBook.author ?? book.author);
       existingBook.primaryLanguage = existingBook.primaryLanguage ?? book.primaryLanguage;
       existingBook.metadata = book.metadata;
+      existingBook.sourceHash = book.sourceHash ?? existingBook.sourceHash;
       existingBook.downloadedAt = Date.now();
     }
 
@@ -761,6 +909,20 @@ export async function importBook(
           const list = lookupIndex.byMetaKey.get(key);
           if (list) list.push(book);
           else lookupIndex.byMetaKey.set(key, [book]);
+        }
+        // Keep the version index current for the rest of the batch: the next
+        // file may be another release of the book we just added. Skipped when
+        // the caller assembled a partial index (the linear fallback in
+        // findVersionCandidateInLibrary stays correct, just slower).
+        const versionIndex = lookupIndex.byVersionKey as Map<string, Book[]> | undefined;
+        if (versionIndex) {
+          for (const identity of getBookVersionIdentities(book)) {
+            const key = getBookVersionIndexKey(identity);
+            const list = versionIndex.get(key);
+            if (list) {
+              if (!list.includes(book)) list.push(book);
+            } else versionIndex.set(key, [book]);
+          }
         }
       }
     } else if (metaHashMatch && oldBookDir && oldBookDir !== getDir(book)) {
@@ -894,7 +1056,14 @@ export async function importBook(
     }
     perfMark('importBook', 'total', t0);
     // B-6：existingBook 是副本；调用方将以该对象更新 store，原对象未被动过。
-    return existingBook || book;
+    const importedBook = existingBook || book;
+    // Report last, with the record that actually persisted: the caller shows it
+    // in the confirmation dialog and hands it back to replaceBookVersion() when
+    // the user opts to fold the old release into the new file.
+    if (versionConflict) {
+      options.onVersionConflict?.({ existing: versionConflict, incoming: importedBook });
+    }
+    return importedBook;
   } catch (error) {
     console.error('Error importing book:', error);
     throw error;

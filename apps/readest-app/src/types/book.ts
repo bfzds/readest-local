@@ -53,6 +53,14 @@ export interface BookLookupIndex {
   // `normalizeFilePathForIndex` so callers must use the same helper to
   // probe; importBook handles that internally.
   byFilePath: Map<string, Book>;
+  // Maps `${normalized title}|${format}` -> Book[] for cross-version matching
+  // (importing a re-downloaded / re-edited release of a book already in the
+  // library). A book is indexed once per comparable title (`title` and
+  // `sourceTitle`), so a library rename doesn't hide it. Keys come from
+  // `getBookVersionIndexKey`; probing must re-check with `isSameBookVersion`
+  // because the author is not part of the key (an unknown author on either
+  // side matches on title alone). Tombstoned books are not indexed.
+  byVersionKey: Map<string, Book[]>;
 }
 
 /**
@@ -91,7 +99,30 @@ export interface ImportBookOptions {
    * 弹出「目录识别失败」引导，让用户勾选标题行重切；不设则静默保留兜底结果。
    */
   onTxtChapterFallback?: (file: File) => void;
+  /**
+   * EPUB 导入时发现书库里可能已有这本书的旧版本（换源/改版重下）时触发：
+   * 文件已按自己的 hash 落盘，但库里有另一本"归一化后同名同作者"的 EPUB。
+   *
+   * 注意这条回调只决定**要不要问用户**，不决定能不能合并：导入器是否允许
+   * 折叠记录由身份判据单独把关（见 bookService 里 mayFold 的注释），无回调
+   * 的静默路径（受监视文件夹重扫等）同样受那道闸门保护。
+   *
+   * 调用方可用 `replaceBookVersion()` 把旧的折叠进新文件并保留进度。
+   */
+  onVersionConflict?: (info: BookVersionConflictInfo) => void;
 }
+
+/**
+ * 一次「导入的书可能是库里某本书的新版本」的上报。两边都是已落盘的记录：
+ * `existing` 是书库里的旧版本，`incoming` 是刚导入的新文件。
+ */
+export interface BookVersionConflictInfo {
+  existing: Book;
+  incoming: Book;
+}
+
+/** 确认框里用户对单条冲突的选择。 */
+export type BookVersionConflictChoice = 'replace' | 'keep';
 
 export interface Book {
   // if Book is a remote book we just lazy load the book content via url
@@ -108,6 +139,11 @@ export interface Book {
   hash: string;
   // Metadata md5 hash, used to aggregate different versions of the same book
   metaHash?: string;
+  // Partial MD5 of the *original* TXT source file, recorded only for TXT
+  // imports whose stored book file is the converted EPUB. Lets a re-import
+  // hash the cheap source first and skip the whole TXT→EPUB conversion on a
+  // dedup hit instead of converting again just to discover "already exists".
+  sourceHash?: string;
   format: BookFormat;
   title: string; // editable title from metadata
   sourceTitle?: string; // parsed when the book is imported and used to locate the file

@@ -3,6 +3,7 @@ import {
   Book,
   BOOK_CONFIG_SCHEMA_VERSION,
   BookConfig,
+  BookFormat,
   BookProgress,
   WritingMode,
 } from '@/types/book';
@@ -15,6 +16,13 @@ import { md5 } from './md5';
 export const getDir = (book: Book) => {
   return `${book.hash}`;
 };
+
+/**
+ * TXT 先查重后转换：按原始 TXT 的 partialMD5 匹配已入库的 TXT 转换产物。
+ * soft-deleted 条目不参与匹配——重导应走完整路径复活并重建文件。
+ */
+export const findTxtDedupMatch = (books: Book[], txtSourceHash: string): Book | undefined =>
+  books.find((b) => !b.deletedAt && b.sourceHash === txtSourceHash);
 export const getLibraryFilename = () => {
   return 'library.json';
 };
@@ -398,6 +406,20 @@ export interface MetadataHashInfo {
   identifiers: string[];
   hashSource: string;
   metaHash: string;
+  /**
+   * Whether `hashSource` contains something that identifies the PUBLICATION
+   * rather than just describing it: a real identifier (UUID / ISBN / calibre /
+   * PalmDB UID) or a caller-supplied filename salt.
+   *
+   * A title+authors-only digest is not an identity — two different books by the
+   * same author sharing a title collide on it, and folding on such a key
+   * silently deletes one of them. Callers that would fold records (importBook's
+   * aggregation) must require this flag. The filename salt counts because it is
+   * this project's established way of giving an explicit identity to formats
+   * whose metadata has none: PDF (issue #5411), MD imports (utils/md.ts), and
+   * MOBI's PalmDB UID (utils/tauriMobiBridge.ts).
+   */
+  hasExplicitIdentity: boolean;
 }
 
 export const getMetadataHashInfo = (
@@ -412,7 +434,14 @@ export const getMetadataHashInfo = (
     let hashSource = `${title}|${authors.join(',')}|${identifiers.join(',')}`;
     if (filename) hashSource += `|${filename}`;
     const metaHash = md5(hashSource.normalize('NFC'));
-    return { title, authors, identifiers, hashSource, metaHash };
+    return {
+      title,
+      authors,
+      identifiers,
+      hashSource,
+      metaHash,
+      hasExplicitIdentity: identifiers.length > 0 || !!filename,
+    };
   } catch (error) {
     console.error('Error generating metadata hash:', error);
   }
@@ -421,4 +450,141 @@ export const getMetadataHashInfo = (
 
 export const getMetadataHash = (metadata: BookMetadata, filename?: string) => {
   return getMetadataHashInfo(metadata, filename)?.metaHash;
+};
+
+// --- Book version identity ---
+
+/**
+ * Wrapping pairs stripped from a title/author before comparing two releases of
+ * the same book. Only *matched* pairs are removed (see normalizeVersionPart):
+ * a title is comparable whether the source wrapped it in 《》 or not, but
+ * interior punctuation must survive — folding it would merge genuinely
+ * different books ("三体" vs "三体II" / "第一部" vs "第二部"), and stripping
+ * each end independently would corrupt a title like `三体（重命名）`.
+ */
+const VERSION_WRAP_PAIRS: Array<[string, string]> = [
+  ['《', '》'],
+  ['〈', '〉'],
+  ['【', '】'],
+  ['「', '」'],
+  ['『', '』'],
+  ['［', '］'],
+  ['[', ']'],
+  ['（', '）'],
+  ['(', ')'],
+  ['“', '”'],
+  ['‘', '’'],
+  ['"', '"'],
+  ["'", "'"],
+];
+
+/**
+ * Fold one identity component (title or author) down to its comparable form:
+ * NFC, matched wrapping pairs removed, all whitespace removed, lowercased. Used
+ * only for cross-version matching — never for display or persistence.
+ */
+export const normalizeVersionPart = (text: string | undefined): string => {
+  if (!text) return '';
+  let s = text.normalize('NFC').trim();
+  for (let stripping = true; stripping; ) {
+    stripping = false;
+    for (const [open, close] of VERSION_WRAP_PAIRS) {
+      if (s.length > open.length + close.length && s.startsWith(open) && s.endsWith(close)) {
+        s = s.slice(open.length, -close.length);
+        stripping = true;
+        break;
+      }
+    }
+  }
+  return s.replace(/\s+/g, '').toLowerCase();
+};
+
+/**
+ * Separators `formatAuthors` uses to join a contributor list (zh joins with
+ * '、', other languages with ', ' and friends). A book with several authors is
+ * matched by its first one only — the ordering is stable for a given source,
+ * and requiring the whole list to match would defeat the loose match.
+ */
+const VERSION_AUTHOR_SEPARATORS = /[,、;；&/]+/;
+
+export const normalizeVersionAuthor = (author: string | undefined): string => {
+  if (!author) return '';
+  return author.split(VERSION_AUTHOR_SEPARATORS).map(normalizeVersionPart).find(Boolean) ?? '';
+};
+
+export interface BookVersionIdentity {
+  /** `normalizeVersionPart(title)`, empty when the book has no usable title. */
+  titleKey: string;
+  /** `normalizeVersionAuthor(author)`, empty when unknown. */
+  authorKey: string;
+  format: BookFormat;
+}
+
+export type VersionIdentitySource = {
+  title?: string;
+  sourceTitle?: string;
+  author?: string;
+  format: BookFormat;
+};
+
+/**
+ * Every identity a book can be matched by: one per title worth comparing. A
+ * stored book carries both the user-editable `title` and the import-time
+ * `sourceTitle`; indexing both keeps a library rename from hiding the book
+ * from version matching. Identical keys collapse to one entry.
+ */
+export const getBookVersionIdentities = (book: VersionIdentitySource): BookVersionIdentity[] => {
+  const authorKey = normalizeVersionAuthor(book.author);
+  const identities: BookVersionIdentity[] = [];
+  const seen = new Set<string>();
+  for (const raw of [book.title, book.sourceTitle]) {
+    const titleKey = normalizeVersionPart(raw);
+    if (!titleKey || seen.has(titleKey)) continue;
+    seen.add(titleKey);
+    identities.push({ titleKey, authorKey, format: book.format });
+  }
+  return identities;
+};
+
+/** Probe key for `BookLookupIndex.byVersionKey`; only the title part is indexed. */
+export const getBookVersionIndexKey = (identity: BookVersionIdentity): string =>
+  `${identity.titleKey}|${identity.format}`;
+
+/**
+ * Whether two identities describe the same book across releases: same format,
+ * same normalized title, and matching authors — except that an UNKNOWN author
+ * on either side falls back to title-only matching. The loosened case is
+ * deliberate: hand-made EPUBs frequently omit the author entirely, and a
+ * missed match costs a duplicate entry while a wrong one is caught by the
+ * confirmation dialog.
+ */
+export const isSameBookVersion = (a: BookVersionIdentity, b: BookVersionIdentity): boolean => {
+  if (a.format !== b.format) return false;
+  if (!a.titleKey || !b.titleKey || a.titleKey !== b.titleKey) return false;
+  if (!a.authorKey || !b.authorKey) return true;
+  return a.authorKey === b.authorKey;
+};
+
+/**
+ * Library books that could be an earlier release of `incoming` (same title,
+ * compatible author, same format). Pure; tombstoned books and any hash in
+ * `excludeHashes` (typically the incoming file's own hash) are never
+ * candidates. The caller decides what to do with the hit — this function is
+ * only the match test, deliberately loose.
+ */
+export const findBookVersionCandidates = (
+  books: Book[],
+  incoming: VersionIdentitySource & { hash?: string },
+  excludeHashes?: Iterable<string>,
+): Book[] => {
+  const incomingIdentities = getBookVersionIdentities(incoming);
+  if (incomingIdentities.length === 0) return [];
+  const excluded = new Set(excludeHashes ?? []);
+  if (incoming.hash) excluded.add(incoming.hash);
+  return books.filter((book) => {
+    if (book.deletedAt || excluded.has(book.hash)) return false;
+    return getBookVersionIdentities(book).some((identity) =>
+      incomingIdentities.some((incomingIdentity) => isSameBookVersion(identity, incomingIdentity)),
+    );
+  });
 };

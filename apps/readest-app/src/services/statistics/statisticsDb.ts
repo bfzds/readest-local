@@ -23,6 +23,9 @@ type CursorKey = 'push' | 'pull';
  * and never thrash it.
  */
 let sharedDb: Promise<StatisticsDb> | null = null;
+// Resolved counterpart of `sharedDb`, for callers that must not *start* an open
+// (see peekOpen). Assigned once the connection is up, cleared by close().
+let openedDb: StatisticsDb | null = null;
 let lifecycleBound = false;
 
 function bindLifecycle(): void {
@@ -62,10 +65,13 @@ export class StatisticsDb {
     if (!sharedDb) {
       const opening = (async () => {
         const db = await appService.openDatabase('statistics', 'statistics.db', 'Data');
-        return new StatisticsDb(db);
+        const instance = new StatisticsDb(db);
+        openedDb = instance;
+        return instance;
       })();
       sharedDb = opening;
       void opening.catch(() => {
+        openedDb = null;
         if (sharedDb === opening) sharedDb = null;
       });
     }
@@ -75,6 +81,16 @@ export class StatisticsDb {
   /** Test/advanced entry point — wrap an already-migrated DatabaseService. */
   static from(db: DatabaseService): StatisticsDb {
     return new StatisticsDb(db);
+  }
+
+  /**
+   * The already-open instance, or null when this session has never touched
+   * reading statistics. Callers that only *maintain* an existing database (the
+   * book-version rename) use this instead of `open()` so a library edit cannot
+   * create a statistics.db on a device that never recorded any.
+   */
+  static peekOpen(): StatisticsDb | null {
+    return openedDb;
   }
 
   /**
@@ -96,6 +112,7 @@ export class StatisticsDb {
     }
     await this.db.close();
     sharedDb = null;
+    openedDb = null;
   }
 
   async upsertBook(book: StatBook): Promise<number> {
@@ -250,6 +267,63 @@ export class StatisticsDb {
   async getBookByMd5(md5: string): Promise<BookRow | null> {
     const rows = await this.db.select<BookRow>(`SELECT * FROM book WHERE md5 = ? LIMIT 1`, [md5]);
     return rows[0] ?? null;
+  }
+
+  /**
+   * Re-key a book's reading history from `oldHash` to `newHash`, for the
+   * "import a new release over the old one" flow: the file bytes (and therefore
+   * `Book.hash`) change while the reading history belongs to the same book.
+   *
+   * The KOReader-compatible `book` row identifies by `md5`, and the extension
+   * tables by `book_hash`; all three are renamed here. When a row already exists
+   * under `newHash` (possible if the user read the freshly imported file before
+   * confirming the replacement) its events are re-parented onto the old row and
+   * the row is dropped — otherwise the rename would collide on the md5 and
+   * `readest_book_ext`'s primary key, silently dropping one side's history.
+   *
+   * Single transaction: a partial rename would strand events under an id no
+   * book row points at. Returns false when there is nothing to rename.
+   */
+  async renameBookHash(oldHash: string, newHash: string): Promise<boolean> {
+    if (!oldHash || !newHash || oldHash === newHash) return false;
+    const oldRows = await this.db.select<{ id: number }>(
+      `SELECT id FROM book WHERE md5 = ? LIMIT 1`,
+      [oldHash],
+    );
+    const oldId = oldRows[0]?.id;
+    if (!oldId) return false;
+    const newRows = await this.db.select<{ id: number }>(
+      `SELECT id FROM book WHERE md5 = ? LIMIT 1`,
+      [newHash],
+    );
+    const newId = newRows[0]?.id;
+    await this.db.execute('BEGIN');
+    try {
+      if (newId && newId !== oldId) {
+        await this.db.execute(`UPDATE page_stat_data SET id_book = ? WHERE id_book = ?`, [
+          oldId,
+          newId,
+        ]);
+        await this.db.execute(`UPDATE page_stat_seen SET id_book = ? WHERE id_book = ?`, [
+          oldId,
+          newId,
+        ]);
+        await this.db.execute(`DELETE FROM book WHERE id = ?`, [newId]);
+      }
+      await this.db.execute(`UPDATE book SET md5 = ? WHERE id = ?`, [newHash, oldId]);
+      for (const table of ['readest_page_ext', 'readest_book_ext']) {
+        await this.db.execute(`DELETE FROM ${table} WHERE book_hash = ?`, [newHash]);
+        await this.db.execute(`UPDATE ${table} SET book_hash = ? WHERE book_hash = ?`, [
+          newHash,
+          oldHash,
+        ]);
+      }
+      await this.db.execute('COMMIT');
+      return true;
+    } catch (err) {
+      await this.db.execute('ROLLBACK').catch(() => {});
+      throw err;
+    }
   }
 
   /**

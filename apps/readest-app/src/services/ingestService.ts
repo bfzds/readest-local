@@ -1,4 +1,4 @@
-import type { Book, BookLookupIndex } from '@/types/book';
+import type { Book, BookLookupIndex, BookVersionConflictInfo } from '@/types/book';
 import type { AppService, OsPlatform } from '@/types/system';
 import type { SystemSettings } from '@/types/settings';
 import { normalizeFilePathForIndex } from '@/services/bookService';
@@ -46,6 +46,12 @@ export interface IngestFileOptions {
    * 失败引导重切"场景使用。
    */
   chapterPatterns?: string[];
+  /**
+   * EPUB 导入疑似命中书库里的旧版本时的上报（见 ImportBookOptions.onVersionConflict）。
+   * 透传下去，结果随 IngestFileResult.versionConflict 带回；不设则整个流程与
+   * 今天一致（无冲突识别）。
+   */
+  onVersionConflict?: (info: BookVersionConflictInfo) => void;
 }
 
 /**
@@ -166,6 +172,12 @@ export interface IngestFileResult {
    * 标题行生成临时规则重切。
    */
   txtFallbackFile?: File;
+  /**
+   * EPUB：本次导入疑似是书库某本书的新版本（换源/改版重下）时的上报，携带
+   * 旧版本与刚导入的新文件两条记录。调用方可弹确认框，用户选择"覆盖"时交给
+   * `replaceBookVersion()`。不设置 onVersionConflict 时恒为 undefined。
+   */
+  versionConflict?: BookVersionConflictInfo;
 }
 
 export async function ingestFile(
@@ -231,6 +243,8 @@ export async function ingestFile(
   // TXT 段落兜底切分时 bookService 会回调原始 TXT File（见
   // ImportBookOptions.onTxtChapterFallback）；带回给调用方决定是否引导重切。
   let txtFallbackFile: File | undefined;
+  // EPUB 疑似命中旧版本时同样回调上来（见 ImportBookOptions.onVersionConflict）。
+  let versionConflict: BookVersionConflictInfo | undefined;
 
   const book = await appService.importBook(opts.file, opts.books, {
     lookupIndex: opts.lookupIndex,
@@ -239,6 +253,7 @@ export async function ingestFile(
     onTxtChapterFallback: (file) => {
       txtFallbackFile = file;
     },
+    ...(opts.onVersionConflict ? { onVersionConflict: (info) => (versionConflict = info) } : {}),
     // 章节识别规则：本次临时规则（opts.chapterPatterns，目录识别失败引导重切
     // 时带）优先，再叠加全局 settings.txtChapterPatterns。均非空才透传。
     ...(opts.chapterPatterns?.length || settings.txtChapterPatterns?.length
@@ -275,5 +290,5 @@ export async function ingestFile(
     }
   }
 
-  return { book, existed: false, txtFallbackFile };
+  return { book, existed: false, txtFallbackFile, versionConflict };
 }
