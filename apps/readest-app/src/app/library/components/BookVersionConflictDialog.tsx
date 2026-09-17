@@ -210,16 +210,27 @@ const BookVersionConflictDialog = ({
                           {isDetailed ? '收起章节对比' : '展开章节对比'}
                         </button>
                         {isDetailed && (
-                          <div className='flex gap-3 text-xs'>
-                            <div className='min-w-0 flex-1'>
-                              <div className='text-base-content/50 mb-0.5'>书库已有</div>
-                              <TocColumn entries={comparison.oldToc ?? []} />
+                          <>
+                            <div className='flex gap-3 text-xs'>
+                              <div className='min-w-0 flex-1'>
+                                <div className='text-base-content/50 mb-0.5'>
+                                  书库已有（阅读器缓存的目录）
+                                </div>
+                                <TocColumn entries={comparison.oldToc ?? []} />
+                              </div>
+                              <div className='min-w-0 flex-1'>
+                                <div className='text-base-content/50 mb-0.5'>
+                                  本次导入（文件自带目录）
+                                </div>
+                                <TocColumn entries={comparison.newToc ?? []} />
+                              </div>
                             </div>
-                            <div className='min-w-0 flex-1'>
-                              <div className='text-base-content/50 mb-0.5'>本次导入</div>
-                              <TocColumn entries={comparison.newToc ?? []} />
-                            </div>
-                          </div>
+                            <p className='text-base-content/50 leading-relaxed'>
+                              两侧目录的出入口不同（旧侧来自阅读器缓存），条目数可能只是口径差异；目录
+                              元数据不完整的书（条目是「信息」「目录」这类文件级项）这里比的只是条目数，
+                              不保证逐条对应。真正的"哪边更新"看正文字数更可靠。
+                            </p>
+                          </>
                         )}
                       </div>
                     ) : (
