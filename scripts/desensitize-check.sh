@@ -122,6 +122,44 @@ for f in "${files[@]}"; do
   done
 done
 
+# ---------------------------------------------------------------- 提交信息
+# 提交信息随分支一起公开，规则里写明它也要脱敏；检查器如果不扫它，那条规则就是空话。
+if [ "$mode" = 'diff' ]; then
+  msgs=$(git log --format='%h %s%n%b' "$range" 2>/dev/null || true)
+else
+  # 没有任何远端基线时，"可能被推出去"的就是全部历史；取近 200 条，别让一个
+  # 十万提交的仓库卡在这里（这种仓库也不该用 tree 模式兜底）。
+  msgs=$(git log -n 200 --format='%h %s%n%b' HEAD 2>/dev/null || true)
+fi
+if true; then
+  scan_text() {
+    local text="$1" label="$2"
+    for pat in "${PATTERNS[@]}"; do
+      local matches
+      matches=$(printf '%s
+' "$text" | grep -nE "$pat" 2>/dev/null | grep -Ev "$ALLOW" || true)
+      [ -n "$matches" ] || continue
+      while IFS= read -r m; do
+        echo "${RED}✗${OFF} ${label}${DIM}(第 ${m%%:*} 行)${OFF} 命中 ${YELLOW}${pat}${OFF}"
+        echo "      ${DIM}$(printf '%s' "${m#*:}" | cut -c1-120)${OFF}"
+        hits=$((hits + 1))
+      done <<< "$matches"
+    done
+    for term in "${terms[@]}"; do
+      local matches
+      matches=$(printf '%s
+' "$text" | grep -nF -- "$term" 2>/dev/null || true)
+      [ -n "$matches" ] || continue
+      while IFS= read -r m; do
+        echo "${RED}✗${OFF} ${label}${DIM}(第 ${m%%:*} 行)${OFF} 命中专有词 ${YELLOW}${term}${OFF}"
+        echo "      ${DIM}$(printf '%s' "${m#*:}" | cut -c1-120)${OFF}"
+        hits=$((hits + 1))
+      done <<< "$matches"
+    done
+  }
+  [ -n "$msgs" ] && scan_text "$msgs" "本次推送的提交信息"
+fi
+
 # ---------------------------------------------------------------- 结论
 if [ "$hits" -gt 0 ]; then
   echo
