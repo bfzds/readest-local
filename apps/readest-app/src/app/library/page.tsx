@@ -37,6 +37,12 @@ import {
   planVersionConflictResolution,
   replaceBookVersion,
 } from '@/services/bookVersionService';
+import {
+  buildNewVersionFacts,
+  buildVersionComparison,
+  loadOldVersionFacts,
+  type VersionComparison,
+} from '@/services/bookVersionCompare';
 import { eventDispatcher } from '@/utils/event';
 import { getFilename, getFolderImportGroupName, joinScannedPath } from '@/utils/path';
 import { parseOpenWithFiles } from '@/helpers/openWith';
@@ -318,6 +324,40 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     if (queue.length === 0) return;
     openVersionConflicts(queue.splice(0));
   }, [openVersionConflicts]);
+  // 弹窗里的两栏对比数据（键为 incoming.hash）。取数是读缓存文件（nav.json /
+  // config.json）与一次 stats，不解析任何书文件；每条冲突在弹窗打开后异步补齐，
+  // 未到位的先渲染不依赖对比的部分。
+  const [versionComparisons, setVersionComparisons] = useState<Record<string, VersionComparison>>(
+    {},
+  );
+
+  // 弹窗一打开就为每条冲突取对比数据。串行做：一次读两份缓存文件，20 条冲突
+  // 并发读会同时压 40 个文件句柄，而这些数据只是为了让人看清楚，不值得抢 IO。
+  useEffect(() => {
+    if (!versionConflicts || versionConflicts.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const app = appService ?? (await envConfig.getAppService());
+      const settings = useSettingsStore.getState().settings;
+      for (const conflict of versionConflicts) {
+        const target = conflict.candidates[0];
+        if (!target) continue;
+        try {
+          const oldSide = await loadOldVersionFacts(app, target, settings);
+          const newSide = buildNewVersionFacts(conflict.incoming, conflict.incomingFacts);
+          if (cancelled) return;
+          const comparison = buildVersionComparison(oldSide, newSide);
+          setVersionComparisons((prev) => ({ ...prev, [conflict.incoming.hash]: comparison }));
+        } catch (error) {
+          // 对比是"锦上添花"：读不出缓存时弹窗照旧可用，用户仍能做决定。
+          console.warn('Failed to build version comparison:', conflict.incoming.title, error);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [versionConflicts, appService, envConfig]);
 
   // 静默路径攒下的冲突：点通知以外，用户回到书库（窗口重新聚焦、或页面重新
   // 可见）时也应当被问到——通知可能已经被划走或超时消失。别的模态框正在用时
@@ -2617,6 +2657,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           // instance would leave freshly added conflicts showing stale defaults.
           key={`${versionConflicts[0]?.incoming.hash ?? 'version-conflicts'}:${versionConflicts.length}`}
           conflicts={versionConflicts}
+          comparisons={versionComparisons}
           onCancel={() => {
             openVersionConflicts(null);
             drainVersionConflicts();

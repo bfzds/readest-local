@@ -74,6 +74,12 @@ interface RustParsedEpubMetadata {
    *  so the importer can run foliate's OPF metadata extractor without a
    *  second zip access. */
   opfBytes: number[] | Uint8Array;
+  /** 正文非空白字符数（Rust 顺带解压 spine 文档统计）。 */
+  textLength?: number | null;
+  /** 目录条目数（无自带目录时退回 linear spine 文档数）。 */
+  sectionCount?: number | null;
+  /** 自带目录（nav 优先，其次 NCX）的标签与层级。 */
+  toc?: Array<{ label: string; depth: number }> | null;
 }
 
 export interface NativeParsedEpub {
@@ -85,6 +91,15 @@ export interface NativeParsedEpub {
    *  populated lazily by the reader when the user actually opens the
    *  book (which goes through the regular `DocumentLoader` path). */
   bookDoc: BookDoc;
+  /**
+   * 正文规模与自带目录。**不是**给阅读器用的（阅读器仍走 foliate 的惰性
+   * 解析）：导入时顺带取得，供「这本可能是库里某本的旧版本」确认框并排展示，
+   * 也因为弹窗打开时不得再解析任何文件。web / 非 EPUB 路径上全为 undefined，
+   * 弹窗按"未记录"显示。
+   */
+  textLength?: number;
+  sectionCount?: number;
+  toc?: Array<{ label: string; depth: number }>;
 }
 
 /**
@@ -167,6 +182,9 @@ export const tryNativeParseEpub = async (
     return {
       partialMd5: rust.partialMd5,
       bookDoc: buildBookDocStub(metadata, coverBlob),
+      ...(typeof rust.textLength === 'number' ? { textLength: rust.textLength } : {}),
+      ...(typeof rust.sectionCount === 'number' ? { sectionCount: rust.sectionCount } : {}),
+      ...(rust.toc?.length ? { toc: rust.toc } : {}),
     };
   } catch (err) {
     console.warn('[tauriEpubBridge] native parse failed, falling back to JS:', err);

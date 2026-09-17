@@ -142,6 +142,14 @@ export interface IncomingVersionFacts {
   textLength?: number;
   /** 自带目录的条目数（Rust 解析器顺带统计）。 */
   sectionCount?: number;
+  /** 自带目录的标签与层级，供确认框并排展示新版的章节目录。 */
+  toc?: VersionTocEntry[];
+}
+
+/** 目录里的一条：标签 + 层级（0 为顶层）。 */
+export interface VersionTocEntry {
+  label: string;
+  depth: number;
 }
 
 /**

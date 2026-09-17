@@ -17,6 +17,10 @@ export interface TxtConverterWorkerSuccess {
     bookTitle: string;
     chapterCount: number;
     language: string;
+    /** 正文非空白字符数（见 ConversionResult）。 */
+    textLength: number;
+    /** 切出来的章节目录（见 ConversionResult）。 */
+    toc: Array<{ label: string; depth: number }>;
     /** 规则一条都没匹配上、章节由段落兜底切出时为 true（见 ConversionResult）。 */
     usedFallback: boolean;
   };

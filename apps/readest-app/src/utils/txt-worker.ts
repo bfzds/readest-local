@@ -59,6 +59,8 @@ const convertTxtToEpubInWorker = async (options: ConvertTxtToEpubOptions) => {
           bookTitle,
           chapterCount,
           language: detectedLanguage,
+          textLength,
+          toc,
           usedFallback,
         } = event.data.payload;
         cleanup();
@@ -67,6 +69,8 @@ const convertTxtToEpubInWorker = async (options: ConvertTxtToEpubOptions) => {
           bookTitle,
           chapterCount,
           language: detectedLanguage,
+          textLength,
+          toc,
           usedFallback,
         });
       };

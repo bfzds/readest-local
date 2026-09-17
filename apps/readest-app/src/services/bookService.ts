@@ -10,6 +10,7 @@ import {
   FIXED_LAYOUT_FORMATS,
   ImportBookOptions,
   IncomingVersionFacts,
+  VersionTocEntry,
 } from '@/types/book';
 import {
   getDir,
@@ -342,7 +343,7 @@ async function collectIncomingVersionFacts(
   fs: FileSystem,
   file: string | File,
   fileobj: File | undefined,
-  parsed: { textLength?: number; sectionCount?: number } = {},
+  parsed: { textLength?: number; sectionCount?: number; toc?: VersionTocEntry[] } = {},
 ): Promise<IncomingVersionFacts | undefined> {
   let sizeBytes = fileobj?.size ?? 0;
   let mtime: number | undefined;
@@ -361,6 +362,7 @@ async function collectIncomingVersionFacts(
     mtime,
     textLength: parsed.textLength,
     sectionCount: parsed.sectionCount,
+    toc: parsed.toc,
   };
 }
 
@@ -395,6 +397,12 @@ export async function importBook(
   let pixivMeta: PixivNovelMetadata | null = null;
   // 仅 TXT 导入：原始 TXT 的 partialMD5，写入 book.sourceHash 供重导短路。
   let txtSourceHash: string | undefined;
+  // 正文规模与自带目录（派生数据，见 Book.textLength）：原生解析器或 TXT 转换器
+  // 顺带算出，落进记录并交给版本对比弹窗。两条来源都是"导入时已经算过的东西"，
+  // 弹窗打开时不需要再解析任何文件。
+  let parsedTextLength: number | undefined;
+  let parsedSectionCount: number | undefined;
+  let parsedToc: VersionTocEntry[] | undefined;
   try {
     let format: BookFormat;
     let filename: string;
@@ -464,11 +472,23 @@ export async function importBook(
           // TXT→EPUB 转换走已有 worker 链路（120s 超时 + 失败回退主线程）。
           // 此前主线程同步 convert 无超时：病态章节正则在引擎上灾难性回溯
           // 会永久冻结 UI，只能杀进程。
-          const { file: convertedFile, usedFallback } = await convertTxtToEpubWithFallback({
+          const {
+            file: convertedFile,
+            usedFallback,
+            chapterCount,
+            textLength,
+            toc,
+          } = await convertTxtToEpubWithFallback({
             file: fileobj,
             chapterPatterns: options.chapterPatterns,
           });
           fileobj = convertedFile;
+          // TXT 的正文规模与目录由转换器顺带给出（章节已在手上，不额外读盘）：
+          // 正文字数、章节数、章节标题。往后同一个 TXT 的另一个版本落成记录时，
+          // 两侧的数字与标题都出自这份代码，可以直接并排比。
+          parsedTextLength = textLength;
+          parsedSectionCount = chapterCount;
+          parsedToc = toc;
           // 规则一条标题都没匹配上、章节由段落兜底切出时通知调用方（书库
           // 据此弹「目录识别失败」引导）。回调先记下原始 TXT，导入结果返回
           // 后由调用方决定是否引导——这里只负责汇报，不改变导入结果。
@@ -505,6 +525,10 @@ export async function importBook(
           nativeBookDoc = nativeEpub.bookDoc;
           nativeFormat = 'EPUB' as BookFormat;
           nativeHash = nativeEpub.partialMd5;
+          // 顺带取回的正文规模与自带目录（见 NativeParsedEpub 的说明）。
+          parsedTextLength = nativeEpub.textLength;
+          parsedSectionCount = nativeEpub.sectionCount;
+          parsedToc = nativeEpub.toc;
         } else {
           // MOBI's native parse still needs the file in webview memory (foliate
           // reads the PDB header for the full metadata shape), so materialize
@@ -674,6 +698,9 @@ export async function importBook(
       // property of the file, so it is re-derived on every (re)import rather
       // than synced as user data.
       hasNarration: hasMediaOverlays(loadedBook) || undefined,
+      // 派生字段，同 hasNarration：每次导入重新算，不是用户数据、不需要 LWW
+      // 时钟。历史记录里没有它时显示"未记录"，下次导入/替换补上。
+      textLength: parsedTextLength,
       metadata: loadedBook.metadata,
       createdAt: existingBook ? existingBook.createdAt : Date.now(),
       uploadedAt: existingBook ? existingBook.uploadedAt : null,
@@ -710,6 +737,9 @@ export async function importBook(
       existingBook.primaryLanguage = existingBook.primaryLanguage ?? book.primaryLanguage;
       existingBook.metadata = book.metadata;
       existingBook.sourceHash = book.sourceHash ?? existingBook.sourceHash;
+      // 派生字段跟着重导一起补：老记录没有 textLength（这个字段晚出现），
+      // 再导一次同一个文件就补上了，不会永远显示"未记录"。
+      existingBook.textLength = book.textLength ?? existingBook.textLength;
       existingBook.downloadedAt = Date.now();
     }
 
@@ -875,7 +905,11 @@ export async function importBook(
         incoming: importedBook,
         candidates: versionConflict.candidates,
         reason: versionConflict.reason,
-        incomingFacts: await collectIncomingVersionFacts(fs, file, fileobj),
+        incomingFacts: await collectIncomingVersionFacts(fs, file, fileobj, {
+          textLength: parsedTextLength,
+          sectionCount: parsedSectionCount,
+          toc: parsedToc,
+        }),
       });
     }
     return importedBook;

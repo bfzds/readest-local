@@ -79,6 +79,25 @@ pub struct ParsedEpubMetadata {
     /// cover resolution, so propagating them is essentially free and
     /// lets the importer skip a zip.js inflate of the OPF.
     pub opf_bytes: Vec<u8>,
+    /// 正文非空白字符数（解压每个 linear spine 文档、去标签后统计）。
+    /// 供「导入的这本可能是库里某本的旧版本」确认框做零成本对比——两侧都不能
+    /// 为了并排一个数字去现场解析整本书。解压失败或没有任何正文文档时为 None。
+    pub text_length: Option<u64>,
+    /// 目录条目数：有自带目录时是它的条目数，否则退回 linear spine 文档数。
+    pub section_count: Option<usize>,
+    /// 自带目录（EPUB3 nav 优先，没有则 NCX）。扁平列表 + 层级，标签保留原文，
+    /// JS 侧不解析任何文件就能把两边的章节目录并排展示。
+    pub toc: Vec<EpubTocEntry>,
+}
+
+/// 目录里的一条：标签 + 层级（0 为顶层）。刻意不带上 href/CFI——确认框只做
+/// "多了还是少了、顺序对不对"这种结构级对比，不需要定位能力，而 href 两侧口径
+/// 不一致（foliate 会做 href 解码与分组）时反而会造出假差异。
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct EpubTocEntry {
+    pub label: String,
+    pub depth: usize,
 }
 
 #[tauri::command]
@@ -137,12 +156,44 @@ fn parse_epub_metadata_sync(path: &Path) -> Result<ParsedEpubMetadata, String> {
         None => (None, None),
     };
 
+    // 目录 + 正文规模。这两个值是"导入的这本可能是库里某本的旧版本"确认框的
+    // 主要依据，必须在这里顺带算出：确认框打开时不得再解析任何文件，而导入
+    // 路径本来就已经在读这个 zip 了。
+    let spine = parse_opf_spine(&opf_bytes);
+    let toc = match spine.nav_href.as_deref() {
+        Some(path) => read_zip_entry(&mut zip, &resolve_relative(&opf_path, path))
+            .map(|bytes| parse_nav_toc(&bytes))
+            .unwrap_or_default(),
+        None => Vec::new(),
+    };
+    let toc = if toc.is_empty() {
+        spine
+            .ncx_href
+            .as_deref()
+            .and_then(|path| read_zip_entry(&mut zip, &resolve_relative(&opf_path, path)).ok())
+            .map(|bytes| parse_ncx_toc(&bytes))
+            .unwrap_or_default()
+    } else {
+        toc
+    };
+    let text_length = measure_spine_text(&mut zip, &opf_path, &spine.docs);
+    // 有自带目录就报目录条目数（两侧才可比：旧侧的数来自它自己的目录缓存）；
+    // 没有目录时退回正文文档数，至少还能比"正文被切成了几份"。
+    let section_count = if !toc.is_empty() {
+        Some(toc.len())
+    } else {
+        text_length.map(|_| spine.docs.len())
+    };
+
     Ok(ParsedEpubMetadata {
         partial_md5,
         cover,
         cover_mime,
         opf_path,
         opf_bytes,
+        text_length,
+        section_count,
+        toc,
     })
 }
 
@@ -667,6 +718,418 @@ fn parse_opf_cover_inputs(bytes: &[u8]) -> Result<OpfCoverInputs, String> {
 }
 
 // ---------------------------------------------------------------------------
+// Spine + TOC + 正文规模 — 版本对比用的结构级事实
+//
+// 同样是"顺带"：导入路径本来就打开了这个 zip、读过了 OPF。产出只有三样——
+// linear spine 文档（用于统计正文）、自带目录（nav / NCX 的标签与层级）、
+// 正文非空白字符数。刻意不做 DOM、不做 CFI、不做 href 规范化：这些属于
+// foliate-js，重复实现只会和阅读器侧的口径分叉。
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Default, Clone)]
+struct SpineDoc {
+    /// Manifest href，原样保留（未拼 OPF 目录）。
+    href: String,
+}
+
+#[derive(Debug, Default)]
+struct OpfSpine {
+    docs: Vec<SpineDoc>,
+    /// `<item properties="nav">` 的 href（EPUB3 导航文档）。
+    nav_href: Option<String>,
+    /// `application/x-dtbncx+xml` manifest item 的 href（EPUB2 目录）。
+    ncx_href: Option<String>,
+}
+
+/// 单次流式遍历 OPF：收集 manifest 与 spine。`<spine>` 只取 `linear != "no"`
+/// 的条目——非线性的文档不在阅读顺序里，算进"正文规模"会把两侧都算歪。
+fn parse_opf_spine(bytes: &[u8]) -> OpfSpine {
+    let normalized = strip_xml_bom(bytes);
+    let mut reader = Reader::from_reader(normalized.as_ref());
+    reader.config_mut().trim_text(true);
+    reader.config_mut().expand_empty_elements = true;
+    let mut buf = Vec::new();
+
+    let mut manifest: Vec<(String, String, String)> = Vec::new(); // (id, href, properties)
+    let mut media_types: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    let mut idrefs: Vec<(String, bool)> = Vec::new(); // (idref, linear)
+    let mut in_manifest = false;
+    let mut in_spine = false;
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) => {
+                let name = local_name(e.name().as_ref()).to_vec();
+                if name == b"manifest" {
+                    in_manifest = true;
+                } else if name == b"spine" {
+                    in_spine = true;
+                } else if in_manifest && name == b"item" {
+                    let mut id = String::new();
+                    let mut href = String::new();
+                    let mut properties = String::new();
+                    let mut media_type = String::new();
+                    for attr in e.attributes().flatten() {
+                        match attr.key.as_ref() {
+                            b"id" => id = String::from_utf8_lossy(&attr.value).into_owned(),
+                            b"href" => href = String::from_utf8_lossy(&attr.value).into_owned(),
+                            b"properties" => {
+                                properties = String::from_utf8_lossy(&attr.value).into_owned()
+                            }
+                            b"media-type" => {
+                                media_type = String::from_utf8_lossy(&attr.value).into_owned()
+                            }
+                            _ => {}
+                        }
+                    }
+                    if !media_type.is_empty() {
+                        media_types.insert(id.clone(), media_type);
+                    }
+                    manifest.push((id, href, properties));
+                } else if in_spine && name == b"itemref" {
+                    let mut idref = String::new();
+                    let mut linear = true;
+                    for attr in e.attributes().flatten() {
+                        match attr.key.as_ref() {
+                            b"idref" => idref = String::from_utf8_lossy(&attr.value).into_owned(),
+                            b"linear" => linear = !attr.value.eq_ignore_ascii_case(b"no"),
+                            _ => {}
+                        }
+                    }
+                    if !idref.is_empty() {
+                        idrefs.push((idref, linear));
+                    }
+                }
+            }
+            Ok(Event::End(e)) => {
+                let name = local_name(e.name().as_ref()).to_vec();
+                if name == b"manifest" {
+                    in_manifest = false;
+                } else if name == b"spine" {
+                    in_spine = false;
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    let mut docs = Vec::new();
+    for (idref, linear) in &idrefs {
+        if !*linear {
+            continue;
+        }
+        let Some((_, href, _)) = manifest.iter().find(|(id, _, _)| id == idref) else {
+            continue;
+        };
+        // 只把 XHTML/HTML 文档算进正文规模：spine 里偶尔混进 SVG 章节或
+        // 图片页，解压它们既慢又没有字数可言。
+        if !media_types
+            .get(idref)
+            .map(|mt| is_text_document(mt))
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        docs.push(SpineDoc { href: href.clone() });
+    }
+
+    let nav_href = manifest
+        .iter()
+        .find(|(_, _, props)| props.split_ascii_whitespace().any(|p| p == "nav"))
+        .map(|(_, href, _)| href.clone());
+    let ncx_href = manifest
+        .iter()
+        .find(|(id, _, _)| {
+            media_types
+                .get(id)
+                .map(|mt| mt == "application/x-dtbncx+xml")
+                .unwrap_or(false)
+        })
+        .map(|(_, href, _)| href.clone());
+
+    OpfSpine {
+        docs,
+        nav_href,
+        ncx_href,
+    }
+}
+
+fn is_text_document(media_type: &str) -> bool {
+    matches!(
+        media_type,
+        "application/xhtml+xml" | "text/html" | "application/x-dtbook+xml"
+    )
+}
+
+/// 解压每个 spine 文档并统计正文非空白字符数。任何一个文档读失败都跳过；
+/// 一个都读不到时返回 None（"未记录"比一个骗人的 0 好）。
+fn measure_spine_text<R: Read + Seek>(
+    zip: &mut ZipArchive<R>,
+    opf_path: &str,
+    docs: &[SpineDoc],
+) -> Option<u64> {
+    if docs.is_empty() {
+        return None;
+    }
+    let mut total: u64 = 0;
+    let mut read_any = false;
+    for doc in docs {
+        let path = resolve_relative(opf_path, &doc.href);
+        let Ok(bytes) = read_zip_entry(zip, &path) else {
+            continue;
+        };
+        read_any = true;
+        total += count_non_whitespace_text(&String::from_utf8_lossy(&bytes));
+    }
+    if read_any {
+        Some(total)
+    } else {
+        None
+    }
+}
+
+/// 数一段标记文本里的非空白字符：跳过标签、注释、`<script>`/`<style>` 内容，
+/// 每个实体引用（`&amp;` 这类）算一个字符。不做实体解码表——对"两侧比字数"
+/// 这件事，`&` 与 `&amp;` 的差别远小于它带来的解析复杂度。
+fn count_non_whitespace_text(html: &str) -> u64 {
+    let chars: Vec<char> = html.chars().collect();
+    let mut count: u64 = 0;
+    let mut i = 0usize;
+    while i < chars.len() {
+        let c = chars[i];
+        if c == '<' {
+            if chars[i..].starts_with(&['<', '!', '-', '-']) {
+                let mut j = i + 4;
+                while j + 2 < chars.len()
+                    && !(chars[j] == '-' && chars[j + 1] == '-' && chars[j + 2] == '>')
+                {
+                    j += 1;
+                }
+                i = (j + 3).min(chars.len());
+                continue;
+            }
+            let head: String = chars[i..(i + 8).min(chars.len())].iter().collect();
+            let head = head.to_ascii_lowercase();
+            // script / style / head 的内容都不是正文：连同闭合标签一起跳过。
+            // head 一起跳过是为了 `<title>`——它是元数据，把它算进"正文字数"
+            // 会让两侧的字数都凭空多出书名那几十个字。
+            // 取标签名本身再比对，别用前缀匹配：`<header>` 也会被 `<head` 前缀命中，
+            // 那时后面的 `</head` 查找会把正文整段吞掉。
+            let tag_name: String = head
+                .chars()
+                .skip(1)
+                .take_while(|c| c.is_ascii_alphanumeric())
+                .collect();
+            let skip_to = match tag_name.as_str() {
+                "script" => Some("</script"),
+                "style" => Some("</style"),
+                "head" => Some("</head"),
+                _ => None,
+            };
+            // 标签可能带属性，属性值里也可能出现 '>'，按引号状态找真正的结束。
+            let mut j = i + 1;
+            let mut quote: Option<char> = None;
+            while j < chars.len() {
+                match quote {
+                    Some(q) => {
+                        if chars[j] == q {
+                            quote = None;
+                        }
+                    }
+                    None => {
+                        if chars[j] == '"' || chars[j] == '\'' {
+                            quote = Some(chars[j]);
+                        } else if chars[j] == '>' {
+                            break;
+                        }
+                    }
+                }
+                j += 1;
+            }
+            i = (j + 1).min(chars.len());
+            if let Some(close) = skip_to {
+                if let Some(pos) = find_ascii_case_insensitive(&chars, i, close) {
+                    i = pos;
+                }
+            }
+            continue;
+        }
+        if c == '&' {
+            // 实体引用算一个字符；找不到 ';' 或超出合理长度就当作普通的 '&'。
+            let mut j = i + 1;
+            let mut terminated = false;
+            while j < chars.len() && j - i <= 32 {
+                let ch = chars[j];
+                if ch == ';' {
+                    terminated = true;
+                    break;
+                }
+                if ch.is_whitespace() || ch == '<' || ch == '&' {
+                    break;
+                }
+                j += 1;
+            }
+            if terminated {
+                count += 1;
+                i = j + 1;
+                continue;
+            }
+        }
+        if !c.is_whitespace() {
+            count += 1;
+        }
+        i += 1;
+    }
+    count
+}
+
+/// 不分配字符串的 ASCII 大小写无关查找。`count_non_whitespace_text` 要为每个
+/// `<script>` 找闭合标签，而整章内容可能上百 KB——每次 `to_lowercase()` 一份
+/// 副本会让一本带几十段脚本的书白白分配掉几十兆。
+fn find_ascii_case_insensitive(chars: &[char], from: usize, needle: &str) -> Option<usize> {
+    let needle: Vec<char> = needle.chars().collect();
+    if needle.is_empty() || chars.len() < needle.len() {
+        return None;
+    }
+    let last_start = chars.len() - needle.len();
+    let mut i = from;
+    'outer: while i <= last_start {
+        for (offset, expected) in needle.iter().enumerate() {
+            if chars[i + offset].to_ascii_lowercase() != *expected {
+                i += 1;
+                continue 'outer;
+            }
+        }
+        return Some(i);
+    }
+    None
+}
+
+/// EPUB3 导航文档里的 `<nav epub:type="toc">` → 扁平条目列表。
+fn parse_nav_toc(bytes: &[u8]) -> Vec<EpubTocEntry> {
+    let normalized = strip_xml_bom(bytes);
+    let mut reader = Reader::from_reader(normalized.as_ref());
+    reader.config_mut().expand_empty_elements = true;
+    let mut buf = Vec::new();
+    let mut entries = Vec::new();
+    let mut in_toc_nav = false;
+    let mut nav_depth = 0usize;
+    let mut list_depth = 0usize;
+    let mut capturing = false;
+    let mut label = String::new();
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) => {
+                let name = local_name(e.name().as_ref()).to_vec();
+                if name == b"nav" {
+                    nav_depth += 1;
+                    // epub:type 的前缀可以是任意的（`epub:type` / `type`），
+                    // 只看本地名即可。
+                    in_toc_nav = e.attributes().flatten().any(|attr| {
+                        local_name_eq(attr.key.as_ref(), b"type")
+                            && String::from_utf8_lossy(&attr.value)
+                                .split_ascii_whitespace()
+                                .any(|t| t == "toc")
+                    });
+                } else if name == b"ol" && in_toc_nav {
+                    list_depth += 1;
+                } else if name == b"a" && in_toc_nav {
+                    capturing = true;
+                    label.clear();
+                }
+            }
+            Ok(Event::Text(t)) if capturing => {
+                label.push_str(&String::from_utf8_lossy(t.as_ref()));
+            }
+            Ok(Event::End(e)) => {
+                let name = local_name(e.name().as_ref()).to_vec();
+                if name == b"a" && capturing {
+                    capturing = false;
+                    let label = label.trim().to_string();
+                    if !label.is_empty() {
+                        entries.push(EpubTocEntry {
+                            label,
+                            depth: list_depth.saturating_sub(1),
+                        });
+                    }
+                } else if name == b"ol" && in_toc_nav {
+                    list_depth = list_depth.saturating_sub(1);
+                } else if name == b"nav" {
+                    nav_depth = nav_depth.saturating_sub(1);
+                    if nav_depth == 0 {
+                        in_toc_nav = false;
+                        list_depth = 0;
+                    }
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+    entries
+}
+
+/// EPUB2 `toc.ncx` 的 `<navMap>` → 扁平条目列表（`navPoint` 嵌套即层级）。
+fn parse_ncx_toc(bytes: &[u8]) -> Vec<EpubTocEntry> {
+    let normalized = strip_xml_bom(bytes);
+    let mut reader = Reader::from_reader(normalized.as_ref());
+    reader.config_mut().expand_empty_elements = true;
+    let mut buf = Vec::new();
+    let mut entries = Vec::new();
+    let mut point_depth = 0usize;
+    let mut in_label = false;
+    let mut capturing = false;
+    let mut label = String::new();
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) => {
+                if local_name_eq_ignore_ascii_case(e.name().as_ref(), b"navpoint") {
+                    point_depth += 1;
+                } else if local_name_eq_ignore_ascii_case(e.name().as_ref(), b"navlabel") {
+                    in_label = true;
+                } else if in_label && local_name_eq_ignore_ascii_case(e.name().as_ref(), b"text") {
+                    capturing = true;
+                    label.clear();
+                }
+            }
+            Ok(Event::Text(t)) if capturing => {
+                label.push_str(&String::from_utf8_lossy(t.as_ref()));
+            }
+            Ok(Event::End(e)) => {
+                if capturing && local_name_eq_ignore_ascii_case(e.name().as_ref(), b"text") {
+                    capturing = false;
+                } else if local_name_eq_ignore_ascii_case(e.name().as_ref(), b"navlabel") {
+                    in_label = false;
+                    let text = label.trim().to_string();
+                    if !text.is_empty() {
+                        entries.push(EpubTocEntry {
+                            label: text,
+                            depth: point_depth.saturating_sub(1),
+                        });
+                    }
+                    label.clear();
+                } else if local_name_eq_ignore_ascii_case(e.name().as_ref(), b"navpoint") {
+                    point_depth = point_depth.saturating_sub(1);
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+    entries
+}
+
+// ---------------------------------------------------------------------------
 // Cover resolution
 // ---------------------------------------------------------------------------
 fn resolve_cover_path(
@@ -859,6 +1322,12 @@ fn local_name(qname: &[u8]) -> &[u8] {
 
 fn local_name_eq(qname: &[u8], local: &[u8]) -> bool {
     local_name(qname) == local
+}
+
+/// 大小写无关的本地名比较。NCX 的元素名是驼峰（`navPoint` / `navLabel`），而
+/// OPF/XHTML 全是小写——同一份代码要认两种拼写。
+fn local_name_eq_ignore_ascii_case(qname: &[u8], local: &[u8]) -> bool {
+    local_name(qname).eq_ignore_ascii_case(local)
 }
 
 #[cfg(test)]
@@ -1426,5 +1895,205 @@ mod tests {
         // md5 = 1576a94d6cb334dd126cb1c27f19e0f2.
         assert_eq!(hash, "1576a94d6cb334dd126cb1c27f19e0f2");
         let _ = std::fs::remove_file(path);
+    }
+
+    // ------------------------------------------------------------------
+    // Spine / TOC / 正文规模 — 版本对比弹窗的结构级事实
+    // ------------------------------------------------------------------
+
+    const SPINE_OPF: &[u8] = br#"<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <manifest>
+    <item id="cover" href="images/cover.jpg" media-type="image/jpeg"/>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="ch1" href="text/ch1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="ch2" href="text/ch2.xhtml" media-type="application/xhtml+xml"/>
+    <item id="notes" href="text/notes.xhtml" media-type="application/xhtml+xml"/>
+    <item id="plate" href="images/plate.svg" media-type="image/svg+xml"/>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+  </manifest>
+  <spine toc="ncx">
+    <itemref idref="ch1"/>
+    <itemref idref="ch2"/>
+    <itemref idref="plate"/>
+    <itemref idref="notes" linear="no"/>
+  </spine>
+</package>"#;
+
+    #[test]
+    fn parse_opf_spine_keeps_reading_order_and_skips_non_linear_and_media() {
+        let spine = parse_opf_spine(SPINE_OPF);
+        // 只有 linear 的 XHTML 文档算正文：非线性的 notes 与 SVG plate 都要剔除，
+        // 否则"正文被切成几份"这个数字两侧就对不上。
+        let hrefs: Vec<&str> = spine.docs.iter().map(|d| d.href.as_str()).collect();
+        assert_eq!(hrefs, vec!["text/ch1.xhtml", "text/ch2.xhtml"]);
+        assert_eq!(spine.nav_href.as_deref(), Some("nav.xhtml"));
+        assert_eq!(spine.ncx_href.as_deref(), Some("toc.ncx"));
+    }
+
+    #[test]
+    fn parse_nav_toc_reads_labels_and_depth() {
+        // 中文标签只能走 &str，byte string 字面量不接受非 ASCII。
+        let nav = r#"<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <body>
+    <nav epub:type="landmarks"><ol><li><a href="text/ch1.xhtml">Start</a></li></ol></nav>
+    <nav epub:type="toc">
+      <ol>
+        <li><a href="text/ch1.xhtml">第一章 起点</a>
+          <ol><li><a href="text/ch1.xhtml#s1">第一节</a></li></ol>
+        </li>
+        <li><a href="text/ch2.xhtml">第二章</a></li>
+      </ol>
+    </nav>
+  </body>
+</html>"#;
+        let entries = parse_nav_toc(nav.as_bytes());
+        let labels: Vec<&str> = entries.iter().map(|e| e.label.as_str()).collect();
+        // landmarks 不是目录，不能混进来。
+        assert_eq!(labels, vec!["第一章 起点", "第一节", "第二章"]);
+        let depths: Vec<usize> = entries.iter().map(|e| e.depth).collect();
+        assert_eq!(depths, vec![0, 1, 0]);
+    }
+
+    #[test]
+    fn parse_ncx_toc_reads_labels_and_depth() {
+        let ncx = br#"<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <navMap>
+    <navPoint id="n1"><navLabel><text>Chapter One</text></navLabel><content src="ch1.xhtml"/>
+      <navPoint id="n1-1"><navLabel><text>Section A</text></navLabel><content src="ch1.xhtml#a"/></navPoint>
+    </navPoint>
+    <navPoint id="n2"><navLabel><text>Chapter Two</text></navLabel><content src="ch2.xhtml"/></navPoint>
+  </navMap>
+</ncx>"#;
+        let entries = parse_ncx_toc(ncx);
+        let labels: Vec<&str> = entries.iter().map(|e| e.label.as_str()).collect();
+        assert_eq!(labels, vec!["Chapter One", "Section A", "Chapter Two"]);
+        let depths: Vec<usize> = entries.iter().map(|e| e.depth).collect();
+        assert_eq!(depths, vec![0, 1, 0]);
+    }
+
+    #[test]
+    fn count_non_whitespace_text_ignores_markup_scripts_and_entities() {
+        let html = "<html><head><title>T</title><style>p{color:red}</style>\
+<script>var x = 1 &amp; 2;</script></head>\
+<body><!-- 注释里的字不算 --><p>Hello &amp; 世界</p><p>   </p></body></html>";
+        // 正文只有 "Hello & 世界"：Hello(5) + &(1) + 世界(2) = 8。标题/样式/
+        // 脚本/注释一律不计，实体引用按一个字符算。
+        assert_eq!(count_non_whitespace_text(html), 8);
+    }
+
+    #[test]
+    fn count_non_whitespace_text_handles_quoted_angle_brackets_in_attributes() {
+        // 属性值里的 '>' 不是标签结束，按引号状态跳过的实现必须认出来。
+        assert_eq!(
+            count_non_whitespace_text(r#"<img alt="a > b" src="x.png"/>ab"#),
+            2
+        );
+    }
+
+    #[test]
+    fn parse_epub_metadata_reports_text_length_and_toc() {
+        // 端到端：合成一个最小 EPUB，确认导入路径顺带带回了字数、章节数与目录，
+        // 且目录数（2 个 navPoint）优先于"正文文档数"这个退路。
+        use std::io::Write;
+        let opf = br#"<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>T</dc:title></metadata>
+  <manifest>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+    <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine toc="ncx"><itemref idref="ch1"/></spine>
+</package>"#;
+        let ncx = br#"<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><navMap>
+  <navPoint id="n1"><navLabel><text>One</text></navLabel><content src="ch1.xhtml"/></navPoint>
+  <navPoint id="n2"><navLabel><text>Two</text></navLabel><content src="ch1.xhtml#x"/></navPoint>
+</navMap></ncx>"#;
+        let container = br#"<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>"#;
+        let ch1 = "<html><body><p>一二三</p><p>abcd ef</p></body></html>";
+
+        let mut buf = Vec::<u8>::new();
+        {
+            let mut w = zip::ZipWriter::new(Cursor::new(&mut buf));
+            let opts: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored);
+            for (name, body) in [
+                ("META-INF/container.xml", container.to_vec()),
+                ("OEBPS/content.opf", opf.to_vec()),
+                ("OEBPS/toc.ncx", ncx.to_vec()),
+                ("OEBPS/ch1.xhtml", ch1.as_bytes().to_vec()),
+            ] {
+                w.start_file(name, opts).expect("start");
+                w.write_all(&body).expect("write");
+            }
+            w.finish().expect("finish");
+        }
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!("readest-epub-measure-{}.epub", std::process::id()));
+        std::fs::write(&path, &buf).expect("write epub");
+
+        let parsed = parse_epub_metadata_sync(&path).expect("parses");
+
+        // 一二三(3) + abcd(4) + ef(2) = 9 个非空白字符。
+        assert_eq!(parsed.text_length, Some(9));
+        assert_eq!(parsed.section_count, Some(2));
+        assert_eq!(
+            parsed
+                .toc
+                .iter()
+                .map(|e| e.label.as_str())
+                .collect::<Vec<_>>(),
+            vec!["One", "Two"]
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn parse_epub_metadata_survives_an_epub_without_any_text_document() {
+        // 退化文件不能把导入打挂：没有正文时就报 None（弹窗显示"未记录"），
+        // 但封面/哈希这些必需字段照旧返回。
+        use std::io::Write;
+        let opf = br#"<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <manifest><item id="cover" href="c.jpg" media-type="image/jpeg"/></manifest>
+  <spine/>
+</package>"#;
+        let container = br#"<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>"#;
+        let mut buf = Vec::<u8>::new();
+        {
+            let mut w = zip::ZipWriter::new(Cursor::new(&mut buf));
+            let opts: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored);
+            for (name, body) in [
+                ("META-INF/container.xml", container.to_vec()),
+                ("content.opf", opf.to_vec()),
+            ] {
+                w.start_file(name, opts).expect("start");
+                w.write_all(&body).expect("write");
+            }
+            w.finish().expect("finish");
+        }
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!(
+            "readest-epub-degenerate-{}.epub",
+            std::process::id()
+        ));
+        std::fs::write(&path, &buf).expect("write epub");
+
+        let parsed = parse_epub_metadata_sync(&path).expect("parses");
+        assert_eq!(parsed.text_length, None);
+        assert_eq!(parsed.section_count, None);
+        assert!(parsed.toc.is_empty());
+        assert!(!parsed.partial_md5.is_empty());
+        let _ = std::fs::remove_file(&path);
     }
 }

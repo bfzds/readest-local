@@ -172,6 +172,24 @@ interface Chapter {
   detected?: boolean;
 }
 
+/** 章节正文的非空白字符数合计（标题行不计，它不在 `content` 里）。 */
+const countChapterTextLength = (chapters: Chapter[]): number =>
+  chapters.reduce((total, chapter) => total + chapter.content.replace(/\s+/g, '').length, 0);
+
+/**
+ * 章节列表 → 目录条目。卷（`isVolume`）是顶层，其下的章低一层；没有卷的书
+ * 全部是顶层——和侧栏目录的层级观感一致。
+ */
+const toTocEntries = (chapters: Chapter[]): Array<{ label: string; depth: number }> => {
+  const hasVolumes = chapters.some((chapter) => chapter.isVolume);
+  return chapters
+    .filter((chapter) => chapter.title.trim())
+    .map((chapter) => ({
+      label: chapter.title.trim(),
+      depth: hasVolumes && !chapter.isVolume ? 1 : 0,
+    }));
+};
+
 interface Txt2EpubOptions {
   file: File;
   author?: string;
@@ -196,6 +214,18 @@ export interface ConversionResult {
   bookTitle: string;
   chapterCount: number;
   language: string;
+  /**
+   * 正文非空白字符数。导入时随转换顺带算出（章节内容已在手上，不额外读盘），
+   * 写入 `Book.textLength` 供「导入的是不是旧版本」确认框对比——两侧都不能为了
+   * 并排一个数字去现场解析整本书。与 EPUB 的原生统计同口径到此为止：
+   * TXT 的旧侧记录也是这份代码算出来的，所以同一个文件的两个版本可比。
+   */
+  textLength: number;
+  /**
+   * 切出来的章节目录（标签 + 层级）。转换器已经有一份章节列表，顺手导出即可；
+   * 版本对比弹窗据此并排新旧两版的章节，不必为了几个标题再解析一遍书。
+   */
+  toc: Array<{ label: string; depth: number }>;
   /**
    * true = 内置/自定义规则一条标题都没匹配上，章节是按段落兜底切出来的
    * （标题为序号）。调用方可据此弹出「目录识别失败」引导，让用户勾选
@@ -297,6 +327,8 @@ export class TxtToEpubConverter {
       bookTitle,
       chapterCount: chapters.length,
       language,
+      textLength: countChapterTextLength(chapters),
+      toc: toTocEntries(chapters),
       usedFallback: chapters.length > 0 && chapters.every((chapter) => !chapter.detected),
     };
   }
@@ -371,6 +403,8 @@ export class TxtToEpubConverter {
       bookTitle,
       chapterCount: chapters.length,
       language,
+      textLength: countChapterTextLength(chapters),
+      toc: toTocEntries(chapters),
       usedFallback: chapters.length > 0 && chapters.every((chapter) => !chapter.detected),
     };
   }

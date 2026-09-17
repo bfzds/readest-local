@@ -23,6 +23,8 @@ workerContext.onmessage = async (event: MessageEvent<TxtConverterWorkerRequest>)
         bookTitle: result.bookTitle,
         chapterCount: result.chapterCount,
         language: result.language,
+        textLength: result.textLength,
+        toc: result.toc,
         usedFallback: result.usedFallback,
       },
     };
