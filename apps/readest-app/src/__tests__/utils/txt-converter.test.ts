@@ -808,3 +808,27 @@ describe('正文字数：版本对比弹窗用的派生数据', () => {
     expect(result.toc.every((entry) => entry.depth === 0)).toBe(true);
   });
 });
+
+describe('转换产物的字节稳定性（TXT 删了还能拖回来所依赖的性质）', () => {
+  // bookService 里"墓碑不进 sourceHash 短路面、走完整路径按 hash 复活"这套逻辑
+  // 成立的前提是：同一个 TXT 转两次得到**同一个 hash**。那靠的是
+  //   - dc:identifier 取自原始 TXT 的 partialMD5（不是随机 UUID）；
+  //   - zip 条目的时间戳被钉成 new Date(0)（zipWriteOptions）。
+  // 没有测试锁它的话，将来往 EPUB 模板里加一个 <dc:date> 或者动 zip 选项，
+  // "删了再拖回来" 就会从"复活"悄悄变成"多一本"。
+  it('同一文本转换两次得到完全相同的字节', async () => {
+    const content = ['第一章 开始', '正文甲乙丙丁', '第二章 继续', '更多内容壬癸'].join('\n\n');
+
+    const convertOnce = async () => {
+      const converter = new TxtToEpubConverter();
+      const result = await converter.convert({ file: new File([content], 'stable.txt') });
+      return new Uint8Array(await result.file.arrayBuffer());
+    };
+
+    const first = await convertOnce();
+    const second = await convertOnce();
+
+    expect(first.byteLength).toBe(second.byteLength);
+    expect(Array.from(first)).toEqual(Array.from(second));
+  });
+});

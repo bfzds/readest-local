@@ -943,6 +943,7 @@ describe('discardImportedBook', () => {
     expect(tombstone.filePath).toBe('/library/new.epub');
     expect(result.library.find((book) => book.hash === 'kept-hash')).toBe(kept);
     // 必须 replace 写，否则默认的 read-merge-write 会把这条记录从磁盘带回来。
+    expect(result.applied).toBe(true);
     expect(appService.saveLibraryBooks).toHaveBeenCalledWith(result.library, { replace: true });
     expect(saved[0]!.filter((book) => !book.deletedAt).map((book) => book.hash)).toEqual([
       'kept-hash',
@@ -1112,9 +1113,40 @@ describe('mergeBatchVersionConflicts', () => {
     const merged = mergeBatchVersionConflicts([fromImport], [fromBatch]);
 
     expect(merged).toHaveLength(1);
-    // 候选多的那条留下：它列出的"另有 N 本同书号记录"更全。
-    expect(merged[0]).toBe(fromImport);
     expect(merged[0]!.candidates.map((b) => b.hash)).toEqual(['o1', 'n1']);
+    // 判定依据取先报的那条：它来自导入时刻，两侧身份都是当时算出来的。
+    expect(merged[0]!.reason).toBe(fromImport.reason);
+  });
+
+  // 候选取**并集**，不做"谁多留谁"：批后探测看到的批内版本与导入时刻看到的
+  // 库内版本都对用户有用，取其一会让另一侧的候选凭空消失（"另有 N 本同书号
+  // 记录"随执行顺序时多时少）。
+  it('unions the candidates from both reports instead of dropping one side', () => {
+    const fromImport = conflict('n3', ['o1']);
+    const fromBatch = conflict('n3', ['n1', 'n2']);
+
+    const merged = mergeBatchVersionConflicts([fromImport], [fromBatch]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.candidates.map((b) => b.hash).sort()).toEqual(['n1', 'n2', 'o1']);
+  });
+
+  // 并集后仍按阅读进度降序：[0] 是替换目标，读得最远的那本排最前。
+  it('re-sorts the union by reading progress', () => {
+    const fromImport: BookVersionConflictInfo = {
+      incoming: makeBook({ hash: 'n3' }),
+      candidates: [makeBook({ hash: 'o1', progress: [1, 300] })],
+      reason: 'same-identifier',
+    };
+    const fromBatch: BookVersionConflictInfo = {
+      incoming: makeBook({ hash: 'n3' }),
+      candidates: [makeBook({ hash: 'n1', progress: [250, 300] })],
+      reason: 'same-identifier',
+    };
+
+    const merged = mergeBatchVersionConflicts([fromImport], [fromBatch]);
+
+    expect(merged[0]!.candidates.map((b) => b.hash)).toEqual(['n1', 'o1']);
   });
 
   it('appends batch-only conflicts for other incoming records', () => {
@@ -1144,6 +1176,8 @@ describe('discardImportedBook when the record is already gone', () => {
     const result = await discardImportedBook(appService, { book: gone, books });
 
     expect(result.library).toBe(books);
+    // 如实报告"这次没动手"，否则调用方会提示"已撤销 N 本"——一件没发生的事。
+    expect(result.applied).toBe(false);
     expect(appService.saveLibraryBooks).not.toHaveBeenCalled();
     expect(appService.deleteBook).not.toHaveBeenCalled();
     expect(saved).toHaveLength(0);

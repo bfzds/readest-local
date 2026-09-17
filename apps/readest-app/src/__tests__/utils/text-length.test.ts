@@ -54,3 +54,26 @@ describe('countNonWhitespaceText', () => {
     expect(countNonWhitespaceText('  \n\t ')).toBe(0);
   });
 });
+
+/**
+ * 空白判定与 Rust 的 `char::is_whitespace()`（Unicode White_Space）对齐。
+ * JS 的 `\s` 有两处不同，注释声称"逐条对齐"就必须把这两点锁住。
+ */
+describe('countNonWhitespaceText 的空白判定与 Rust 对齐', () => {
+  const NEL = String.fromCharCode(0x85);
+  const BOM = String.fromCharCode(0xfeff);
+
+  // U+0085 NEL：Rust 的 char::is_whitespace() 认它是空白，JS 的 \s 不认。
+  it('treats U+0085 (NEL) as whitespace like Rust does', () => {
+    expect(countNonWhitespaceText(`甲${NEL}乙`)).toBe(2);
+  });
+
+  // U+FEFF BOM：JS 的 \s 认（ZWNBSP），Rust 不认。
+  it('counts U+FEFF (BOM) as a character like Rust does', () => {
+    expect(countNonWhitespaceText(`甲${BOM}乙`)).toBe(3);
+  });
+
+  it('still treats the common ASCII whitespace as whitespace', () => {
+    expect(countNonWhitespaceText('甲 \t\n\r乙')).toBe(2);
+  });
+});

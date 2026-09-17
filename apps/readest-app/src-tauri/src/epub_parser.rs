@@ -176,14 +176,15 @@ fn parse_epub_metadata_sync(path: &Path) -> Result<ParsedEpubMetadata, String> {
     } else {
         toc
     };
-    let text_length =
-        measure_spine_text(&mut zip, &opf_path, &spine.docs, spine.nav_href.as_deref());
+    let measured = measure_spine_text(&mut zip, &opf_path, &spine.docs, spine.nav_href.as_deref());
+    let text_length = measured.map(|(length, _)| length);
     // 有自带目录就报目录条目数（两侧才可比：旧侧的数来自它自己的目录缓存）；
-    // 没有目录时退回正文文档数，至少还能比"正文被切成了几份"。
+    // 没有目录时退回**算过字数的那些**文档数，至少还能比"正文被切成了几份"。
+    // 这里必须用 measure 的计数而不是 spine.docs.len()：后者把 nav 也算进去了。
     let section_count = if !toc.is_empty() {
         Some(toc.len())
     } else {
-        text_length.map(|_| spine.docs.len())
+        measured.map(|(_, counted)| counted)
     };
 
     Ok(ParsedEpubMetadata {
@@ -871,17 +872,19 @@ fn is_text_document(media_type: &str) -> bool {
 ///
 /// `nav_href` 是 EPUB3 导航文档：它允许被列在 spine 里，但那是目录页不是正文，
 /// 链接文字不能算字数（与已排除的 `<title>` 同一类口径）。
+/// 返回 (正文非空白字符数, 计入正文的文档数)——文档数排除 nav，与字数同一口径。
 fn measure_spine_text<R: Read + Seek>(
     zip: &mut ZipArchive<R>,
     opf_path: &str,
     docs: &[SpineDoc],
     nav_href: Option<&str>,
-) -> Option<u64> {
+) -> Option<(u64, usize)> {
     if docs.is_empty() {
         return None;
     }
     let nav_path = nav_href.map(|href| resolve_relative(opf_path, href));
     let mut total: u64 = 0;
+    let mut counted: usize = 0;
     let mut read_any = false;
     for doc in docs {
         let path = resolve_relative(opf_path, &doc.href);
@@ -892,13 +895,14 @@ fn measure_spine_text<R: Read + Seek>(
             continue;
         };
         read_any = true;
+        counted += 1;
         // 与 parse_opf_spine / parse_nav_toc / parse_ncx_toc 一致地先归一 BOM：
         // UTF-16 的 XHTML 每个字符后面跟一个 NUL，那些 NUL 不是空白符、会被照数，
         // 字数大约翻倍（EPUB 规范允许 UTF-16）；UTF-8 的 BOM 则多算 1。
         total += count_non_whitespace_text(&String::from_utf8_lossy(&strip_xml_bom(&bytes)));
     }
     if read_any {
-        Some(total)
+        Some((total, counted))
     } else {
         None
     }
@@ -2118,7 +2122,9 @@ mod tests {
         let parsed = parse_epub_metadata_sync(&path).expect("parses");
 
         assert_eq!(parsed.text_length, Some(3));
-        // 目录里那串字仍然来自 nav 文档，只是不算进正文。
+        // 目录里那串字仍然来自 nav 文档，只是不算进正文；没有可用目录时退回的
+        // 文档数也必须把 nav 排除在外，否则"正文被切成几份"会被 nav 顶多一份。
+        assert_eq!(parsed.section_count, Some(1));
         assert_eq!(parsed.toc.len(), 1);
         let _ = std::fs::remove_file(&path);
     }

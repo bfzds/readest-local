@@ -12,7 +12,25 @@
  *  - 实体引用（`&amp;` 这类）算一个字符，不做解码表；
  *  - `<body>` 里的标题（`<h2>第一章</h2>`）**算**正文：章节标题确实占版面，
  *    Rust 侧也这么数。
+ *
+ * 空白判定也不能直接用 JS 的 `\s`：它与 Rust 的 `char::is_whitespace()` 有两处
+ * 不一致，见下面的 `isTextWhitespace`。
  */
+
+// 与 Rust `char::is_whitespace()` 对齐的空白判定。
+//
+// 差异来源：JS 的 `\s` 按 ECMAScript WhiteSpace+LineTerminator 定义（Zs 类别加
+// 几个控制字符），Rust 按 Unicode White_Space 属性。两处不一致，用码点判据补齐，
+// 比在正则里塞不可见字符清楚：
+//   - U+0085 NEL：Rust 算空白，JS 的 `\s` 不算 → 这里算；
+//   - U+FEFF BOM：JS 的 `\s` 算（ZWNBSP），Rust 不算 → 这里不算。
+const isTextWhitespace = (ch: string): boolean => {
+  const code = ch.charCodeAt(0);
+  if (code === 0x85) return true;
+  if (code === 0xfeff) return false;
+  return /\s/.test(ch);
+};
+
 export const countNonWhitespaceText = (html: string): number => {
   const chars = [...html];
   let count = 0;
@@ -81,7 +99,7 @@ export const countNonWhitespaceText = (html: string): number => {
           terminated = true;
           break;
         }
-        if (/\s/.test(ch) || ch === '<' || ch === '&') break;
+        if (isTextWhitespace(ch) || ch === '<' || ch === '&') break;
         j += 1;
       }
       if (terminated) {
@@ -90,7 +108,7 @@ export const countNonWhitespaceText = (html: string): number => {
         continue;
       }
     }
-    if (!/\s/.test(c)) count += 1;
+    if (!isTextWhitespace(c)) count += 1;
     i += 1;
   }
   return count;

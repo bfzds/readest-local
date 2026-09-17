@@ -34,7 +34,6 @@ import { ingestFile } from '@/services/ingestService';
 import {
   discardImportedBook,
   findBatchVersionConflicts,
-  mergeBatchVersionConflicts,
   planVersionConflictResolution,
   replaceBookVersion,
 } from '@/services/bookVersionService';
@@ -44,6 +43,12 @@ import {
   loadOldVersionFacts,
   type VersionComparison,
 } from '@/services/bookVersionCompare';
+import {
+  MAX_PENDING_VERSION_CONFLICTS,
+  enqueueVersionConflicts,
+  pendingVersionConflictCount,
+  takeVersionConflicts,
+} from '@/services/versionConflictQueue';
 import { eventDispatcher } from '@/utils/event';
 import { getFilename, getFolderImportGroupName, joinScannedPath } from '@/utils/path';
 import { parseOpenWithFiles } from '@/helpers/openWith';
@@ -202,7 +207,6 @@ type TxtGuideItem = {
 };
 
 // 导入疑似命中书库旧版本时挂起的一批冲突，等整批导入结束后统一让用户决定。
-const MAX_PENDING_VERSION_CONFLICTS = 20;
 
 const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchParams | null }) => {
   const router = useAppRouter();
@@ -302,11 +306,9 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   // TXT 目录识别失败的引导队列（一次处理一个文件）。
   const txtGuideQueueRef = useRef<TxtGuideItem[]>([]);
   const [guideItem, setGuideItem] = useState<TxtGuideItem | null>(null);
-  // 导入疑似命中书库旧版本的队列（同样一次处理一批）。入库顺序就是展示
-  // 顺序：批次结束后统一弹一次让用户逐条决定是否覆盖。
-  const versionConflictQueueRef = useRef<BookVersionConflictInfo[]>([]);
-  // 本批冲突数超过上限、有冲突没被询问过时置位（一次导入只提示一次）。
-  const versionConflictOverflowRef = useRef(false);
+  // 待问的版本冲突放在模块级队列里（`services/versionConflictQueue.ts`），不是
+  // 这里的 ref：攒它的路径可能紧接着就把本页卸载（双击/「打开方式」入库后直接
+  // 去阅读器），页面内的队列会随组件一起消失、用户永远看不到也点不到。
   const [versionConflicts, setVersionConflicts] = useState<BookVersionConflictInfo[] | null>(null);
   // setVersionConflicts 的镜像：回调里要判断"弹窗是不是已经开着"，而 state 在
   // 闭包里是过时的。
@@ -321,9 +323,17 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
    */
   const drainVersionConflicts = useCallback(() => {
     if (versionConflictsRef.current) return;
-    const queue = versionConflictQueueRef.current;
-    if (queue.length === 0) return;
-    openVersionConflicts(queue.splice(0));
+    if (pendingVersionConflictCount() === 0) return;
+    const { conflicts, overflowed } = takeVersionConflicts();
+    if (conflicts.length === 0) return;
+    if (overflowed) {
+      eventDispatcher.dispatch('toast', {
+        message: `同名书籍较多，本次只询问了前 ${MAX_PENDING_VERSION_CONFLICTS} 本，其余已按独立书目保留`,
+        timeout: 6000,
+        type: 'info',
+      });
+    }
+    openVersionConflicts(conflicts);
   }, [openVersionConflicts]);
   /**
    * 静默路径（受监视文件夹重扫、双击/「打开方式」）攒下的冲突不弹模态框——那些
@@ -331,7 +341,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
    * 再问（见下面的 focus/visibilitychange 兜底）。
    */
   const notifyPendingVersionConflicts = useCallback(() => {
-    const pendingCount = versionConflictQueueRef.current.length;
+    const pendingCount = pendingVersionConflictCount();
     if (pendingCount === 0) return;
     eventDispatcher.dispatch('toast', {
       message: `检测到 ${pendingCount} 本书库中已有同名版本 · 点击查看`,
@@ -375,22 +385,6 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     };
   }, [versionConflicts, appService, envConfig]);
 
-  // 静默路径攒下的冲突：点通知以外，用户回到书库（窗口重新聚焦、或页面重新
-  // 可见）时也应当被问到——通知可能已经被划走或超时消失。别的模态框正在用时
-  // 排队，等它关掉后下一次聚焦再试。
-  useEffect(() => {
-    const tryDrain = () => {
-      if (document.visibilityState === 'hidden') return;
-      if (failedImportsModal || guideItem || importFromFolderState) return;
-      drainVersionConflicts();
-    };
-    window.addEventListener('focus', tryDrain);
-    document.addEventListener('visibilitychange', tryDrain);
-    return () => {
-      window.removeEventListener('focus', tryDrain);
-      document.removeEventListener('visibilitychange', tryDrain);
-    };
-  }, [drainVersionConflicts, failedImportsModal, guideItem, importFromFolderState]);
   const [currentGroupPath, setCurrentGroupPath] = useState<string | undefined>(undefined);
   const [currentVirtualGroup, setCurrentVirtualGroup] = useState<{
     groupBy:
@@ -401,6 +395,38 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     groupName: string;
   } | null>(null);
   const [pendingNavigationBookIds, setPendingNavigationBookIds] = useState<string[] | null>(null);
+  // 「初始化导航确实在途」：此时整个页面渲染的是一个空白占位（见下方的提前
+  // return），连本页自己的 <Toast /> 都不在树里。冲突队列的取用必须避开这一刻，
+  // 因为那次导航正是要卸载本页——取走就等于丢掉（双击/「打开方式」入库后直接
+  // 去阅读器，冲突只能等回到书库页再问）。
+  const awaitingInitNavigation =
+    !!pendingNavigationBookIds && (checkOpenWithBooks || checkLastOpenBooks);
+
+  // 回到书库页时把待问的冲突弹出来：点过通知以外，窗口重新聚焦、页面重新可见、
+  // 或本页重新挂载（从阅读器回来）时都该被问到——通知可能已经被划走或超时消失。
+  // 别的模态框正在用时排队，等它关掉后下一次触发再试。
+  useEffect(() => {
+    const tryDrain = () => {
+      if (document.visibilityState === 'hidden') return;
+      if (awaitingInitNavigation || !libraryLoaded) return;
+      if (failedImportsModal || guideItem || importFromFolderState) return;
+      drainVersionConflicts();
+    };
+    tryDrain();
+    window.addEventListener('focus', tryDrain);
+    document.addEventListener('visibilitychange', tryDrain);
+    return () => {
+      window.removeEventListener('focus', tryDrain);
+      document.removeEventListener('visibilitychange', tryDrain);
+    };
+  }, [
+    drainVersionConflicts,
+    awaitingInitNavigation,
+    libraryLoaded,
+    failedImportsModal,
+    guideItem,
+    importFromFolderState,
+  ]);
   const isInitiating = useRef(false);
   // 每次 initLibrary effect 重跑自增：把上一轮尚未完成的 async 体标记为陈旧，
   // 防止旧 promise 在组件（或导航配置）变化后继续 setState / 写库。
@@ -876,15 +902,17 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
               file,
               books: library,
               transient: temp,
-              // 双击/「打开方式」也会认出书库里的旧版本，只是不弹模态框：这条
-              // 路径发生在应用启动时，打断用户不如给一条可点击通知（与受监视
-              // 文件夹重扫同策略）。transient（不自动入库）时不注册——没有落库
-              // 的记录，没什么可问的。
+              // 双击/「打开方式」也会认出书库里的旧版本，但不在这条路径上弹窗：
+              // 入库成功后马上就会导航去阅读器，本页连自己的 <Toast /> 都还没
+              // 进树（初始化导航在途时渲染的是空白占位），任何模态/通知都不可见。
+              // 冲突只入队——队列在模块级、与页面无关，用户从阅读器回到书库时
+              // 本页重新挂载，那时才问（见 drainVersionConflicts 的调用点）。
+              // transient（不自动入库）时不注册：没有落库的记录，没什么可问的。
               ...(temp
                 ? {}
                 : {
                     onVersionConflict: (info: BookVersionConflictInfo) => {
-                      versionConflictQueueRef.current.push(info);
+                      enqueueVersionConflicts([info]);
                     },
                   }),
             },
@@ -928,10 +956,10 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         if (gen !== libraryInitGeneration.current) return false;
         setLibrary(saved);
         setPendingNavigationBookIds(bookIds);
-        notifyPendingVersionConflicts();
+        // 不在这里弹任何东西：紧接着的导航会让本页卸载，通知没有落脚点。冲突
+        // 留在模块队列里，用户回到书库页时由 drainVersionConflicts 补问。
         return true;
       }
-      notifyPendingVersionConflicts();
       return false;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1313,16 +1341,10 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
             groupName: resolvedGroupName,
             // 静默重扫（受监视文件夹）同样收集冲突——它和手动导入唯一的区别是
             // "什么时候问"：静默路径整批结束后只给一条可点击通知，不弹模态框
-            // （那时用户正在做别的事）。判定与入队逻辑完全共用。
+            // （那时用户正在做别的事）。判定与入队逻辑完全共用；上限与溢出标记
+            // 由队列模块统一处理，各条路径不会再各写一套。
             onVersionConflict: (info) => {
-              if (versionConflictQueueRef.current.length < MAX_PENDING_VERSION_CONFLICTS) {
-                versionConflictQueueRef.current.push(info);
-              } else if (!versionConflictOverflowRef.current) {
-                // The cap only exists to keep one batch's dialog readable;
-                // silently dropping the rest would hide real conflicts, so
-                // say it once per batch.
-                versionConflictOverflowRef.current = true;
-              }
+              enqueueVersionConflicts([info]);
             },
           },
           { appService, settings: liveSettings, appBooksPrefix },
@@ -1609,37 +1631,21 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     // 的记录两两互查一遍，命中补进冲突队列——同一对只报一次，导入时刻已经
     // 报过的冲突不会重复。
     if (newImportHashes.length > 1) {
-      const batchConflicts = findBatchVersionConflicts({
-        importedHashes: newImportHashes,
-        library: useLibraryStore.getState().library,
-      });
-      if (batchConflicts.length > 0) {
-        // 并入而不是追加：同一对新旧版本可能已经被导入时刻的探针报过一次
-        // （先完成的文件已入库，后完成的那个就看得见它），去重后同一本新书
-        // 只问一次。见 mergeBatchVersionConflicts。
-        const merged = mergeBatchVersionConflicts(versionConflictQueueRef.current, batchConflicts);
-        if (merged.length > MAX_PENDING_VERSION_CONFLICTS) {
-          versionConflictOverflowRef.current = true;
-        }
-        versionConflictQueueRef.current = merged.slice(0, MAX_PENDING_VERSION_CONFLICTS);
-      }
+      // 入队即可：队列模块按 incoming 去重（同一对本批版本可能已经被导入时刻
+      // 的探针报过一次），上限与溢出标记也在那里统一处理。
+      enqueueVersionConflicts(
+        findBatchVersionConflicts({
+          importedHashes: newImportHashes,
+          library: useLibraryStore.getState().library,
+        }),
+      );
     }
 
-    if (versionConflictOverflowRef.current) {
-      versionConflictOverflowRef.current = false;
-      eventDispatcher.dispatch('toast', {
-        message: `同名书籍较多，本次只询问了前 ${MAX_PENDING_VERSION_CONFLICTS} 本，其余已按独立书目保留`,
-        timeout: 6000,
-        type: 'info',
-      });
-    }
-    // 有疑似旧版本的冲突 → 整批一次弹窗。此时新书记录已入库落盘、旧记录原封
-    // 不动，用户关掉窗口不做选择的结果就是"两本都留着"，不会有任何东西被删。
-    //
-    // 静默路径（受监视文件夹重扫、双击/「打开方式」）不弹模态框：那是窗口重新
-    // 获得焦点时的后台动作，弹窗会打断用户手里的事。改成一条可点击通知，点它
-    // 或下次回到书库页时再问（见 drainVersionConflicts 的调用点）。
-    if (versionConflictQueueRef.current.length > 0) {
+    // 有疑似旧版本的冲突：手动导入整批一次弹窗（此时新书记录已入库落盘、旧记录
+    // 原封不动，用户关掉窗口不做选择就是"两本都留着"，不会有任何东西被删）。
+    // 静默路径（受监视文件夹重扫、双击/「打开方式」）不弹模态框——那时用户在
+    // 做别的事——只给一条可点击通知，点它或下次回到书库页时再问。
+    if (pendingVersionConflictCount() > 0) {
       if (options.silent) {
         notifyPendingVersionConflicts();
       } else {
@@ -1672,6 +1678,10 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     let done = 0;
     const failed: string[] = [];
     const undoFailed: string[] = [];
+    // 选了撤销、但那条记录已经不在了（同批另一次「替换」把它折进了新版）：
+    // 结果与用户想要的"别再单独留着这本书"一致，但不是这次操作做的——分开记，
+    // 否则提示会声称撤销了一件根本没发生的事。
+    const undoneAlreadyFolded: string[] = [];
     try {
       for (const conflict of replacements) {
         try {
@@ -1699,6 +1709,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
             books: library,
           });
           setLibrary(result.library);
+          if (!result.applied) undoneAlreadyFolded.push(conflict.incoming.title);
         } catch (error) {
           console.error('Failed to discard imported book:', conflict.incoming.title, error);
           undoFailed.push(conflict.incoming.title);
@@ -1718,12 +1729,19 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         type: 'success',
       });
     }
-    const undone = discards.length - undoFailed.length;
+    const undone = discards.length - undoFailed.length - undoneAlreadyFolded.length;
     if (undone > 0) {
       eventDispatcher.dispatch('toast', {
         message: `已撤销 ${undone} 本导入，书库保持原样`,
         timeout: 3000,
         type: 'success',
+      });
+    }
+    if (undoneAlreadyFolded.length > 0) {
+      eventDispatcher.dispatch('toast', {
+        message: `《${undoneAlreadyFolded.join('》《')}》已随同批的「用新版替换」并入新版，无需再撤销`,
+        timeout: 6000,
+        type: 'info',
       });
     }
     if (failed.length > 0) {
@@ -2391,8 +2409,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
 
   // 白屏占位只在「open-with/open-last 导航确实在途」时出现；一旦 pending
   // 被消费（导航发生或失败），占位立即退出，避免误置标记把整页卡成空白。
-  const awaitingInitNavigation =
-    !!pendingNavigationBookIds && (checkOpenWithBooks || checkLastOpenBooks);
+  // （awaitingInitNavigation 本身在状态声明处算好，见上面的注释。）
   if (!appService || !insets || awaitingInitNavigation) {
     return <div className='full-height bg-base-200' />;
   }

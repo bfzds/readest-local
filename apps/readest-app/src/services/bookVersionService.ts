@@ -476,16 +476,38 @@ export function mergeBatchVersionConflicts(
 ): BookVersionConflictInfo[] {
   if (batch.length === 0) return queued;
   const byIncoming = new Map<string, BookVersionConflictInfo>();
-  for (const conflict of [...queued, ...batch]) {
+  for (const conflict of queued) byIncoming.set(conflict.incoming.hash, conflict);
+  for (const conflict of batch) {
     const previous = byIncoming.get(conflict.incoming.hash);
-    if (!previous || conflict.candidates.length > previous.candidates.length) {
+    if (!previous) {
       byIncoming.set(conflict.incoming.hash, conflict);
+      continue;
     }
+    // 候选取**并集**而不是"谁多留谁"：导入时刻看到的是库里的记录（可能含既有
+    // 旧版本），批后探测看到的是批内更早进来的版本，两组都对用户有用，取其一
+    // 会让另一侧的候选凭空消失（"另有 N 本同书号记录"随执行顺序时多时少）。
+    // 排序保持"阅读进度降序"，进度相同沿用先报的那条的顺序（稳定排序）。
+    const seen = new Set(previous.candidates.map((candidate) => candidate.hash));
+    const candidates = [
+      ...previous.candidates,
+      ...conflict.candidates.filter((candidate) => !seen.has(candidate.hash)),
+    ].sort((a, b) => progressFraction(b) - progressFraction(a));
+    byIncoming.set(conflict.incoming.hash, { ...previous, candidates });
   }
   return [...byIncoming.values()];
 }
 
 // --- 撤销导入 ---
+
+export interface DiscardImportedBookResult {
+  /** 调用方应当据此更新的书库快照（未动手时就是原数组本身）。 */
+  library: Book[];
+  /**
+   * 是否真的动手了。false ＝ 那条记录已经不在库里（同批另一次「替换」把它折进
+   * 了新版），这次请求没有产生任何变化——调用方必须如实呈现，不能报"已撤销"。
+   */
+  applied: boolean;
+}
 
 /**
  * 撤销一次刚完成的导入：把这条记录丢开，书库其余部分保持原样。
@@ -502,14 +524,15 @@ export function mergeBatchVersionConflicts(
 export async function discardImportedBook(
   appService: AppService,
   args: { book: Book; books: Book[] },
-): Promise<{ library: Book[] }> {
+): Promise<DiscardImportedBookResult> {
   const { book, books } = args;
   // 记录已经不在了：同批另一次「用新版替换」把它当替换目标折进了新版（替换先
   // 执行，旧行与旧目录都已经处理掉）。此时再追加墓碑只会在 library.json 里留一
   // 行永远隐藏、却会进同步与后续比较的孤儿；而用户要的"这本书别再单独留着"
-  // 早已达成，所以这里什么都不做。
+  // 早已达成，所以这里什么都不做——但要如实告诉调用方"这次没动手"，否则提示
+  // 会声称撤销了一件没发生的事。
   if (!books.some((item) => item.hash === book.hash)) {
-    return { library: books };
+    return { library: books, applied: false };
   }
   try {
     await appService.deleteBook({ ...book }, 'purge');
@@ -526,5 +549,5 @@ export async function discardImportedBook(
   };
   const nextLibrary = [...books.filter((item) => item.hash !== book.hash), tombstone];
   await appService.saveLibraryBooks(nextLibrary, { replace: true });
-  return { library: nextLibrary };
+  return { library: nextLibrary, applied: true };
 }
