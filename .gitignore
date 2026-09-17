@@ -78,3 +78,18 @@ fastlane/metadata-play/android/en-US/changelogs
 .dsh-vision-toolkit/
 _dsh_log_tmp/
 .pnpm-store/
+
+# ---- 推送范围与脱敏（规则见根目录 AGENTS.md）----
+# 报告/计划默认不入库：已在仓库里的历史文件仍是跟踪状态，不受影响。
+docs/plans/
+docs/reports/
+docs/superpowers/
+# 手工验收样本与本机生成的测试数据
+/新版导入测试/
+# 临时探针用 zz- 前缀命名，跑完即删；前缀保证它不会被 git add -A 抓走
+apps/readest-app/src/__tests__/**/zz-*.test.ts
+# 本机脱敏词表（用户名/书名/设备名等，只在本地生效）
+.desensitize-terms
+# ZCode 会话目录
+.zcode/
+

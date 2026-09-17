@@ -15,3 +15,7 @@
 - 清理前先用 `du -sh` 逐一确认目标内容；对任何可能含用户数据/成品产物的目录，先向用户确认且不直接 `rm -rf`。
 - 便携版重建：运行根目录 `打包便携版.bat`（先 `pnpm tauri build --no-bundle` 编译，再组装到 release/readest-local/）。
 - 2026-08-23 教训：因把 release/ 当纯缓存误删，可能连带便携版 exe 同目录用户数据。
+
+## 相关约定
+
+推送范围与脱敏（文档默认不入库、推送前先脱敏、检查器的挂载点）见仓库根 `AGENTS.md`；git 机制见 `docs/git-setup.md`。

@@ -81,3 +81,47 @@ CRLF，而 `biome.json` 固定 `"lineEnding": "lf"`——工作区文件（CRLF�
 
 > 注意：`.gitattributes` 是 2026-09-06 才加入的；此前的 clone 若未拉取该
 > 提交，仍会复现上述症状，拉取后无需任何手动操作。
+
+## 推送范围与脱敏检查（2026-09-17 补充）
+
+**规则本身**（什么不入库、什么必须先脱敏）在仓库根 `AGENTS.md`，本节只记机制。
+
+### 推送前四道关
+
+`.husky/pre-push` 现在是：
+
+```
+bash scripts/desensitize-check.sh   # 脱敏（最便宜，也最该先失败）
+pnpm -C apps/readest-app format:check
+pnpm -C apps/readest-app lint       # tsgo --noEmit + biome lint
+pnpm -C apps/readest-app test
+```
+
+任何一道非 0 都会拦下推送，不得 `--no-verify` 绕过（与本节开头的既有约定一致）。
+
+### 脱敏检查器
+
+`scripts/desensitize-check.sh` 扫描**本次推送会带出去的新增行**（基线取 `@{upstream}`；
+新分支首次推送时取任一远端分支；连远端都没有才扫全部跟踪文件），命中即打印
+`文件 + 新增行号 + 命中特征 + 原文片段` 并以 1 退出。
+
+- 通用特征：本机用户目录（Windows / macOS / Linux）、邮箱、常见凭据前缀、私钥头。
+- 占位符不算命中：`C:\Users\<用户名>`、`%USERPROFILE%`、`$HOME`、`/Users/<name>` 一律放过。
+- 本机专有词表 `.desensitize-terms`（一行一词、字面匹配、**已 gitignore**）；该文件若被跟踪，检查器直接报错。
+- 只扫新增行、不扫全树：早期推上去的泄漏（见 `AGENTS.md` §4）改不动，拿它拦今天的推送没有意义。
+
+手工预检（不必真的 push）：
+
+```bash
+bash scripts/desensitize-check.sh
+```
+
+### .gitignore 新增的本地路径
+
+`docs/plans/`、`docs/reports/`、`docs/superpowers/`、`/新版导入测试/`、
+`apps/readest-app/src/__tests__/**/zz-*.test.ts`、`.desensitize-terms`、`.zcode/`。
+
+注意：gitignore 只对**未跟踪**文件生效——已经入库的历史文档（`docs/README.md`、
+`docs/git-setup.md`、早期 `docs/reports/*.md`）仍是跟踪状态，它们的改动照常出现在
+`git status` 里，也不会被这条设定挡住。
+
