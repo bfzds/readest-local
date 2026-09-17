@@ -47,9 +47,8 @@ export interface IngestFileOptions {
    */
   chapterPatterns?: string[];
   /**
-   * EPUB 导入疑似命中书库里的旧版本时的上报（见 ImportBookOptions.onVersionConflict）。
-   * 透传下去，结果随 IngestFileResult.versionConflict 带回；不设则整个流程与
-   * 今天一致（无冲突识别）。
+   * EPUB 导入疑似命中书库里的旧版本（见 ImportBookOptions.onVersionConflict）。
+   * 原样转发给 importBook，不设则整个流程与加入该功能之前一致（无冲突识别）。
    */
   onVersionConflict?: (info: BookVersionConflictInfo) => void;
 }
@@ -172,12 +171,6 @@ export interface IngestFileResult {
    * 标题行生成临时规则重切。
    */
   txtFallbackFile?: File;
-  /**
-   * EPUB：本次导入疑似是书库某本书的新版本（换源/改版重下）时的上报，携带
-   * 旧版本与刚导入的新文件两条记录。调用方可弹确认框，用户选择"覆盖"时交给
-   * `replaceBookVersion()`。不设置 onVersionConflict 时恒为 undefined。
-   */
-  versionConflict?: BookVersionConflictInfo;
 }
 
 export async function ingestFile(
@@ -243,8 +236,6 @@ export async function ingestFile(
   // TXT 段落兜底切分时 bookService 会回调原始 TXT File（见
   // ImportBookOptions.onTxtChapterFallback）；带回给调用方决定是否引导重切。
   let txtFallbackFile: File | undefined;
-  // EPUB 疑似命中旧版本时同样回调上来（见 ImportBookOptions.onVersionConflict）。
-  let versionConflict: BookVersionConflictInfo | undefined;
 
   const book = await appService.importBook(opts.file, opts.books, {
     lookupIndex: opts.lookupIndex,
@@ -253,7 +244,10 @@ export async function ingestFile(
     onTxtChapterFallback: (file) => {
       txtFallbackFile = file;
     },
-    ...(opts.onVersionConflict ? { onVersionConflict: (info) => (versionConflict = info) } : {}),
+    // 转发而非替换：调用方（书库页）靠这个回调把冲突入队，落地弹窗。
+    // 注意 onTxtChapterFallback 是"把回调换成捕获、由返回字段带回"的写法，
+    // 这里不能照抄——那样调用方注册的回调永远不会被调用，弹窗永不出现。
+    ...(opts.onVersionConflict ? { onVersionConflict: opts.onVersionConflict } : {}),
     // 章节识别规则：本次临时规则（opts.chapterPatterns，目录识别失败引导重切
     // 时带）优先，再叠加全局 settings.txtChapterPatterns。均非空才透传。
     ...(opts.chapterPatterns?.length || settings.txtChapterPatterns?.length
@@ -290,5 +284,5 @@ export async function ingestFile(
     }
   }
 
-  return { book, existed: false, txtFallbackFile, versionConflict };
+  return { book, existed: false, txtFallbackFile };
 }

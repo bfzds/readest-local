@@ -86,6 +86,35 @@ describe('ingestFile', () => {
     expect(result?.txtFallbackFile).toBeUndefined();
   });
 
+  // 这一层必须**转发**调用方注册的回调，而不是像 txt 兜底那样换成"捕获、由返回值
+  // 带回"。书库页靠回调把冲突入队并弹窗，替换掉它的话弹窗永远不会出现——这个 bug
+  // 曾在真机上表现为"导入新版只提示成功导入，没有任何询问"。
+  test('版本冲突回调原样转发给调用方（而不是被捕获吃掉）', async () => {
+    const conflict = { existing: makeBook({ hash: 'old' }), incoming: makeBook({ hash: 'new' }) };
+    const importBook = vi.fn().mockImplementation(async (_file, _books, options) => {
+      options.onVersionConflict?.(conflict);
+      return makeBook();
+    });
+    const appService = {
+      importBook,
+      osPlatform: 'linux' as OsPlatform,
+    } as unknown as AppService;
+    const seen: unknown[] = [];
+
+    await ingestFile(
+      { file: 'book.epub', books: [], onVersionConflict: (info) => seen.push(info) },
+      { appService, settings: {} as SystemSettings },
+    );
+
+    expect(seen).toEqual([conflict]);
+  });
+
+  test('未注册冲突回调时不向 importBook 传该选项', async () => {
+    const { appService, settings, importBook } = makeDeps();
+    await ingestFile({ file: 'book.epub', books: [] }, { appService, settings });
+    expect(importBook.mock.calls[0]![2]).not.toHaveProperty('onVersionConflict');
+  });
+
   test('临时章节规则与全局规则合并，临时优先', async () => {
     const { appService, settings, importBook } = makeDeps();
     settings.txtChapterPatterns = ['全局1'];
