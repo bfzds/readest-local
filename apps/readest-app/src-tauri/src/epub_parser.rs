@@ -2122,10 +2122,72 @@ mod tests {
         let parsed = parse_epub_metadata_sync(&path).expect("parses");
 
         assert_eq!(parsed.text_length, Some(3));
-        // 目录里那串字仍然来自 nav 文档，只是不算进正文；没有可用目录时退回的
-        // 文档数也必须把 nav 排除在外，否则"正文被切成几份"会被 nav 顶多一份。
-        assert_eq!(parsed.section_count, Some(1));
+        // 这个用例有可用目录，section_count 走的是"目录条目数"那一支（下面一行）。
         assert_eq!(parsed.toc.len(), 1);
+        assert_eq!(parsed.section_count, Some(1));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn parse_epub_metadata_section_fallback_excludes_the_nav_document() {
+        // nav 列进 spine、但里面没有可用的目录条目（这里只有 landmarks）→ 目录为
+        // 空 → section_count 退回"算过字数的文档数"。这一步必须排除 nav，否则
+        // "正文被切成几份"会被目录页顶多一份。此前用 spine.docs.len() 时这里是 3。
+        use std::io::Write;
+        let opf = br#"<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="ch2" href="ch2.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="nav"/><itemref idref="ch1"/><itemref idref="ch2"/></spine>
+</package>"#;
+        let container = br#"<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>"#;
+        // 只有 landmarks：不是目录，parse_nav_toc 一个条目都不产出。
+        let nav = r#"<html><body><nav epub:type="landmarks"><ol><li><a href="ch1.xhtml">正文</a></li></ol></nav></body></html>"#;
+
+        let mut buf = Vec::<u8>::new();
+        {
+            let mut w = zip::ZipWriter::new(Cursor::new(&mut buf));
+            let opts: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored);
+            for (name, body) in [
+                ("META-INF/container.xml", container.to_vec()),
+                ("content.opf", opf.to_vec()),
+                ("nav.xhtml", nav.as_bytes().to_vec()),
+                (
+                    "ch1.xhtml",
+                    "<html><body><p>一二三</p></body></html>"
+                        .as_bytes()
+                        .to_vec(),
+                ),
+                (
+                    "ch2.xhtml",
+                    "<html><body><p>四五</p></body></html>".as_bytes().to_vec(),
+                ),
+            ] {
+                w.start_file(name, opts).expect("start");
+                w.write_all(&body).expect("write");
+            }
+            w.finish().expect("finish");
+        }
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!(
+            "readest-epub-nav-fallback-{}.epub",
+            std::process::id()
+        ));
+        std::fs::write(&path, &buf).expect("write epub");
+
+        let parsed = parse_epub_metadata_sync(&path).expect("parses");
+
+        assert!(parsed.toc.is_empty());
+        // 正文只有 ch1 的"一二三"与 ch2 的"四五"，nav 的链接文字与它本身都不计入。
+        assert_eq!(parsed.text_length, Some(5));
+        assert_eq!(parsed.section_count, Some(2));
         let _ = std::fs::remove_file(&path);
     }
 

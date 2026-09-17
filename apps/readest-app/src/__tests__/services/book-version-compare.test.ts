@@ -1,12 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   buildVersionComparison,
   buildNewVersionFacts,
+  loadNewVersionFacts,
   countSideChapters,
   shortMetaHash,
   type VersionSideFacts,
 } from '@/services/bookVersionCompare';
 import type { Book } from '@/types/book';
+import type { AppService } from '@/types/system';
 
 const side = (overrides: Partial<VersionSideFacts> = {}): VersionSideFacts => ({
   label: 'old',
@@ -205,5 +207,56 @@ describe('shortMetaHash', () => {
   it('truncates and handles the missing case', () => {
     expect(shortMetaHash('0123456789abcdef')).toBe('01234567');
     expect(shortMetaHash(undefined)).toBeUndefined();
+  });
+});
+
+describe('loadNewVersionFacts', () => {
+  const incoming: Book = {
+    hash: 'new-hash-456',
+    format: 'EPUB',
+    metaHash: 'fedcba9876543210',
+    title: 'Test Book',
+    author: 'Test Author',
+    createdAt: 1,
+    updatedAt: 1,
+  };
+
+  // 只由批后二次探测报出的冲突不带 incomingFacts（那条路径不经过导入上报），
+  // 大小只能现取一次 stats——与旧侧同一手段，仍然不解析任何书文件。
+  it('fills the size from the library when the report carries no facts', async () => {
+    const appService = {
+      getBookFileSize: vi.fn(async () => 4242),
+    } as unknown as AppService;
+
+    const facts = await loadNewVersionFacts(appService, incoming, undefined);
+
+    expect(appService.getBookFileSize).toHaveBeenCalledWith(incoming);
+    expect(facts.sizeBytes).toBe(4242);
+    expect(facts.tocSource).toBe('unknown');
+  });
+
+  it('does not touch the filesystem when the report already carries the size', async () => {
+    const appService = {
+      getBookFileSize: vi.fn(async () => 9999),
+    } as unknown as AppService;
+
+    const facts = await loadNewVersionFacts(appService, incoming, {
+      sizeBytes: 10,
+      mtime: 1700000000000,
+    });
+
+    expect(appService.getBookFileSize).not.toHaveBeenCalled();
+    expect(facts.sizeBytes).toBe(10);
+    expect(facts.mtime).toBe(1700000000000);
+  });
+
+  it('leaves the size unset when the file is gone', async () => {
+    const appService = {
+      getBookFileSize: vi.fn(async () => null),
+    } as unknown as AppService;
+
+    const facts = await loadNewVersionFacts(appService, incoming, undefined);
+
+    expect(facts.sizeBytes).toBeUndefined();
   });
 });

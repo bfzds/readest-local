@@ -38,16 +38,18 @@ import {
   replaceBookVersion,
 } from '@/services/bookVersionService';
 import {
-  buildNewVersionFacts,
   buildVersionComparison,
+  loadNewVersionFacts,
   loadOldVersionFacts,
   type VersionComparison,
 } from '@/services/bookVersionCompare';
 import {
   MAX_PENDING_VERSION_CONFLICTS,
+  consumeVersionConflictOverflow,
   enqueueVersionConflicts,
+  peekVersionConflicts,
   pendingVersionConflictCount,
-  takeVersionConflicts,
+  settleVersionConflicts,
 } from '@/services/versionConflictQueue';
 import { eventDispatcher } from '@/utils/event';
 import { getFilename, getFolderImportGroupName, joinScannedPath } from '@/utils/path';
@@ -313,6 +315,9 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   // setVersionConflicts 的镜像：回调里要判断"弹窗是不是已经开着"，而 state 在
   // 闭包里是过时的。
   const versionConflictsRef = useRef<BookVersionConflictInfo[] | null>(null);
+  // 本页正在导航离开（去阅读器）：此期间不弹任何东西——导航动画期间弹出的框会
+  // 落在一个正在被卸载的页面上。见导航 effect 与 tryDrain。
+  const navigatingAwayRef = useRef(false);
   const openVersionConflicts = useCallback((next: BookVersionConflictInfo[] | null) => {
     versionConflictsRef.current = next;
     setVersionConflicts(next);
@@ -323,10 +328,12 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
    */
   const drainVersionConflicts = useCallback(() => {
     if (versionConflictsRef.current) return;
-    if (pendingVersionConflictCount() === 0) return;
-    const { conflicts, overflowed } = takeVersionConflicts();
+    // 只读快照，**不清空队列**：清空要等弹窗落定（见 settleVersionConflicts）。
+    // 取用即清空会让"正在导航离开的这一页"把队列拿走——那一刻 route.replace 已经
+    // 在路上，弹窗落在马上要卸载的实例上，用户回到书库时队列已空、什么都不问。
+    const conflicts = peekVersionConflicts();
     if (conflicts.length === 0) return;
-    if (overflowed) {
+    if (consumeVersionConflictOverflow()) {
       eventDispatcher.dispatch('toast', {
         message: `同名书籍较多，本次只询问了前 ${MAX_PENDING_VERSION_CONFLICTS} 本，其余已按独立书目保留`,
         timeout: 6000,
@@ -370,7 +377,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         if (!target) continue;
         try {
           const oldSide = await loadOldVersionFacts(app, target, settings);
-          const newSide = buildNewVersionFacts(conflict.incoming, conflict.incomingFacts);
+          const newSide = await loadNewVersionFacts(app, conflict.incoming, conflict.incomingFacts);
           if (cancelled) return;
           const comparison = buildVersionComparison(oldSide, newSide);
           setVersionComparisons((prev) => ({ ...prev, [conflict.incoming.hash]: comparison }));
@@ -408,6 +415,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   useEffect(() => {
     const tryDrain = () => {
       if (document.visibilityState === 'hidden') return;
+      if (navigatingAwayRef.current) return;
       if (awaitingInitNavigation || !libraryLoaded) return;
       if (failedImportsModal || guideItem || importFromFolderState) return;
       drainVersionConflicts();
@@ -997,6 +1005,11 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   useEffect(() => {
     if (pendingNavigationBookIds) {
       const bookIds = pendingNavigationBookIds;
+      // 先置标记再放手导航：本 effect 置 null 会让 awaitingInitNavigation 转假，
+      // drain effect 随之重跑；tryDrain 见到这个标记就跳过，弹窗才不会在导航
+      // 动画期间闪一帧落在正在卸载的页面上（队列本身不会被取走，见
+      // drainVersionConflicts — 只读快照，清空等弹窗落定）。
+      navigatingAwayRef.current = true;
       setPendingNavigationBookIds(null);
       if (bookIds.length > 0) {
         navigateToReader(router, bookIds);
@@ -2703,11 +2716,15 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           conflicts={versionConflicts}
           comparisons={versionComparisons}
           onCancel={() => {
+            // 「取消」＝都保留：这几条问过了，从队列里落定掉，再接着问队列里
+            // 其余的（弹窗开着期间新攒进来的）。
+            settleVersionConflicts(versionConflicts);
             openVersionConflicts(null);
             drainVersionConflicts();
           }}
           onConfirm={(choices) => {
             const pending = versionConflicts;
+            settleVersionConflicts(pending);
             openVersionConflicts(null);
             void resolveVersionConflicts(pending, choices);
           }}

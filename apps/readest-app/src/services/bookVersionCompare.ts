@@ -1,4 +1,4 @@
-import type { Book, VersionTocEntry } from '@/types/book';
+import type { Book, IncomingVersionFacts, VersionTocEntry } from '@/types/book';
 import type { AppService } from '@/types/system';
 import { isBookNavCacheCurrent, type BookNav } from '@/services/nav';
 import type { SystemSettings } from '@/types/settings';
@@ -298,7 +298,31 @@ export const loadOldVersionFacts = async (
   return facts;
 };
 
-/** 新导入那一侧的展示事实，全部来自上报的 `incomingFacts`。 */
+/**
+ * 新导入那一侧的展示事实。
+ *
+ * 大部分来自上报的 `incomingFacts`（导入时顺带算出的，零成本）。唯一例外是文件
+ * 大小：**只由批后二次探测报出的冲突不带 `incomingFacts`**（那条路径不经过导入
+ * 上报），此时补一次 `stats` 取大小——与旧侧同一手段，仍然不解析任何书文件。
+ * 字数与目录拿不到就留空（显示"未记录"、章节区收起），不假装可比。
+ */
+export const loadNewVersionFacts = async (
+  appService: AppService,
+  incoming: Book,
+  facts: IncomingVersionFacts | undefined,
+): Promise<VersionSideFacts> => {
+  let sizeBytes = facts?.sizeBytes;
+  if (sizeBytes === undefined) {
+    try {
+      sizeBytes = (await appService.getBookFileSize(incoming)) ?? undefined;
+    } catch {
+      // 书文件不在盘上（用户移走了）——大小栏显示"未记录"。
+    }
+  }
+  return buildNewVersionFacts(incoming, { ...facts, sizeBytes });
+};
+
+/** 上面的纯函数部分：把已知字段拼成展示事实，不做任何 I/O。 */
 export const buildNewVersionFacts = (
   incoming: Book,
   facts:

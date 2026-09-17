@@ -47,22 +47,32 @@ export const enqueueVersionConflicts = (conflicts: BookVersionConflictInfo[]): v
 export const pendingVersionConflictCount = (): number => pending.length;
 
 /**
- * 取走全部待问冲突并清空队列。`overflowed` 表示自上次取走以来有冲突因超过上限
- * 没进队列（调用方据此提示一次）。
+ * 只读快照：把待问冲突交给弹窗展示，**不清空队列**。
+ *
+ * 清空必须等弹窗真正落定（见 `settleVersionConflicts`）。原因是一次真实的竞态：
+ * 书库页在"初始化导航在途"结束后会立刻带着 `pendingNavigationBookIds = null`
+ * 重跑 drain effect，而紧接着 route.replace 会把这个页面卸载掉——如果取用即清空，
+ * 队列就被"正在导航离开的那一页"拿走了，弹窗落在马上要销毁的实例上，用户回到
+ * 书库时队列已空，什么都不问。只读快照让这种竞态从根上不可能发生，也覆盖将来
+ * 任何"弹窗还开着页面就卸载"的路径（那时队列仍在，下次挂载重新弹）。
  */
-export const takeVersionConflicts = (): {
-  conflicts: BookVersionConflictInfo[];
-  overflowed: boolean;
-} => {
-  const conflicts = pending;
-  const wasOverflowed = overflowed;
-  pending = [];
-  overflowed = false;
-  return { conflicts, overflowed: wasOverflowed };
+export const peekVersionConflicts = (): BookVersionConflictInfo[] => pending;
+
+/**
+ * 用户已经回答（确定或取消）`resolved` 这些之后调用：把它们从队列里去掉。
+ * 只去掉展示过的那几条——弹窗开着期间新攒进来的冲突留在队列里，等下一次问。
+ */
+export const settleVersionConflicts = (resolved: BookVersionConflictInfo[]): void => {
+  const settled = new Set(resolved.map((conflict) => conflict.incoming.hash));
+  pending = pending.filter((conflict) => !settled.has(conflict.incoming.hash));
 };
 
-/** 测试与"整库清空"这类场景用：直接丢弃队列，不弹任何东西。 */
-export const clearVersionConflicts = (): void => {
-  pending = [];
+/**
+ * 读一次"有冲突因超过上限没进队列"的标记并复位（调用方据此提示一次）。
+ * 与快照分开：标记只在真的要弹窗时消费，被守卫拦下时留着下回再说。
+ */
+export const consumeVersionConflictOverflow = (): boolean => {
+  const wasOverflowed = overflowed;
   overflowed = false;
+  return wasOverflowed;
 };
