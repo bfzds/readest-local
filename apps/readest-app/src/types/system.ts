@@ -192,7 +192,12 @@ export interface AppService {
   // B-7 复核：跨窗口 library 保存串行化锁。Tauri（多 WebView）用应用数据
   // 目录下的独占锁文件实现；单进程/浏览器实现可给出内存锁或不实现
   //（缺省时保存不加锁）。保持可选以最小化非 Tauri 端接线。
+  //
+  // `renewLibraryLock` 是租约续期：持锁期间由 librarySaveLock 定时调用，
+  // 不续期则锁在 Rust 侧老化（30s）后可被其它窗口回收——这条链路保证
+  // "持有者已结束 / 释放失败"不会再形成永久毒锁。
   acquireLibraryLock?: () => Promise<LibraryLock | null>;
+  renewLibraryLock?: (lock: LibraryLock) => Promise<void>;
   releaseLibraryLock?: (lock: LibraryLock) => Promise<void>;
   getCoverImageUrl(book: Book): string;
   getCoverImageBlobUrl(book: Book): Promise<string>;

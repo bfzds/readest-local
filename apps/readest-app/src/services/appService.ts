@@ -38,6 +38,23 @@ import * as Settings from './settingsService';
 // NativeAppService 用 Tauri 文件锁覆盖（override 下方两方法）。
 let librarySaveChain: Promise<unknown> = Promise.resolve();
 
+/**
+ * 把一次书库保存排进本窗口的串行链。
+ *
+ * 导出给 NativeAppService：它必须**先入链、再取跨窗口文件锁**，否则排队中的
+ * 保存会握着文件锁等前面的保存跑完（旧实现正是如此，把临界区拉长、也放大了
+ * "写完却没能释放"的窗口）。入链后不可再调 `super.saveLibraryBooks`——那会
+ * 排进同一条链，与自己互相等待。
+ */
+export const runInLibrarySaveChain = <T>(task: () => Promise<T>): Promise<T> => {
+  const run = librarySaveChain.then(task);
+  librarySaveChain = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+};
+
 export abstract class BaseAppService implements AppService {
   osPlatform: OsPlatform = getOSPlatform();
   appPlatform: AppPlatform = 'tauri';
@@ -368,17 +385,12 @@ export abstract class BaseAppService implements AppService {
 
   async releaseLibraryLock(_lock: LibraryLock): Promise<void> {}
 
+  async renewLibraryLock(_lock: LibraryLock): Promise<void> {}
+
   async saveLibraryBooks(books: Book[], options?: SaveLibraryBooksOptions): Promise<Book[]> {
     // 默认（单进程 Node/浏览器/测试）：内存串行链保证 read-merge-write 不
     // 交错——多个并行保存依链依次执行，后者读取到前者写盘后的最新数据再
     // LWW 合并，不会互相覆盖。
-    const run = librarySaveChain.then(async () =>
-      LibrarySvc.saveLibraryBooks(this.fs, books, options),
-    );
-    librarySaveChain = run.then(
-      () => undefined,
-      () => undefined,
-    );
-    return run;
+    return runInLibrarySaveChain(async () => LibrarySvc.saveLibraryBooks(this.fs, books, options));
   }
 }

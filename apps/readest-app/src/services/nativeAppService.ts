@@ -44,7 +44,9 @@ import { copyURIToPath } from '@/utils/bridge';
 import { copyFiles } from '@/utils/files';
 import { detectViewTransitionGroup, detectViewTransitionsAPI } from '@/utils/viewTransition';
 
-import { BaseAppService } from './appService';
+import { BaseAppService, runInLibrarySaveChain } from './appService';
+import * as LibrarySvc from './libraryService';
+import { runWithLibraryLock } from './librarySaveLock';
 import { DatabaseOpts, DatabaseService } from '@/types/database';
 import { SchemaType } from '@/services/database/migrate';
 import {
@@ -783,29 +785,37 @@ export class NativeAppService extends BaseAppService {
     return await invoke<LibraryLock>('acquire_library_lock', { timeoutMs: 5000 });
   }
 
+  // 租约续期：持锁期间由 librarySaveLock 每 3s 调一次；不续期即老化，因此
+  // 持有者一结束（含释放失败）锁就不会再被保鲜（见 librarySaveLock.ts）。
+  override async renewLibraryLock(lock: LibraryLock): Promise<void> {
+    await invoke('renew_library_lock', { lockPath: lock.path, token: lock.token });
+  }
+
   override async releaseLibraryLock(lock: LibraryLock): Promise<void> {
     await invoke('release_library_lock', { lockPath: lock.path, token: lock.token });
   }
 
   // 文件锁内执行读-合并-写：跨 WebView 一次只有一个保存事务处于
   // load-merge-save 阶段，两条并发保存不会互相覆盖较新的字段。
+  //
+  // 顺序要点：**先进本窗口的串行链、再取跨窗口锁**。先前是反过来的（先取锁、
+  // 再进链），排队中的保存会握着锁等前面的保存跑完，把临界区拉长、也放大
+  // "写完了却没能释放"的窗口。这里直接调 LibrarySvc——不能调 super，那会把
+  // 自己再排进同一条链，与链上的自己互相等待。
   override async saveLibraryBooks(
     books: Book[],
     options?: SaveLibraryBooksOptions,
   ): Promise<Book[]> {
-    const lock = await this.acquireLibraryLock();
-    try {
-      return await super.saveLibraryBooks(books, options);
-    } finally {
-      // 释放失败要可观测，但不把已成功的库保存改写成失败。
-      if (lock) {
-        try {
-          await this.releaseLibraryLock(lock);
-        } catch (error) {
-          console.error('Failed to release library save lock:', error);
-        }
-      }
-    }
+    return await runInLibrarySaveChain(async () =>
+      runWithLibraryLock(
+        {
+          acquire: () => this.acquireLibraryLock(),
+          renew: (lock) => this.renewLibraryLock(lock),
+          release: (lock) => this.releaseLibraryLock(lock),
+        },
+        async () => LibrarySvc.saveLibraryBooks(this.fs, books, options),
+      ),
+    );
   }
 
   async openDatabase(

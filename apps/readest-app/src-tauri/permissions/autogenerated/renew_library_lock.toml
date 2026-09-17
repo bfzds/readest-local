@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-renew-library-lock"
+description = "Enables the renew_library_lock command without any pre-configured scope."
+commands.allow = ["renew_library_lock"]
+
+[[permission]]
+identifier = "deny-renew-library-lock"
+description = "Denies the renew_library_lock command without any pre-configured scope."
+commands.deny = ["renew_library_lock"]

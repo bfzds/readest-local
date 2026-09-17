@@ -217,6 +217,7 @@ pub fn run() {
             mobi_parser::parse_mobi_metadata,
             mobi_parser::extract_mobi_cover_full,
             library_lock::acquire_library_lock,
+            library_lock::renew_library_lock,
             library_lock::release_library_lock,
             #[cfg(target_os = "macos")]
             macos::traffic_light::set_traffic_lights,

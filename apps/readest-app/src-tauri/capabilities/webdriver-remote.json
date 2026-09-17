@@ -18,6 +18,7 @@
     "allow-parse-mobi-metadata",
     "allow-extract-mobi-cover-full",
     "allow-acquire-library-lock",
+    "allow-renew-library-lock",
     "allow-release-library-lock",
     "allow-set-traffic-lights",
     "allow-show-lookup-popover"
