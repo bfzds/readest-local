@@ -678,6 +678,168 @@ describe('importBook same-file re-import', () => {
     expect(result!.hash).toBe('old-hash-123');
     expect(fs.createDir).toHaveBeenCalledWith('old-hash-123', 'Books', true);
   });
+
+  // 用户在弹窗里对这本选了「撤销导入」之后，再导入同一个文件必须重新问一次。
+  // 那条墓碑只是为了让受监视文件夹重扫记得这个文件（见 discardImportedBook），
+  // 不代表"用户接受过这本书"：静默复活等于把用户刚否掉的导入又塞回书架，而且
+  // 从此再也不会被问一次。
+  it('re-asks after a rejected import, then goes quiet once accepted', async () => {
+    const { service, fs } = makeService();
+    const kept = makeBook({
+      hash: 'kept-hash',
+      metaHash: getMetadataHash({ ...TEST_METADATA, identifier: 'old-uuid' }),
+      progress: [40, 200],
+    });
+    const rejected = makeBook({
+      hash: 'old-hash-123',
+      metaHash: getMetadataHash(TEST_METADATA),
+      deletedAt: 999,
+      importRejectedAt: 999,
+      updatedAt: 111,
+    });
+    const books: Book[] = [kept, rejected];
+    const conflicts: BookVersionConflictInfo[] = [];
+    const hits: string[] = [];
+
+    mockPartialMD5.mockResolvedValue('old-hash-123');
+    setupMockBookDoc();
+    const result = await service.importBook(
+      new File(['same bytes'], 'test.epub', { type: 'application/epub+zip' }),
+      books,
+      {
+        onVersionConflict: (info) => conflicts.push(info),
+        onDedupHit: (kind) => hits.push(kind),
+      },
+    );
+
+    // 重新提问：候选是书库里那条旧版本，导入的那本自己不是候选。
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]!.candidates.map((book) => book.hash)).toEqual(['kept-hash']);
+    // 记录回到存活，标记清掉（用户这次重新接受了它，无论随后选替换还是保留为两本）。
+    expect(result!.hash).toBe('old-hash-123');
+    expect(result!.deletedAt).toBeNull();
+    expect(result!.importRejectedAt).toBeUndefined();
+    expect(books[1]!.importRejectedAt).toBeUndefined();
+    // 撤销时 Books/<hash>/ 被 purge 清掉了，完整路径必须把书文件补回来——否则
+    // 复活得到的是一本"活着但打不开"的书。
+    expect(fs.writeFile).toHaveBeenCalledWith(
+      'old-hash-123/Test Book.epub',
+      'Books',
+      expect.anything(),
+    );
+    // 调用方按复活呈现（提示「已从书库恢复」），不算"成功导入一本新书"。
+    expect(hits).toEqual(['revived']);
+
+    // 第二次重导：标记已经清掉，回到"同一个文件重导"的不打扰路径。
+    makeManagedFileExist(fs);
+    conflicts.length = 0;
+    await service.importBook(
+      new File(['same bytes'], 'test.epub', { type: 'application/epub+zip' }),
+      books,
+      {
+        onVersionConflict: (info) => conflicts.push(info),
+        onDedupHit: (kind) => hits.push(kind),
+      },
+    );
+
+    expect(conflicts).toHaveLength(0);
+    expect(hits).toEqual(['revived', 'already-in-library']);
+  });
+
+  // 端到端走一遍真实链路（标记由 discardImportedBook 写入，而不是测试里手工造，
+  // 免得写入端与读取端的字段名、取值时机对不上却仍然绿）。
+  it('re-asks after a real undo and restores the purged book file', async () => {
+    const { service, fs } = makeService();
+    const kept = makeBook({
+      hash: 'kept-hash',
+      metaHash: getMetadataHash({ ...TEST_METADATA, identifier: 'old-uuid' }),
+      progress: [40, 200],
+    });
+    const books: Book[] = [kept];
+    const conflicts: BookVersionConflictInfo[] = [];
+
+    mockPartialMD5.mockResolvedValue('old-hash-123');
+    setupMockBookDoc();
+    const importedBook = await service.importBook(
+      new File(['same bytes'], 'test.epub', { type: 'application/epub+zip' }),
+      books,
+      { onVersionConflict: (info) => conflicts.push(info) },
+    );
+    expect(conflicts).toHaveLength(1);
+
+    // 用户选「撤销导入」：记录变墓碑（目录被 purge），标记随之写入。
+    const undoService = {
+      deleteBook: vi.fn(async () => {}),
+      saveLibraryBooks: vi.fn(async (next: Book[]) => next),
+    } as unknown as AppService;
+    const undo = await discardImportedBook(undoService, {
+      book: importedBook!,
+      books,
+    });
+    expect(undo.applied).toBe(true);
+    const tombstone = undo.library.find((book) => book.hash === 'old-hash-123')!;
+    expect(tombstone.importRejectedAt).toBeGreaterThan(0);
+
+    // 再拖一次同一个文件：重新落盘 + 重新提问。
+    conflicts.length = 0;
+    fs.writeFile.mockClear();
+    mockPartialMD5.mockResolvedValue('old-hash-123');
+    setupMockBookDoc();
+    const again = await service.importBook(
+      new File(['same bytes'], 'test.epub', { type: 'application/epub+zip' }),
+      undo.library,
+      { onVersionConflict: (info) => conflicts.push(info) },
+    );
+
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]!.candidates.map((book) => book.hash)).toEqual(['kept-hash']);
+    expect(again!.deletedAt).toBeNull();
+    expect(again!.importRejectedAt).toBeUndefined();
+    // 书文件回到盘上（这就是"撤销后重导得到一本打不开的书"那条修复）。
+    expect(fs.writeFile).toHaveBeenCalledWith(
+      'old-hash-123/Test Book.epub',
+      'Books',
+      expect.anything(),
+    );
+  });
+
+  // 方案 B 的边界：只有弹窗里的「撤销导入」写标记。书库里的普通删除是"删掉这本
+  // 书"，不是"拒绝这次导入"，重导照旧静默复活、不打扰。
+  it('still revives a plain tombstone without asking', async () => {
+    const { service, fs } = makeService();
+    const kept = makeBook({
+      hash: 'kept-hash',
+      metaHash: getMetadataHash({ ...TEST_METADATA, identifier: 'old-uuid' }),
+      progress: [40, 200],
+    });
+    const tombstone = makeBook({
+      hash: 'old-hash-123',
+      metaHash: getMetadataHash(TEST_METADATA),
+      deletedAt: 999,
+      updatedAt: 111,
+    });
+    const books: Book[] = [kept, tombstone];
+    const conflicts: BookVersionConflictInfo[] = [];
+    const hits: string[] = [];
+
+    mockPartialMD5.mockResolvedValue('old-hash-123');
+    setupMockBookDoc();
+    const result = await service.importBook(
+      new File(['same bytes'], 'test.epub', { type: 'application/epub+zip' }),
+      books,
+      {
+        onVersionConflict: (info) => conflicts.push(info),
+        onDedupHit: (kind) => hits.push(kind),
+      },
+    );
+
+    expect(conflicts).toHaveLength(0);
+    expect(hits).toEqual(['revived']);
+    expect(result!.deletedAt).toBeNull();
+    expect(result!.importRejectedAt).toBeUndefined();
+    // 短路路径一个文件都不写。
+    expect(fs.writeFile).not.toHaveBeenCalled();
+  });
 });
 
 describe('replaceBookVersion', () => {
@@ -938,6 +1100,8 @@ describe('discardImportedBook', () => {
     const tombstone = result.library.find((book) => book.hash === 'new-hash-456')!;
     expect(tombstone.deletedAt).toBeGreaterThan(0);
     expect(tombstone.downloadedAt).toBeNull();
+    // 墓碑同时记下"本次导入被用户拒绝过"：重导要据此重新提问，而不是静默复活。
+    expect(tombstone.importRejectedAt).toBeGreaterThan(0);
     // 墓碑保留 filePath：重扫的"已知路径"集合靠它认得这个文件，否则同一个文件
     // 会被反复当作新文件扫出来、反复弹窗。
     expect(tombstone.filePath).toBe('/library/new.epub');

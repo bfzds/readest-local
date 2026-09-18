@@ -230,6 +230,11 @@ export interface Book {
   // 在"目录退化"时改比正文规模——两侧都不能为此现场解析文件。
   // 历史记录没有这个字段时按"未记录"显示，下次刷新元数据补上。
   textLength?: number;
+  // 用户在版本冲突弹窗里对这本选了「撤销导入」的时刻。派生标记：只表示"本机用户
+  // 拒绝过这次导入"，不是用户数据、不参与 LWW。带它的记录再导入同一个文件时不走
+  // "静默复活"的短路，而是当新记录处理（按需补回书文件、重新提问）；用户重新接受
+  // 后清除。书库里的普通删除不写这个标记——那不是"拒绝这次导入"。
+  importRejectedAt?: number;
 
   metadata?: BookMetadata;
   // Field-level LWW timestamp for the metadata group (title, author, tags,

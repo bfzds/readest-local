@@ -601,9 +601,15 @@ export async function importBook(
     // `overwrite` 是显式的"重新导入这一本"，不受此短路约束；in-place 的同一份
     // 文件出现在**新路径**上时也继续走完整路径，好让 `altFilePaths` 记住它，
     // 否则受监视文件夹的重扫会把这个已知重复一遍遍当新文件解析。
+    //
+    // 用户在版本冲突弹窗里撤销过的那条（`importRejectedAt`）同样不受短路约束：
+    // 它的墓碑只是为了让重扫记得这个文件（见 discardImportedBook），不是"用户
+    // 接受过这本书"。静默复活等于把用户刚否掉的导入又塞回书架，而且从此再也不问
+    // 一次。走完整路径则重新落盘（撤销已经把 Books/<hash>/ 清掉了）并重新提问。
+    const rejected = !!existingBook?.importRejectedAt;
     const filePathUnchanged =
       !inPlace || typeof file !== 'string' || existingBook?.filePath === file;
-    if (existingBook && !transient && !overwrite && filePathUnchanged) {
+    if (existingBook && !transient && !overwrite && filePathUnchanged && !rejected) {
       const wasDeleted = !!existingBook.deletedAt;
       if (wasDeleted || (await isBookAvailable(fs, existingBook))) {
         const revived: Book = wasDeleted
@@ -621,12 +627,18 @@ export async function importBook(
       }
     }
 
+    // 必须在下面清 deletedAt / importRejectedAt 之前取值：探针条件要靠它决定
+    // "这条既有记录要不要重新问一次"，晚了读到的就是被清空后的 null。
+    const cameFromRejected = !!existingBook?.importRejectedAt;
     if (existingBook) {
       // B-6：已存在书的所有字段更新都写在副本上，成功后再提交 ——
       // 中途抛错不污染调用方传入的 library 数组 / lookupIndex 的原对象。
       existingBook = { ...existingBook };
       if (!transient) {
         existingBook.deletedAt = null;
+        // 用户这次重新接受了它（无论随后选替换还是保留为两本），标记必须清掉，
+        // 否则每次重导都要问一次。
+        if (existingBook.importRejectedAt) existingBook.importRejectedAt = undefined;
       }
       existingBook.createdAt = Date.now();
       existingBook.updatedAt = Date.now();
@@ -651,7 +663,11 @@ export async function importBook(
     // `existingBook` 存在时不报——那条路径是"同一个文件重导"或显式覆盖，用户
     // 已经看见这本书了，再问一次没有意义。批内两本互为新旧版本的情况由批后
     // 二次探测补上（findBatchVersionConflicts）。
-    const reportVersionConflict = !!options.onVersionConflict && !transient && !existingBook;
+    //
+    // 例外是"用户撤销过这次导入"的那条（`cameFromRejected`）：它就是被否掉的
+    // 那次导入留下的墓碑，重导必须在弹窗里再问一次，否则撤销等于没发生。
+    const reportVersionConflict =
+      !!options.onVersionConflict && !transient && (!existingBook || cameFromRejected);
     let versionConflict: { candidates: Book[]; reason: BookVersionConflictReason } | undefined;
     if (reportVersionConflict) {
       versionConflict =
@@ -900,6 +916,10 @@ export async function importBook(
         }),
       });
     }
+    // 走完整路径的"撤销后重导"在调用方眼里就是一次复活（记录本来就还在，只是
+    // 变回了存活），提示语与普通墓碑统一；不报的话调用方会把这次算成"成功导入
+    // 一本新书"，而书架上并没有多出书来。
+    if (cameFromRejected) options.onDedupHit?.('revived');
     return importedBook;
   } catch (error) {
     console.error('Error importing book:', error);

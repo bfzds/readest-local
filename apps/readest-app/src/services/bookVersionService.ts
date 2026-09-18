@@ -544,6 +544,10 @@ export async function discardImportedBook(
   const tombstone: Book = {
     ...book,
     deletedAt: Date.now(),
+    // 本次拒绝要能被"下一次导入"看见：墓碑本身在导入路径上是"静默复活"，而用户
+    // 刚刚明确否掉了这次导入。带这个标记的记录重导时会按新记录重新提问（见
+    // bookService.importBook 的去重短路与探针条件），用户重新接受后标记被清掉。
+    importRejectedAt: Date.now(),
     downloadedAt: null,
     coverDownloadedAt: null,
   };
