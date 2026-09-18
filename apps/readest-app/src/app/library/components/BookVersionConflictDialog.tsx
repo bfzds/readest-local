@@ -109,7 +109,17 @@ const BookVersionConflictDialog = ({
   };
 
   return (
-    <Dialog isOpen title='发现同一本书的新版本' onClose={onCancel} useOverlayScroll>
+    <Dialog
+      isOpen
+      title='发现同一本书的新版本'
+      onClose={onCancel}
+      useOverlayScroll
+      boxClassName='sm:!w-[60%] sm:!max-w-[760px]'
+      contentClassName='sm:!px-8'
+    >
+      {/* 宽度与内容边距为什么必须带 `!`：Dialog 自带 sm:max-w-[600px]（盒）与
+          sm:px-[10%]（内容层），与这里同特异性；同名 utility 谁生效由生成 CSS 的顺序
+          决定，不由 className 顺序决定——`!` 让这两条带上 !important 才稳定压过。 */}
       <div className='flex flex-col gap-3 p-4'>
         <p className='text-base-content/80 text-sm leading-relaxed'>
           下面这些书，书库里已经有一本同名的了。如果这次导入的是同一个故事的新版本（换了下载来源、
@@ -137,12 +147,12 @@ const BookVersionConflictDialog = ({
                   index > 0 && 'border-t border-base-300',
                 )}
               >
-                <div className='text-base-content text-sm font-medium'>
+                <div className='text-base-content text-[15px] font-medium'>
                   {bookLabel(conflict.incoming)}
                 </div>
 
                 {/* 判定依据：两边书号并列，用户自己核对是不是同一个来源。 */}
-                <div className='text-base-content/60 flex flex-col gap-0.5 text-xs leading-relaxed'>
+                <div className='text-base-content/60 flex flex-col gap-0.5 text-[13px] leading-relaxed'>
                   <span>
                     判定依据：{REASON_LABEL[conflict.reason]} · 书号{' '}
                     {identifierOf(conflict.incoming)} / {identifierOf(target)}
@@ -159,7 +169,7 @@ const BookVersionConflictDialog = ({
 
                 {comparison && (
                   <div className='flex flex-col gap-1.5'>
-                    <table className='table-fixed w-full text-xs'>
+                    <table className='table-fixed w-full tabular-nums text-[13px]'>
                       <thead>
                         <tr className='text-base-content/50'>
                           <th className='w-20 text-left font-normal'> </th>
@@ -170,11 +180,11 @@ const BookVersionConflictDialog = ({
                       <tbody>
                         {comparison.rows.map((row) => (
                           <tr key={row.key} className='text-base-content/80'>
-                            <td className='text-base-content/50 py-0.5'>{row.label}</td>
-                            <td className='truncate py-0.5 pr-2' title={row.old}>
+                            <td className='text-base-content/50 py-1'>{row.label}</td>
+                            <td className='truncate py-1 pr-2' title={row.old}>
                               {row.old}
                             </td>
-                            <td className='truncate py-0.5' title={row.new}>
+                            <td className='truncate py-1' title={row.new}>
                               {row.direction && DIRECTION_ICON[row.direction]}
                               {row.new}
                             </td>
@@ -184,14 +194,14 @@ const BookVersionConflictDialog = ({
                     </table>
 
                     {comparison.summary.length > 0 && (
-                      <ul className='text-base-content/60 list-disc pl-4 text-xs leading-relaxed'>
+                      <ul className='text-base-content/60 list-disc pl-4 text-[13px] leading-relaxed'>
                         {comparison.summary.map((line) => (
                           <li key={line}>{line}</li>
                         ))}
                       </ul>
                     )}
 
-                    <div className='text-base-content/60 text-xs leading-relaxed'>
+                    <div className='text-base-content/60 text-[13px] leading-relaxed'>
                       替换后会保留：阅读进度 · 书签与笔记 · 分组与标签 · 阅读状态
                     </div>
 
@@ -199,7 +209,7 @@ const BookVersionConflictDialog = ({
                       <div className='flex flex-col gap-1'>
                         <button
                           type='button'
-                          className='btn btn-ghost btn-xs self-start'
+                          className='btn btn-ghost btn-sm self-start'
                           onClick={() =>
                             setExpanded((prev) => ({
                               ...prev,
@@ -266,17 +276,17 @@ const BookVersionConflictDialog = ({
             <span className='text-base-content/60'>全部：</span>
             <button
               type='button'
-              className='btn btn-ghost btn-xs'
+              className='btn btn-ghost btn-sm'
               onClick={() => setAll('replace')}
             >
               都用新版替换
             </button>
-            <button type='button' className='btn btn-ghost btn-xs' onClick={() => setAll('keep')}>
+            <button type='button' className='btn btn-ghost btn-sm' onClick={() => setAll('keep')}>
               都保留为两本
             </button>
             <button
               type='button'
-              className='btn btn-ghost btn-xs'
+              className='btn btn-ghost btn-sm'
               onClick={() => setAll('discard')}
             >
               都撤销导入
