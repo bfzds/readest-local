@@ -5,6 +5,8 @@ import {
   FALLBACK_FONTS,
   CJK_SANS_SERIF_FONTS,
   CJK_SERIF_FONTS,
+  FONT_SIZE_LIVE_CEILING,
+  MAX_FONT_SIZE,
 } from '@/services/constants';
 import { BookFormat, FIXED_LAYOUT_FORMATS, ViewSettings } from '@/types/book';
 import {
@@ -906,15 +908,36 @@ type FontSizeSettings = Pick<
 >;
 
 /**
- * The font size the reader should actually render: the Ctrl+wheel-zoomable
- * live size (effectiveFontSize), falling back to the configured default, then
- * clamped into [minimumFontSize, defaultFontSize] so a stale/edge value can
- * never render larger than the user's default or smaller than their floor.
+ * The band the Ctrl+wheel live font size may move within. The configured
+ * default stays the anchor and is never rewritten by the wheel; the live size
+ * may temporarily exceed it up to FONT_SIZE_LIVE_CEILING times the default
+ * (hard-capped at MAX_FONT_SIZE), and may always shrink down to the
+ * minimumFontSize floor. Shared by getEffectiveFontSize (the render clamp) and
+ * the wheel accumulator in useIframeEvents (the step clamp) so both agree on
+ * the same bounds.
  */
-export const getEffectiveFontSize = (viewSettings: FontSizeSettings | null | undefined): number => {
+export const getLiveFontSizeBounds = (
+  viewSettings: FontSizeSettings | null | undefined,
+): { lo: number; hi: number } => {
   const base = viewSettings?.defaultFontSize ?? 18;
   const lo = viewSettings?.minimumFontSize ?? 8;
-  const hi = Math.max(base, lo);
+  const hi = Math.min(Math.max(base, lo) * FONT_SIZE_LIVE_CEILING, MAX_FONT_SIZE);
+  return { lo, hi };
+};
+
+/**
+ * The font size the reader should actually render: the Ctrl+wheel-zoomable
+ * live size (effectiveFontSize), falling back to the configured default, then
+ * clamped into the live band from getLiveFontSizeBounds. Unlike before, the
+ * band's top is NOT the configured default: the wheel may push the live size
+ * above it (up to default × 1.5, capped at MAX_FONT_SIZE) as a temporary
+ * margin. There is no automatic reset — scrolling down or changing the font
+ * size settings returns to the anchor; the FontSizeOverlay always shows the
+ * real px value so the overshoot stays visible.
+ */
+export const getEffectiveFontSize = (viewSettings: FontSizeSettings | null | undefined): number => {
+  const { lo, hi } = getLiveFontSizeBounds(viewSettings);
+  const base = viewSettings?.defaultFontSize ?? 18;
   const live = viewSettings?.effectiveFontSize ?? base;
   return Math.min(hi, Math.max(lo, live));
 };

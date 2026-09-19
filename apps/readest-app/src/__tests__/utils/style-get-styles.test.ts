@@ -144,10 +144,30 @@ describe('getFontStyles branches (via getStyles)', () => {
     expect(css).toContain('font-size: 16px !important');
   });
 
-  it('clamps a stale effectiveFontSize above the default down to the cap', () => {
+  // Semantics change (upstream-absorption plan §2.1): the live band's top is no
+  // longer the configured default but default × 1.5 (capped at MAX_FONT_SIZE),
+  // so a live size above the default now renders as-is instead of being clamped
+  // back down to the default.
+  it('renders a live effectiveFontSize above the default within the 1.5x ceiling', () => {
     const vs = makeViewSettings({ defaultFontSize: 18, minimumFontSize: 8, effectiveFontSize: 22 });
     const css = getStyles(vs, theme);
-    expect(css).toContain('font-size: 18px !important');
+    expect(css).toContain('font-size: 22px !important');
+  });
+
+  it('clamps a live effectiveFontSize above the 1.5x ceiling back to the band top', () => {
+    const vs = makeViewSettings({ defaultFontSize: 18, minimumFontSize: 8, effectiveFontSize: 40 });
+    const css = getStyles(vs, theme);
+    expect(css).toContain('font-size: 27px !important');
+  });
+
+  it('caps the live band at MAX_FONT_SIZE even when 1.5x the default exceeds it', () => {
+    const vs = makeViewSettings({
+      defaultFontSize: 100,
+      minimumFontSize: 8,
+      effectiveFontSize: 130,
+    });
+    const css = getStyles(vs, theme);
+    expect(css).toContain('font-size: 120px !important');
   });
 
   it('clamps a stale effectiveFontSize below the minimum up to the floor', () => {

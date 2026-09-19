@@ -877,6 +877,13 @@ export const MAX_ZOOM_LEVEL = 500;
 export const MIN_ZOOM_LEVEL = 50;
 export const ZOOM_STEP = 10;
 
+// Ctrl+wheel live font size bounds: the wheel may push the rendered size past
+// the configured default (the default stays an anchor and is never rewritten),
+// up to FONT_SIZE_LIVE_CEILING times the default, hard-capped at MAX_FONT_SIZE.
+// The minimum font size floor is unchanged.
+export const MAX_FONT_SIZE = 120;
+export const FONT_SIZE_LIVE_CEILING = 1.5;
+
 export const MAX_CONTRAST = 300;
 export const MIN_CONTRAST = 50;
 export const CONTRAST_STEP = 10;

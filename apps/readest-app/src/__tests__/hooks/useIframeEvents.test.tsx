@@ -3,8 +3,9 @@ import { render, cleanup } from '@testing-library/react';
 
 const h = vi.hoisted(() => {
   // adjustFontSize reads the live font size + the zoom range
-  // (defaultFontSize as the cap, minimumFontSize as the floor) via
-  // getState().getViewSettings. Configurable per-test to simulate zoomed state.
+  // ([minimumFontSize, min(defaultFontSize × 1.5, 120)]; the configured default
+  // anchors the band but is never rewritten) via getState().getViewSettings.
+  // Configurable per-test to simulate zoomed state.
   const getViewSettingsMock =
     vi.fn<() => { defaultFontSize: number; minimumFontSize: number; effectiveFontSize?: number }>();
   getViewSettingsMock.mockReturnValue({ defaultFontSize: 18, minimumFontSize: 12 });
@@ -122,18 +123,83 @@ describe('useMouseEvent wheel handling', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
-  test('ctrl+wheel up at the default (the cap) does not grow the font', async () => {
+  test('ctrl+wheel up at the default grows the font past the default', async () => {
     const handler = vi.fn();
     function Wrapper() {
       useMouseEvent('book-1', handler as unknown as Parameters<typeof useMouseEvent>[1]);
       return null;
     }
     render(<Wrapper />);
-    // defaultFontSize=18 is the zoom cap, so an upward notch is a no-op — but
-    // the overlay still surfaces the (unchanged) size.
+    // Semantics change (upstream-absorption plan §2.1): the wheel band's top is
+    // no longer defaultFontSize but defaultFontSize × 1.5, so an upward notch
+    // at the default grows the live size to 19. The configured default itself
+    // must never be rewritten — only effectiveFontSize may be persisted.
     dispatchCtrlWheel('book-1', -50);
-    expect(saveViewSettings).not.toHaveBeenCalled();
-    expect(eventDispatcher.dispatch).toHaveBeenCalledWith('font-size-changed', { size: 18 });
+    await flushFontThrottle();
+    expect(saveViewSettings).toHaveBeenCalledWith(
+      expect.anything(),
+      'book-1',
+      'effectiveFontSize',
+      19,
+    );
+    expect(saveViewSettings).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'book-1',
+      'defaultFontSize',
+      expect.anything(),
+    );
+    expect(eventDispatcher.dispatch).toHaveBeenCalledWith('font-size-changed', { size: 19 });
+  });
+
+  test('ctrl+wheel up clamps at the 1.5x live ceiling above the default', async () => {
+    h.getViewSettingsMock.mockReturnValue({
+      defaultFontSize: 18,
+      minimumFontSize: 12,
+      effectiveFontSize: 26,
+    });
+    const handler = vi.fn();
+    function Wrapper() {
+      useMouseEvent('book-1', handler as unknown as Parameters<typeof useMouseEvent>[1]);
+      return null;
+    }
+    render(<Wrapper />);
+    // hi = 18 × 1.5 = 27: one more upward notch pins the live size at the band
+    // top; a further one cannot exceed it.
+    dispatchCtrlWheel('book-1', -50);
+    await flushFontThrottle();
+    expect(saveViewSettings).toHaveBeenCalledWith(
+      expect.anything(),
+      'book-1',
+      'effectiveFontSize',
+      27,
+    );
+    dispatchCtrlWheel('book-1', -50);
+    await flushFontThrottle();
+    expect(eventDispatcher.dispatch).toHaveBeenCalledWith('font-size-changed', { size: 27 });
+  });
+
+  test('ctrl+wheel up is hard-capped at MAX_FONT_SIZE (120px)', async () => {
+    h.getViewSettingsMock.mockReturnValue({
+      defaultFontSize: 100,
+      minimumFontSize: 12,
+      effectiveFontSize: 119,
+    });
+    const handler = vi.fn();
+    function Wrapper() {
+      useMouseEvent('book-1', handler as unknown as Parameters<typeof useMouseEvent>[1]);
+      return null;
+    }
+    render(<Wrapper />);
+    // 100 × 1.5 = 150 exceeds the absolute MAX_FONT_SIZE cap: the band top is
+    // 120, so the step from 119 pins there.
+    dispatchCtrlWheel('book-1', -50);
+    await flushFontThrottle();
+    expect(saveViewSettings).toHaveBeenCalledWith(
+      expect.anything(),
+      'book-1',
+      'effectiveFontSize',
+      120,
+    );
   });
 
   test('ctrl+wheel down shrinks toward the minimum font size', async () => {
@@ -167,7 +233,7 @@ describe('useMouseEvent wheel handling', () => {
       return null;
     }
     render(<Wrapper />);
-    // Already shrunk to 15: an upward notch recovers 1px toward the 18px cap.
+    // Already shrunk to 15: an upward notch recovers 1px toward the 18px anchor.
     dispatchCtrlWheel('book-1', -50);
     await flushFontThrottle();
     expect(saveViewSettings).toHaveBeenCalledWith(

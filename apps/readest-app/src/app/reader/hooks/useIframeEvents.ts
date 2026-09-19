@@ -5,7 +5,7 @@ import { eventDispatcher } from '@/utils/event';
 import { MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL } from '@/services/constants';
 import { useEnv } from '@/context/EnvContext';
 import { saveViewSettings } from '@/helpers/settings';
-import { getEffectiveFontSize } from '@/utils/style';
+import { getEffectiveFontSize, getLiveFontSizeBounds } from '@/utils/style';
 import { throttle } from '@/utils/throttle';
 import { createWheelGestureDetector } from '@/app/reader/utils/wheelGesture';
 import { handleSideButtonBackInterlock } from '@/hooks/useMouseNavigation';
@@ -28,9 +28,11 @@ import { hasVerticalPanning } from './usePagination';
 // Rapid Ctrl+wheel / shortcut font changes each call saveViewSettings, which
 // re-applies the whole reader stylesheet and persists to disk — throttle to at
 // most one reflow per 120ms so resizing the font stays smooth. Writes the live
-// zoom value (effectiveFontSize), clamped to [minimumFontSize, defaultFontSize],
-// so the configured default stays the zoom anchor (the hard cap) instead of
-// drifting with every wheel notch.
+// zoom value (effectiveFontSize), clamped to the shared live band from
+// getLiveFontSizeBounds: [minimumFontSize, min(defaultFontSize × 1.5, 120)].
+// The configured default stays the zoom anchor and is never rewritten by the
+// wheel — the live size may overshoot it up to the band top as a temporary
+// margin (no auto-reset; scrolling down or changing settings returns to it).
 const saveFontSizeThrottled = throttle(
   (envConfig: Parameters<typeof saveViewSettings>[0], bookKey: string, value: number) => {
     void saveViewSettings(envConfig, bookKey, 'effectiveFontSize', value);
@@ -56,14 +58,15 @@ export const useMouseEvent = (
       const sign = Math.sign(fontWheelAccumRef.current);
       fontWheelAccumRef.current -= sign * threshold;
       // Wheel up (deltaY<0, sign -1) grows the font; down shrinks it. The live
-      // size moves within [minimumFontSize, defaultFontSize]: the user's
-      // configured default is the top of the band, their minimum the floor —
-      // both re-read each step so a settings change retargets the range live.
+      // size moves within the shared live band: the floor is the user's
+      // minimumFontSize; the top is defaultFontSize × 1.5 (capped at
+      // MAX_FONT_SIZE) so the wheel can push past the configured default —
+      // which itself stays untouched, only anchoring the band. Both bounds
+      // re-read each step so a settings change retargets the range live.
       const direction = sign < 0 ? 1 : -1;
       const viewSettings = useReaderStore.getState().getViewSettings(bookKey);
       const current = getEffectiveFontSize(viewSettings);
-      const lo = viewSettings?.minimumFontSize ?? 8;
-      const hi = Math.max(viewSettings?.defaultFontSize ?? 18, lo);
+      const { lo, hi } = getLiveFontSizeBounds(viewSettings);
       const next = Math.min(hi, Math.max(lo, current + direction));
       // Surface the live size on every step so the centered FontSizeOverlay
       // tracks it even when pinned at a bound; only skip the redundant
