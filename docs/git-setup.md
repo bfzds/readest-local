@@ -11,6 +11,7 @@
 |---|---|
 | packages/tauri | Windows 下 core.autocrlf=true 且子模块无 .gitattributes，checkout 把 LF 换成 CRLF，会让 git 误报 140+ 个文件"被改动"；忽略 CR 后**实质差异为零**（纯行尾假象，非功能） |
 | packages/simplecc-wasm | 仓库 dist/web 是编译产物，删除/变化是构建副作用，不属于主仓库功能代码 |
+| docs/reports/PERF-DEBUG-LATEST.md | 最新性能报告的单行指针，指向的报告本身未入库（`docs/reports/` 已 gitignore）；提交会把指针变成远端悬空引用，故本地压住（2026-09-19 补充） |
 
 ## 生效范围与局限
 
