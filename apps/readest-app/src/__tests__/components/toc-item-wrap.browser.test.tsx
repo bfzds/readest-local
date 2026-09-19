@@ -46,6 +46,7 @@ const renderRow = (label: string) => {
         bookKey='book1'
         flatItem={{ item, depth: 0, index: 0, isExpanded: false }}
         activeHref={null}
+        activeLocationKey={null}
         onToggleExpand={vi.fn()}
         onItemClick={vi.fn()}
       />
