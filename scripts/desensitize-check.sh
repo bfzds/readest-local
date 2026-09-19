@@ -73,7 +73,9 @@ PATTERNS=(
   '-----BEGIN [A-Z ]*PRIVATE KEY-----'
 )
 # 命中这些就不算问题（公共地址，写进文件里也无害）
-ALLOW='@users[.]noreply[.]github[.]com|@github[.]com|@example[.](com|org)|@noreply'
+# 2026-09-19：追加 readest 上游作者的公开邮箱与 Anthropic 的公共 noreply——
+# 它们随上游提交的 Co-authored-by 尾注原样进入 cherry-pick 信息，属公开身份。
+ALLOW='@users[.]noreply[.]github[.]com|@github[.]com|@example[.](com|org)|@noreply|chrox[.]huang@gmail[.]com|noreply@anthropic[.]com'
 
 # 二进制/成品文件不扫（它们本来就该留在工作区，也读不出可读文本）
 SKIP_CASE='*.png|*.jpg|*.jpeg|*.gif|*.webp|*.ico|*.pdf|*.epub|*.mobi|*.zip|*.gz|*.woff|*.woff2|*.ttf|*.otf|*.lock|*.snap'
