@@ -124,6 +124,16 @@ vi.mock('@/services/constants', () => ({
   ZOOM_STEP: 10,
 }));
 
+// applyZoomLevel now persists zoomLevel via saveViewSettings(envConfig, …),
+// so the hook pulls in useEnv — provide both without spinning up EnvProvider.
+vi.mock('@/context/EnvContext', () => ({
+  useEnv: () => ({ envConfig: {} }),
+}));
+
+vi.mock('@/helpers/settings', () => ({
+  saveViewSettings: vi.fn(),
+}));
+
 const Harness = () => {
   useBookShortcuts({ sideBarBookKey: 'book-1', bookKeys: ['book-1'] });
   return null;

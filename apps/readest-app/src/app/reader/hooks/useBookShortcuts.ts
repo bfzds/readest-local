@@ -8,6 +8,8 @@ import { useBookDataStore } from '@/store/bookDataStore';
 import { useCommandPalette } from '@/components/command-palette';
 import { tauriHandleClose, tauriHandleToggleFullScreen, tauriQuitApp } from '@/utils/window';
 import { eventDispatcher } from '@/utils/event';
+import { useEnv } from '@/context/EnvContext';
+import { saveViewSettings } from '@/helpers/settings';
 import { setShortcutsDialogVisible } from '@/components/KeyboardShortcutsHelp';
 import { MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL, ZOOM_STEP } from '@/services/constants';
 import { getParagraphActionForKey } from '@/utils/paragraphPresentation';
@@ -28,6 +30,7 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
   const { toggleSideBar } = useSidebarStore();
   const { setSettingsDialogOpen } = useSettingsStore();
   const { getBookData } = useBookDataStore();
+  const { envConfig } = useEnv();
   const { toggleNotebook } = useNotebookStore();
   const { open: openCommandPalette } = useCommandPalette();
   const lastParagraphToggleRef = useRef(0);
@@ -241,6 +244,15 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
     const viewSettings = getViewSettings(sideBarBookKey)!;
     if (bookData?.isFixedLayout) {
       view?.renderer.setAttribute('scale-factor', zoomLevel);
+      // Persist BEFORE the in-memory mutation: saveViewSettings skips its write
+      // when viewSettings[key] already equals the value, so mutating first
+      // would silently bypass saveConfig and the zoom would be lost on restart
+      // (alignment with the ViewMenu.tsx saveViewSettings precedent; stepping
+      // is 10% at a low wheel frequency, so no throttling is needed). This
+      // persistence also covers the touch pinch path, which commits through
+      // this same applyZoomLevel — previously neither had a dispatcher writing
+      // zoomLevel back.
+      void saveViewSettings(envConfig, sideBarBookKey, 'zoomLevel', zoomLevel, true, true);
       viewSettings!.zoomLevel = zoomLevel;
       setViewSettings(sideBarBookKey, viewSettings!);
     }

@@ -45,6 +45,7 @@ export const useMouseEvent = (
   handlePageFlip: (msg: MessageEvent | React.MouseEvent<HTMLDivElement, MouseEvent>) => void,
 ) => {
   const { hoveredBookKey } = useReaderStore();
+  const { getBookData } = useBookDataStore();
   const { envConfig } = useEnv();
   // Delta accumulated across ctrl-wheel events, consumed at FONT_WHEEL_THRESHOLD
   // px per 1px step so a momentum scroll steps once per unit instead of calling
@@ -110,11 +111,21 @@ export const useMouseEvent = (
           }
         } else if (msg.data.type === 'iframe-wheel') {
           if (msg.data.ctrlKey) {
-            // Ctrl+wheel adjusts the body font size, not a page-turn gesture —
-            // drop any travel accumulated so far so it can't bleed into a
-            // later flip.
+            // Ctrl+wheel adjusts zoom, not a page-turn gesture — drop any
+            // travel accumulated so far so it can't bleed into a later flip.
             wheelDetectorRef.current!.reset();
-            adjustFontSize(msg.data.deltaY);
+            if (getBookData(bookKey)?.isFixedLayout) {
+              // Fixed-layout books (PDF/comics) have no meaningful font size:
+              // route the wheel to page zoom instead, reusing the existing
+              // zoom-in/zoom-out events from useBookShortcuts. Factor follows
+              // the upstream v0.12.8 behavior reference: one wheel notch is
+              // deltaY≈100, so factor 1 maps to one ZOOM_STEP (10%).
+              eventDispatcher.dispatch(msg.data.deltaY > 0 ? 'zoom-out' : 'zoom-in', {
+                factor: Math.abs(msg.data.deltaY) / 100,
+              });
+            } else {
+              adjustFontSize(msg.data.deltaY);
+            }
           } else {
             const flip = wheelDetectorRef.current!.feed({
               deltaX: msg.data.deltaX ?? 0,

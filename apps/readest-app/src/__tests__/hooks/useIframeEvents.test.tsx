@@ -9,7 +9,11 @@ const h = vi.hoisted(() => {
   const getViewSettingsMock =
     vi.fn<() => { defaultFontSize: number; minimumFontSize: number; effectiveFontSize?: number }>();
   getViewSettingsMock.mockReturnValue({ defaultFontSize: 18, minimumFontSize: 12 });
-  return { getViewSettingsMock };
+  // getBookData decides the Ctrl+wheel routing: null / reflowable book → font
+  // size, { isFixedLayout: true } → page zoom events. Configurable per-test.
+  const getBookDataMock = vi.fn<() => { isFixedLayout: boolean } | null>();
+  getBookDataMock.mockReturnValue(null);
+  return { getViewSettingsMock, getBookDataMock };
 });
 
 vi.mock('@/store/readerStore', () => {
@@ -20,7 +24,7 @@ vi.mock('@/store/readerStore', () => {
 
 vi.mock('@/store/bookDataStore', () => {
   return {
-    useBookDataStore: () => ({ getBookData: () => null }),
+    useBookDataStore: () => ({ getBookData: h.getBookDataMock }),
   };
 });
 
@@ -67,6 +71,7 @@ describe('useMouseEvent wheel handling', () => {
     cleanup();
     vi.clearAllMocks();
     h.getViewSettingsMock.mockReturnValue({ defaultFontSize: 18, minimumFontSize: 12 });
+    h.getBookDataMock.mockReturnValue(null);
   });
 
   test('wheel flip dispatches to the latest handlePageFlip after re-render', () => {
@@ -259,5 +264,44 @@ describe('useMouseEvent wheel handling', () => {
     // Already at the 12px floor: a downward notch is a no-op.
     dispatchCtrlWheel('book-1', 50);
     expect(saveViewSettings).not.toHaveBeenCalled();
+  });
+
+  test('ctrl+wheel on a fixed-layout book routes to page zoom, not font size', () => {
+    h.getBookDataMock.mockReturnValue({ isFixedLayout: true });
+    const handler = vi.fn();
+    function Wrapper() {
+      useMouseEvent('book-1', handler as unknown as Parameters<typeof useMouseEvent>[1]);
+      return null;
+    }
+    render(<Wrapper />);
+    // Upstream-absorption plan §2.2: font size is meaningless for fixed-layout
+    // books (PDF/comics), so the wheel reroutes to the existing zoom-in /
+    // zoom-out events (applied by useBookShortcuts). Factor follows the
+    // upstream behavior reference: one notch (deltaY≈100) maps to one
+    // ZOOM_STEP (10%).
+    dispatchCtrlWheel('book-1', 100);
+    expect(eventDispatcher.dispatch).toHaveBeenCalledWith('zoom-out', { factor: 1 });
+    dispatchCtrlWheel('book-1', -120);
+    expect(eventDispatcher.dispatch).toHaveBeenCalledWith('zoom-in', { factor: 1.2 });
+    // The font-size path must not fire at all: no overlay event, no persist.
+    expect(eventDispatcher.dispatch).not.toHaveBeenCalledWith(
+      'font-size-changed',
+      expect.anything(),
+    );
+    expect(saveViewSettings).not.toHaveBeenCalled();
+  });
+
+  test('ctrl+wheel on a reflowable book keeps the font-size path (no zoom events)', () => {
+    const handler = vi.fn();
+    function Wrapper() {
+      useMouseEvent('book-1', handler as unknown as Parameters<typeof useMouseEvent>[1]);
+      return null;
+    }
+    render(<Wrapper />);
+    // Reflowable routing is unchanged by the fixed-layout split.
+    dispatchCtrlWheel('book-1', -50);
+    expect(eventDispatcher.dispatch).toHaveBeenCalledWith('font-size-changed', { size: 19 });
+    expect(eventDispatcher.dispatch).not.toHaveBeenCalledWith('zoom-in', expect.anything());
+    expect(eventDispatcher.dispatch).not.toHaveBeenCalledWith('zoom-out', expect.anything());
   });
 });
