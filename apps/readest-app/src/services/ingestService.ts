@@ -51,6 +51,12 @@ export interface IngestFileOptions {
    * 原样转发给 importBook，不设则整个流程与加入该功能之前一致（无冲突识别）。
    */
   onVersionConflict?: (info: BookVersionConflictInfo) => void;
+  /**
+   * 复制模式导入时把源路径记进 `book.altFilePaths`（见 ImportBookOptions）。
+   * 只有「文件夹导入」两条通路开启：那些通路会反复重扫同一批文件，记住路径
+   * 才能按路径短路，避免每次重扫都重新解析 + 重算 partialMD5。
+   */
+  rememberSourcePath?: boolean;
 }
 
 /**
@@ -183,6 +189,12 @@ export interface IngestFileResult {
    * 标题行生成临时规则重切。
    */
   txtFallbackFile?: File;
+  /**
+   * 本次导入确实往 `altFilePaths` 补记了一条新源路径。调用方据此知道书库有
+   * 变化需要落盘——重扫时命中的都是"已在书库"（不计入成功导入），只补记路径
+   * 的那次如果不保存，账本随进程消失，下次重扫又把整目录重新解析一遍。
+   */
+  sourcePathRemembered?: boolean;
 }
 
 export async function ingestFile(
@@ -251,11 +263,17 @@ export async function ingestFile(
   // 同一个文件重导命中既有记录（存活/墓碑）时 importBook 会回调这里。捕获成
   // 局部变量再随结果返回，写法与 onTxtChapterFallback 一致。
   let dedupOutcome: IngestOutcome | undefined;
+  // 同上：bookService 只在真的新增了一条源路径时回调，捕获成局部变量随结果返回。
+  let sourcePathRemembered = false;
 
   const book = await appService.importBook(opts.file, opts.books, {
     lookupIndex: opts.lookupIndex,
     transient: opts.transient,
     inPlace,
+    ...(opts.rememberSourcePath ? { rememberSourcePath: true } : {}),
+    onSourcePathRemembered: () => {
+      sourcePathRemembered = true;
+    },
     onTxtChapterFallback: (file) => {
       txtFallbackFile = file;
     },
@@ -302,5 +320,11 @@ export async function ingestFile(
     }
   }
 
-  return { book, existed: false, outcome: dedupOutcome ?? 'imported', txtFallbackFile };
+  return {
+    book,
+    existed: false,
+    outcome: dedupOutcome ?? 'imported',
+    txtFallbackFile,
+    ...(sourcePathRemembered ? { sourcePathRemembered: true } : {}),
+  };
 }

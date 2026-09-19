@@ -23,6 +23,13 @@ export interface SelectedFile {
   path?: string;
   basePath?: string;
 
+  /**
+   * The watched folder this file was scanned from, when it arrived through a
+   * folder scan rather than a file picker. The import path itself ignores it;
+   * the watched-folders UI reads it to report per-folder results.
+   */
+  watchedFolder?: string;
+
   // Resolved display name (with extension). For Tauri `content://` / `file://`
   // URIs the `path` may not carry the filename/extension at all (opaque SAF
   // document ids on some Android devices), so the native content resolver is

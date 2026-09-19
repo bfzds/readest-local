@@ -35,6 +35,13 @@ interface SettingsState {
   setActiveSettingsItemId: (id: string | null) => void;
   setRequestedPanel: (panel: string | null) => void;
   setRequestedSubPage: (subPage: string | null) => void;
+  /**
+   * Whether the manage-watched-folders dialog is open. Lives here rather than
+   * in the library page's own state because the dialog is also reachable from
+   * Settings → Custom, which has no path to the library page's state.
+   */
+  isWatchedFoldersDialogOpen: boolean;
+  setWatchedFoldersDialogOpen: (open: boolean) => void;
 
   applyUILanguage: (uiLanguage?: string) => void;
 }
@@ -47,6 +54,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   activeSettingsItemId: null,
   requestedPanel: null,
   requestedSubPage: null,
+  isWatchedFoldersDialogOpen: false,
   setSettings: (settings) => set({ settings }),
   saveSettings: async (envConfig: EnvConfigType, settings: SystemSettings) => {
     const appService = await envConfig.getAppService();
@@ -61,6 +69,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setActiveSettingsItemId: (id) => set({ activeSettingsItemId: id }),
   setRequestedPanel: (panel) => set({ requestedPanel: panel }),
   setRequestedSubPage: (subPage) => set({ requestedSubPage: subPage }),
+  setWatchedFoldersDialogOpen: (open) => set({ isWatchedFoldersDialogOpen: open }),
 
   applyUILanguage: (uiLanguage?: string) => {
     const locale = uiLanguage ? uiLanguage : navigator.language;

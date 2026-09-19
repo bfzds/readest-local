@@ -4,11 +4,10 @@ import { MdFolderOpen } from 'react-icons/md';
 
 import { useTranslation } from '@/hooks/useTranslation';
 import { useKeyDownActions } from '@/hooks/useKeyDownActions';
-import { getFilename } from '@/utils/path';
+import type { WatchedFolderMode, WatchedFolderRule } from '@/types/settings';
 import Dialog from '@/components/Dialog';
 import BoxedList from '@/components/settings/primitives/BoxedList';
 import NavigationRow from '@/components/settings/primitives/NavigationRow';
-import WatchedFoldersPane, { type WatchedFolder } from './WatchedFoldersPane';
 
 /**
  * Per-extension grouping presented to the user. Each card is a single
@@ -36,6 +35,34 @@ export const DEFAULT_FORMAT_GROUPS: FormatGroup[] = [
   { id: 'txt', label: 'TXT', exts: ['txt'] },
 ];
 
+/**
+ * Every extension the format groups cover. Extensions outside this set (the
+ * supported list also carries `md`) cannot be expressed by the dialog's
+ * checkboxes, which is why recorded rules must carry them over rather than
+ * rewrite the folder's formats from the groups alone.
+ */
+export const ALL_FORMAT_GROUP_EXTENSIONS: string[] = DEFAULT_FORMAT_GROUPS.flatMap(
+  (group) => group.exts,
+);
+
+/**
+ * The format groups that cover `extensions`, for seeding the dialog from a
+ * watched folder's stored rule. A group counts as covered when any of its
+ * extensions is present; the dialog can only speak in whole groups, so a rule
+ * that listed a fraction of a group comes back as the whole group.
+ *
+ * `SUPPORTED_BOOK_EXTS` includes `md`, which no group contains — a rule built
+ * from the raw supported list therefore loses that one extension when it is
+ * round-tripped through this dialog. Accepted: the format checkboxes have
+ * always worked in groups (the folder scan reads what the dialog wrote).
+ */
+export const formatGroupIdsForExtensions = (extensions: string[]): string[] => {
+  const wanted = new Set(extensions.map((ext) => ext.toLowerCase()));
+  return DEFAULT_FORMAT_GROUPS.filter((group) => group.exts.some((ext) => wanted.has(ext))).map(
+    (group) => group.id,
+  );
+};
+
 export interface ImportFromFolderResult {
   directory: string;
   /** Lower-case file extensions (without the leading dot) to include. */
@@ -55,12 +82,14 @@ export interface ImportFromFolderResult {
    */
   minSizeKB: number;
   /**
-   * When `false` (default), each first-level subfolder under
+   * When `true` (default), each first-level subfolder under
    * {@link directory} becomes its own library group, mirroring the
-   * folder structure. When `true`, every matching file is dropped
-   * directly into the library root without creating any groups.
+   * folder structure. `flat` drops every matching file directly into the
+   * library root without creating any groups. `author` keeps the folder plus
+   * only its first non-date level — for a download tree like
+   * `<folder>/<date>/<author>/<book>` the books land in `<folder>/<author>`.
    */
-  flatten: boolean;
+  folderMode: WatchedFolderMode;
   /**
    * When `true`, register the directory as an external library folder
    * (`settings.externalLibraryFolders`) and import its books in place
@@ -76,9 +105,11 @@ export interface ImportFromFolderResult {
   /**
    * When `true`, keep this folder watched: on every library open and app
    * focus, Readest re-scans it and imports any newly-added books. Recorded
-   * in `settings.autoImportFolders`. Only meaningful together with
-   * {@link readInPlace} (auto-import reads books in place), so it is forced
-   * `false` whenever `readInPlace` is off. Defaults to `false`.
+   * in `settings.autoImportFolders`.
+   *
+   * Independent of {@link readInPlace}: a watched folder that is not read in
+   * place has its books copied into the library, and the dialog says so next
+   * to the checkbox. Defaults to `false`.
    */
   autoImport: boolean;
 }
@@ -89,9 +120,9 @@ interface ImportFromFolderDialogProps {
   /**
    * Initial value for the folder-structure radios. Persisted by the
    * caller across dialog opens so users don't have to re-pick the same
-   * mode every time. Defaults to `'keep'` when omitted.
+   * mode every time. Defaults to `'mirror'` when omitted.
    */
-  initialFolderMode?: 'keep' | 'flatten';
+  initialFolderMode?: WatchedFolderMode;
   /**
    * Initial set of {@link FormatGroup.id}s to mark as checked. Persisted
    * by the caller. Falls back to a sensible "EPUB + PDF" default when
@@ -128,19 +159,29 @@ interface ImportFromFolderDialogProps {
    */
   isRegisteredExternalRoot?: (directory: string) => boolean;
   /**
-   * Every folder currently in `settings.autoImportFolders`, with the folder
-   * structure each one auto-imports with. Drives the "Watched Folders"
-   * sub-page; an empty list (the default) hides its entry row entirely.
+   * How many folders are currently watched. Drives the "manage watched
+   * folders…" entry row, which is always offered (unlike the old sub-page that
+   * only appeared once a folder existed) because the manager is also where a
+   * first folder gets added.
    */
-  watchedFolders?: WatchedFolder[];
+  watchedFolderCount?: number;
   /**
-   * Stop auto-importing from `path`. Applied immediately by the caller, not on
-   * OK — the sub-page manages folders other than the one being imported, and
-   * Cancel must not silently undo the management the user just did.
+   * The folder's watch rule when `directory` is watched, `undefined` when it
+   * is not. Used to re-seed the form whenever the picked directory changes.
+   *
+   * Without this the "watch this folder" box keeps whatever value the dialog
+   * opened with — seeded from the *last imported* folder, not from the one the
+   * user just picked — and confirming writes that stale value for the newly
+   * picked folder. Picking a watched folder whose box read "off" therefore
+   * stopped watching it and threw away its rule, with no hint that it happened.
    */
-  onUnwatchFolder?: (path: string) => void;
-  /** Change the folder structure future auto-imports from `path` use. */
-  onSetWatchedFolderFlatten?: (path: string, flatten: boolean) => void;
+  resolveWatchedFolder?: (directory: string) => WatchedFolderRule | undefined;
+  /**
+   * Open the manage-watched-folders dialog. The caller closes this dialog
+   * first — two modals stacked on each other is worse than losing the form
+   * state, and every field here is re-seeded from localStorage next time.
+   */
+  onManageWatchedFolders?: () => void;
   /**
    * Pop the platform's native folder picker and return the chosen path,
    * or `undefined` when the user cancels. Required because folder
@@ -153,7 +194,6 @@ interface ImportFromFolderDialogProps {
 }
 
 const DEFAULT_SELECTED_GROUP_IDS = ['epub', 'pdf'];
-/** Shared by the import form and the watched-folders sub-page. */
 const DIALOG_BOX_CLASS = 'sm:min-w-[480px] sm:max-w-[480px] sm:h-auto sm:max-h-[90%]';
 const DEFAULT_MIN_SIZE_KB = 20;
 
@@ -170,15 +210,15 @@ const DEFAULT_MIN_SIZE_KB = 20;
  */
 const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
   initialDirectory,
-  initialFolderMode = 'keep',
+  initialFolderMode = 'mirror',
   initialSelectedGroupIds,
   initialMinSizeKB,
   initialReadInPlace = false,
   initialAutoImport = false,
   isRegisteredExternalRoot,
-  watchedFolders = [],
-  onUnwatchFolder,
-  onSetWatchedFolderFlatten,
+  watchedFolderCount = 0,
+  resolveWatchedFolder,
+  onManageWatchedFolders,
   onPickDirectory,
   onCancel,
   onConfirm,
@@ -202,11 +242,12 @@ const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
       ? (initialMinSizeKB as number)
       : DEFAULT_MIN_SIZE_KB,
   );
-  // `keep` mirrors folders into nested groups (legacy behaviour);
-  // `flatten` drops every book straight into the current library
-  // root regardless of where it lived on disk. The caller seeds this
-  // from localStorage so the user's last choice is restored.
-  const [folderMode, setFolderMode] = useState<'keep' | 'flatten'>(initialFolderMode);
+  // `mirror` keeps folders as nested groups (legacy behaviour); `flat` drops
+  // every book straight into the current library root regardless of where it
+  // lived on disk; `author` keeps only the folder plus its first non-date
+  // level. The caller seeds this from localStorage so the user's last choice
+  // is restored.
+  const [folderMode, setFolderMode] = useState<WatchedFolderMode>(initialFolderMode);
   // "Read in place" toggle. When the directory is already registered
   // as an external library folder we force this ON and hide the
   // toggle's interactive surface — see {@link readInPlaceLocked}
@@ -214,25 +255,20 @@ const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
   // in-place by design (the importer's `shouldImportInPlace` check is
   // path-prefix based and ignores any per-import opt-out).
   const [readInPlace, setReadInPlace] = useState<boolean>(initialReadInPlace);
-  // "Auto-import new books from this folder" — a sub-option of "Read in
-  // place". Auto-import scans the folder on every open/focus and reads its
-  // books in place, so it is only offered (and only takes effect) when the
-  // folder is read in place; `effectiveAutoImport` enforces that.
+  // "Auto-import new books from this folder" — its own standing arrangement,
+  // independent of "Read in place": watching without reading in place copies
+  // the books into the library instead, and the copy notice below says so. Its
+  // seeded value comes from the folder itself (see `seedFromFolder`), so the
+  // box never describes a different folder than the one in the path field.
   const [autoImport, setAutoImport] = useState<boolean>(initialAutoImport);
   const [picking, setPicking] = useState(false);
-  // Which screen the dialog shows: the import form, or the sub-page listing
-  // the folders already opted into auto-import.
-  const [view, setView] = useState<'import' | 'watched'>('import');
 
   const readInPlaceLocked = !!directory && (isRegisteredExternalRoot?.(directory) ?? false);
   const effectiveReadInPlace = readInPlaceLocked || readInPlace;
-  const effectiveAutoImport = effectiveReadInPlace && autoImport;
-
-  /** Same normalization the caller matches watched roots with. */
-  const isCurrentDirectory = (path: string) => {
-    const normalize = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '');
-    return !!directory && normalize(path) === normalize(directory);
-  };
+  // No longer derived from `effectiveReadInPlace`: watching a folder without
+  // reading it in place is exactly the case this decoupling is about — the
+  // books get copied into the library and the dialog says so under the box.
+  const effectiveAutoImport = autoImport;
 
   // Enter to confirm, Escape / Android Back to cancel. We must wire
   // `onCancel` even though <Dialog> also listens for Back, because
@@ -244,17 +280,11 @@ const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
     onConfirm: () => {
       // Block the Enter shortcut while a folder pick is in flight so
       // we don't dispatch a confirm with a stale directory.
-      if (picking || view !== 'import') return;
+      if (picking) return;
       handleConfirm();
     },
     onCancel: () => {
       if (picking) return;
-      // Android Back leaves the sub-page instead of the whole dialog (our
-      // handler consumes the event before <Dialog>'s own listener sees it).
-      if (view !== 'import') {
-        setView('import');
-        return;
-      }
       onCancel();
     },
   });
@@ -271,12 +301,40 @@ const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
     });
   };
 
+  /**
+   * Load the form with a folder's own stored configuration: whether it is
+   * watched, how it groups, which formats it takes and its size floor.
+   *
+   * Called for every pick (and only for picks — the caller seeds the initial
+   * directory itself, since it is the one holding the settings). Re-seeding
+   * wholesale is the point: the alternative is confirming with values that
+   * describe a different folder, which silently rewrites or drops that folder's
+   * rule. Any edit the user makes *after* picking still wins, because nothing
+   * re-seeds behind their back until they pick again.
+   */
+  const seedFromFolder = (path: string) => {
+    const rule = resolveWatchedFolder?.(path);
+    setAutoImport(!!rule);
+    if (!rule) return;
+    setFolderMode(rule.mode);
+    if (rule.extensions?.length) {
+      const groupIds = formatGroupIdsForExtensions(rule.extensions);
+      if (groupIds.length > 0) setSelectedGroups(new Set(groupIds));
+    }
+    if (typeof rule.minSizeKB === 'number' && rule.minSizeKB >= 0) {
+      setMinSizeKB(rule.minSizeKB);
+    }
+  };
+
   const handlePickDirectory = async () => {
     if (picking) return;
     setPicking(true);
     try {
       const picked = await onPickDirectory();
-      if (picked) setDirectory(picked);
+      if (picked) {
+        setDirectory(picked);
+        seedFromFolder(picked);
+      }
     } finally {
       setPicking(false);
     }
@@ -299,45 +357,13 @@ const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
       extensions: exts,
       selectedGroupIds: selectedIds,
       minSizeKB: safeMinSizeKB,
-      flatten: folderMode === 'flatten',
+      folderMode,
       readInPlace: effectiveReadInPlace,
       autoImport: effectiveAutoImport,
     });
   };
 
   const confirmDisabled = !directory || selectedGroups.size === 0;
-
-  // The sub-page swaps out the dialog's body only: <Dialog> stays the root
-  // element of both branches, so switching views doesn't remount it (no
-  // replayed open animation, no lost scroll position on the way back).
-  if (view === 'watched') {
-    return (
-      <Dialog
-        isOpen
-        title={_('Import Books')}
-        onClose={onCancel}
-        boxClassName={DIALOG_BOX_CLASS}
-        contentClassName='!px-6 !py-2'
-      >
-        <WatchedFoldersPane
-          folders={watchedFolders}
-          onBack={() => setView('import')}
-          onUnwatch={(path) => {
-            // Keep the form honest: confirming right after unwatching the very
-            // folder being imported would put it straight back on the list.
-            if (isCurrentDirectory(path)) setAutoImport(false);
-            onUnwatchFolder?.(path);
-          }}
-          onSetFlatten={(path, flatten) => {
-            // Same reasoning for the structure radios — OK writes the folder's
-            // structure from the form, so the two must not disagree.
-            if (isCurrentDirectory(path)) setFolderMode(flatten ? 'flatten' : 'keep');
-            onSetWatchedFolderFlatten?.(path, flatten);
-          }}
-        />
-      </Dialog>
-    );
-  }
 
   return (
     <Dialog
@@ -472,32 +498,43 @@ const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
               </span>
             </span>
           </label>
-          {/* Auto-import sub-option. Only shown when the folder is read in
-              place — auto-import re-scans and reads books straight from the
-              folder, so it has no meaning for copied imports. */}
-          {effectiveReadInPlace && (
-            <label className='ms-6 flex cursor-pointer items-start gap-2 rounded-md px-1 py-1 text-sm hover:bg-base-200/50'>
-              <input
-                type='checkbox'
-                className='toggle mt-0.5'
-                checked={autoImport}
-                onChange={(e) => setAutoImport(e.target.checked)}
-              />
-              <span className='select-none'>
-                <span className='block'>{_('Auto-import new books from this folder')}</span>
+          {/* Auto-import. Offered whether or not the folder is read in place:
+              watching is a standing arrangement about a folder on disk, and a
+              watched folder that is not read in place simply has its books
+              copied into the library — said out loud right below the box so
+              nobody discovers it after the fact. */}
+          <label className='ms-6 flex cursor-pointer items-start gap-2 rounded-md px-1 py-1 text-sm hover:bg-base-200/50'>
+            <input
+              type='checkbox'
+              className='toggle mt-0.5'
+              checked={autoImport}
+              onChange={(e) => setAutoImport(e.target.checked)}
+            />
+            <span className='select-none'>
+              <span className='block'>{_('Watch this folder for new books')}</span>
+              <span className='text-base-content/60 block text-xs'>
+                {effectiveReadInPlace
+                  ? _(
+                      'When new books are added to this folder, import them automatically the next time Readest opens or returns to the foreground.',
+                    )
+                  : _(
+                      'When new books are added to this folder, import them automatically the next time Readest opens or returns to the foreground. The folder is scanned recursively.',
+                    )}
+              </span>
+              {!effectiveReadInPlace && (
                 <span className='text-base-content/60 block text-xs'>
                   {_(
-                    'When new books are added to this folder, import them automatically the next time Readest opens or returns to the foreground.',
+                    'Books are copied into the library, because "Read books in place" is off. Deleting a book from the library does not delete it from the folder.',
                   )}
                 </span>
-              </span>
-            </label>
-          )}
+              )}
+            </span>
+          </label>
         </div>
 
-        {/* Folder-structure mode — radios let the user choose between
-            mirroring subfolders as nested library groups (legacy) or
-            flattening everything straight into the library. */}
+        {/* Folder-structure mode — three radios: mirror the subfolders as nested
+            library groups (legacy), drop everything into the library, or keep
+            just the folder plus the first level that is not a download date. */}
         <div className='flex flex-col gap-1.5' role='radiogroup' aria-label={_('Folder Structure')}>
           <span className='text-base-content/70 text-xs'>{_('Folder Structure')}</span>
           <label
@@ -510,8 +547,8 @@ const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
               type='radio'
               name='import-folder-mode'
               className='radio radio-sm mt-0.5'
-              checked={folderMode === 'keep'}
-              onChange={() => setFolderMode('keep')}
+              checked={folderMode === 'mirror'}
+              onChange={() => setFolderMode('mirror')}
             />
             <span className='select-none'>
               <span className='block'>{_('Create groups from subfolders')}</span>
@@ -530,8 +567,30 @@ const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
               type='radio'
               name='import-folder-mode'
               className='radio radio-sm mt-0.5'
-              checked={folderMode === 'flatten'}
-              onChange={() => setFolderMode('flatten')}
+              checked={folderMode === 'author'}
+              onChange={() => setFolderMode('author')}
+            />
+            <span className='select-none'>
+              <span className='block'>{_('Group by author')}</span>
+              <span className='text-base-content/60 block text-xs'>
+                {_(
+                  'One group per author, ignoring the download-date folders. Deeper levels are dropped.',
+                )}
+              </span>
+            </span>
+          </label>
+          <label
+            className={clsx(
+              'flex cursor-pointer items-start gap-2 rounded-md px-1 py-1 text-sm',
+              'hover:bg-base-200/50',
+            )}
+          >
+            <input
+              type='radio'
+              name='import-folder-mode'
+              className='radio radio-sm mt-0.5'
+              checked={folderMode === 'flat'}
+              onChange={() => setFolderMode('flat')}
             />
             <span className='select-none'>
               <span className='block'>{_('Import all into library')}</span>
@@ -542,14 +601,20 @@ const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
           </label>
         </div>
 
-        {/* Entry point to the watched-folders sub-page. Hidden until at least
-            one folder is watched — there is nothing to manage before that. */}
-        {watchedFolders.length > 0 && (
+        {/* Entry point to the watched-folders manager. Always offered: the
+            manager is also where a first folder gets added, and it is the only
+            place a folder's structure, formats and size can be edited without
+            re-importing it. */}
+        {onManageWatchedFolders && (
           <BoxedList>
             <NavigationRow
               title={_('Watched Folders')}
-              status={watchedFolders.map((f) => getFilename(f.path) || f.path).join(', ')}
-              onClick={() => setView('watched')}
+              status={
+                watchedFolderCount === 0
+                  ? _('None')
+                  : _('{{count}} folder(s)', { count: watchedFolderCount })
+              }
+              onClick={onManageWatchedFolders}
             />
           </BoxedList>
         )}

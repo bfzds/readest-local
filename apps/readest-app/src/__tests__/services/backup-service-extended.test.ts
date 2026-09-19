@@ -1,9 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   mergeBookConfigs,
   mergeBookMetadata,
+  persistRestoredLibrary,
+  reviveRestoredBooks,
   validateBackupStructure,
+  type RevivedBook,
 } from '@/services/backupService';
+import { mergeLibraryRows } from '@/services/libraryService';
 import { Book, BookConfig, BookNote } from '@/types/book';
 
 /**
@@ -264,5 +268,167 @@ describe('mergeBookMetadata - extended', () => {
     const backup = makeBook({ deletedAt: 4000 });
     const result = mergeBookMetadata(current, backup);
     expect(result.deletedAt).toBe(4000);
+  });
+});
+
+/**
+ * 复活没被「防复活护栏」吞掉的关键在 revivedAt：备份恢复把「备份里存活、
+ * 本地已删」的书复活时，保存路径的 mergeLibraryRows 只认 revivedAt 放行，
+ * 所以 reviveRestoredBooks 必须给每条都盖章，否则恢复结果保存时被整行丢弃
+ * （界面上恢复了、重启后又没了）。revivedAt / updatedAt 的既有断言在
+ * backup-service.test.ts 里没有覆盖，这里补齐。
+ */
+describe('reviveRestoredBooks - 复活与防复活护栏', () => {
+  const NOW = 1_700_000_000_000;
+
+  it('为多条复活书盖 revivedAt、清 syncedAt、按统一偏移抬高 updatedAt，并从备份恢复下载状态', () => {
+    const revived: RevivedBook[] = [
+      {
+        book: makeBook({
+          hash: 'a',
+          deletedAt: null,
+          updatedAt: 1000,
+          syncedAt: 500,
+          downloadedAt: null,
+          coverDownloadedAt: null,
+        }),
+        backup: makeBook({ hash: 'a', updatedAt: 900, downloadedAt: 555, coverDownloadedAt: 666 }),
+      },
+      {
+        book: makeBook({
+          hash: 'b',
+          deletedAt: null,
+          updatedAt: 1500,
+          syncedAt: 500,
+          downloadedAt: null,
+          coverDownloadedAt: null,
+        }),
+        backup: makeBook({ hash: 'b', updatedAt: 1200, downloadedAt: 777, coverDownloadedAt: 888 }),
+      },
+    ];
+
+    reviveRestoredBooks(revived, NOW);
+    const [a, b] = revived.map((r) => r.book);
+
+    expect(a!.revivedAt).toBe(NOW);
+    expect(b!.revivedAt).toBe(NOW);
+    // max updatedAt 是 1500，统一偏移 = NOW - 1500；b 恰好落在 NOW。
+    expect(a!.updatedAt).toBe(NOW - 500);
+    expect(b!.updatedAt).toBe(NOW);
+    // 相对顺序不变（库页「最近更新」排序保持）。
+    expect(a!.updatedAt).toBeLessThan(b!.updatedAt);
+    expect(a!.syncedAt).toBeNull();
+    expect(b!.syncedAt).toBeNull();
+    expect(a!.downloadedAt).toBe(555);
+    expect(a!.coverDownloadedAt).toBe(666);
+    expect(b!.downloadedAt).toBe(777);
+    expect(b!.coverDownloadedAt).toBe(888);
+  });
+
+  it('不负责清 deletedAt —— 清墓碑是恢复循环里 mergeBookMetadata 的职责', () => {
+    // reviveRestoredBooks 直接拿到的是「mergeBookMetadata 已经清过墓碑」的
+    // 记录；它自己不该再碰 deletedAt。这里故意传入仍带墓碑的 book，断言
+    // 该函数保持其原值，锁住职责边界。
+    const revived: RevivedBook[] = [
+      {
+        book: makeBook({ deletedAt: 1000, updatedAt: 1000 }),
+        backup: makeBook({ updatedAt: 900 }),
+      },
+    ];
+
+    reviveRestoredBooks(revived, NOW);
+    expect(revived[0]!.book.deletedAt).toBe(1000);
+    expect(revived[0]!.book.revivedAt).toBe(NOW);
+  });
+
+  it('空数组入参不抛错、不做任何改动', () => {
+    expect(() => reviveRestoredBooks([], NOW)).not.toThrow();
+  });
+});
+
+/**
+ * persistRestoredLibrary 是恢复主流程里「盖章 → 保存」两步的接线：revivedAt
+ * 必须在 saveLibraryBooks 看到记录**之前**盖好，否则 mergeLibraryRows 的防复活
+ * 护栏会把复活行整行丢弃（界面上恢复了、重启后又没了）。这里用「保存被调用
+ * 的那一刻」读记录状态的假 appService 锁死顺序——单独测 reviveRestoredBooks
+ * 或 mergeLibraryRows 都发现不了这两步被调换 / 删掉。
+ */
+describe('persistRestoredLibrary - 恢复主流程的盖章→保存接线', () => {
+  const NOW = 1_700_000_000_000;
+
+  // persistRestoredLibrary 内部走 reviveRestoredBooks 的默认 Date.now()，
+  // 用假时钟固定住，让 revivedAt 断言确定。
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function makeRevived(): RevivedBook {
+    return {
+      book: makeBook({ hash: 'h1', deletedAt: null, updatedAt: 1000, syncedAt: 500 }),
+      backup: makeBook({ hash: 'h1', updatedAt: 900 }),
+    };
+  }
+
+  it('保存被调用的那一刻，复活书已经带上 revivedAt（盖章先于保存）', async () => {
+    const revived = [makeRevived()];
+    const books = [revived[0]!.book];
+    const revivedAtAtSaveTime: (number | null | undefined)[] = [];
+    const appService = {
+      saveLibraryBooks: vi.fn(async (saved: Book[]) => {
+        revivedAtAtSaveTime.push(saved.find((b) => b.hash === 'h1')?.revivedAt);
+        return saved;
+      }),
+    };
+
+    await persistRestoredLibrary(appService, books, revived);
+
+    expect(revivedAtAtSaveTime).toEqual([NOW]);
+    expect(revived[0]!.book.revivedAt).toBe(NOW);
+  });
+
+  it('恰好调用一次保存，且拿到的就是同一批 books 数组', async () => {
+    const revived = [makeRevived()];
+    const books = [revived[0]!.book];
+    const appService = { saveLibraryBooks: vi.fn(async (saved: Book[]) => saved) };
+
+    await persistRestoredLibrary(appService, books, revived);
+
+    expect(appService.saveLibraryBooks).toHaveBeenCalledTimes(1);
+    expect(appService.saveLibraryBooks).toHaveBeenCalledWith(books);
+  });
+
+  it('与护栏联动：保存时的这批记录喂给 mergeLibraryRows 能穿过墓碑护栏存活', async () => {
+    // 磁盘侧是一条墓碑（deletedAt 有值）；恢复链路产物必须在合并后仍是活行。
+    const onDiskTombstone = makeBook({ hash: 'h1', deletedAt: 1_000, updatedAt: 1_000 });
+    const revived = [makeRevived()];
+    const books = [revived[0]!.book];
+    let savedBooks: Book[] = [];
+    const appService = {
+      saveLibraryBooks: vi.fn(async (saved: Book[]) => {
+        savedBooks = saved;
+        return saved;
+      }),
+    };
+
+    await persistRestoredLibrary(appService, books, revived);
+
+    const merged = mergeLibraryRows([onDiskTombstone], savedBooks);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.hash).toBe('h1');
+    expect(merged[0]!.deletedAt).toBeNull();
+    expect(merged[0]!.revivedAt).toBe(NOW);
+  });
+
+  it('revived 为空数组时照样调用保存、不抛错', async () => {
+    const books = [makeBook({ hash: 'plain' })];
+    const appService = { saveLibraryBooks: vi.fn(async (saved: Book[]) => saved) };
+
+    await expect(persistRestoredLibrary(appService, books, [])).resolves.toBeUndefined();
+    expect(appService.saveLibraryBooks).toHaveBeenCalledTimes(1);
+    expect(appService.saveLibraryBooks).toHaveBeenCalledWith(books);
   });
 });

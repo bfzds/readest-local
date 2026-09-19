@@ -29,6 +29,8 @@ interface LibraryHeaderProps {
   onPullLibrary: () => void;
   onImportBooksFromFiles: () => void;
   onImportBooksFromDirectory?: () => void;
+  /** Open the manage-watched-folders dialog from the import menu. */
+  onManageWatchedFolders?: () => void;
   onToggleSelectMode: () => void;
   onSelectAll: () => void;
   onDeselectAll: () => void;
@@ -46,6 +48,7 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
   onPullLibrary,
   onImportBooksFromFiles,
   onImportBooksFromDirectory,
+  onManageWatchedFolders,
   onToggleSelectMode,
   onSelectAll,
   onDeselectAll,
@@ -200,6 +203,7 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
                   <ImportMenu
                     onImportBooksFromFiles={onImportBooksFromFiles}
                     onImportBooksFromDirectory={onImportBooksFromDirectory}
+                    onManageWatchedFolders={onManageWatchedFolders}
                   />
                 </Dropdown>
                 {isMobile ? null : (

@@ -2,7 +2,6 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import ImportFromFolderDialog from '@/app/library/components/ImportFromFolderDialog';
-import type { WatchedFolder } from '@/app/library/components/WatchedFoldersPane';
 import { DropdownProvider } from '@/context/DropdownContext';
 
 vi.mock('@/hooks/useTranslation', () => ({
@@ -34,22 +33,12 @@ vi.mock('@/components/Dialog', () => ({
     ) : null,
 }));
 
-const WATCHED: WatchedFolder[] = [
-  { path: '/Users/me/Books', flatten: false },
-  { path: '/Users/me/Comics', flatten: true },
-];
-
 const setup = (overrides: Partial<React.ComponentProps<typeof ImportFromFolderDialog>> = {}) => {
   const props = {
     initialDirectory: '/Users/me/Books',
-    initialReadInPlace: true,
-    initialAutoImport: true,
-    watchedFolders: WATCHED,
     onPickDirectory: vi.fn(),
     onCancel: vi.fn(),
     onConfirm: vi.fn(),
-    onUnwatchFolder: vi.fn(),
-    onSetWatchedFolderFlatten: vi.fn(),
     ...overrides,
   };
   const utils = render(
@@ -60,84 +49,194 @@ const setup = (overrides: Partial<React.ComponentProps<typeof ImportFromFolderDi
   return { ...utils, props };
 };
 
-const openPane = () => fireEvent.click(screen.getByText('Watched Folders'));
+const confirm = () => fireEvent.click(screen.getByText('OK'));
 
 afterEach(cleanup);
 
-describe('Import-from-Folder dialog: watched folders pane', () => {
-  it('hides the entry row when no folder is watched', () => {
-    setup({ watchedFolders: [] });
+/**
+ * Watching a folder is independent of "read books in place": a watched folder
+ * that is not read in place has its books copied into the library, and the UI
+ * has to say so rather than hiding the option.
+ */
+describe('Import-from-Folder dialog: auto-import decoupled from read-in-place', () => {
+  it('offers the watch checkbox with read-in-place off, and reports it', () => {
+    const { props } = setup({ initialReadInPlace: false });
 
-    expect(screen.queryByText('Watched Folders')).toBeNull();
-  });
+    const checkbox = screen.getByRole('checkbox', { name: /Watch this folder for new books/ });
+    expect((checkbox as HTMLInputElement).disabled).toBe(false);
 
-  it('opens the pane in place of the import form and comes back', () => {
-    setup();
-    expect(screen.getByText('File Formats')).toBeTruthy();
+    fireEvent.click(checkbox);
+    confirm();
 
-    openPane();
-    // The import form is replaced, not merely scrolled past — no OK button to
-    // hit while managing folders.
-    expect(screen.queryByText('File Formats')).toBeNull();
-    expect(screen.queryByText('OK')).toBeNull();
-    expect(screen.getByText('/Users/me/Books')).toBeTruthy();
-    expect(screen.getByText('/Users/me/Comics')).toBeTruthy();
-
-    fireEvent.click(screen.getByLabelText('Back'));
-    expect(screen.getByText('File Formats')).toBeTruthy();
-  });
-
-  it('shows each folder by name with its current structure', () => {
-    setup();
-    openPane();
-
-    expect(screen.getByText('Books')).toBeTruthy();
-    expect(screen.getByText('Comics')).toBeTruthy();
-    const selects = screen.getAllByLabelText('Folder Structure');
-    expect(selects[0]!.textContent).toContain('Groups');
-    expect(selects[1]!.textContent).toContain('Flat');
-  });
-
-  it('reports a structure change for the right folder', () => {
-    const { props } = setup();
-    openPane();
-
-    fireEvent.click(screen.getAllByLabelText('Folder Structure')[1]!);
-    fireEvent.click(screen.getByRole('option', { name: 'Groups' }));
-
-    expect(props.onSetWatchedFolderFlatten).toHaveBeenCalledWith('/Users/me/Comics', false);
-  });
-
-  it('reports a removal for the right folder', () => {
-    const { props } = setup();
-    openPane();
-
-    fireEvent.click(screen.getAllByLabelText('Stop watching')[0]!);
-
-    expect(props.onUnwatchFolder).toHaveBeenCalledWith('/Users/me/Books');
-  });
-
-  it('unticks auto-import when the folder being imported is unwatched', () => {
-    const { props } = setup();
-    openPane();
-    fireEvent.click(screen.getAllByLabelText('Stop watching')[0]!);
-    fireEvent.click(screen.getByLabelText('Back'));
-
-    // Confirming now must not re-add the folder the user just stopped watching.
-    fireEvent.click(screen.getByText('OK'));
     expect(props.onConfirm).toHaveBeenCalledWith(
-      expect.objectContaining({ directory: '/Users/me/Books', autoImport: false }),
+      expect.objectContaining({ readInPlace: false, autoImport: true }),
     );
   });
 
-  it('keeps the import form in sync when the current folder changes structure', () => {
-    const { props } = setup();
-    openPane();
-    fireEvent.click(screen.getAllByLabelText('Folder Structure')[0]!);
-    fireEvent.click(screen.getByRole('option', { name: 'Flat' }));
-    fireEvent.click(screen.getByLabelText('Back'));
+  it('warns that books are copied when reading in place is off', () => {
+    setup({ initialReadInPlace: false });
 
-    fireEvent.click(screen.getByText('OK'));
-    expect(props.onConfirm).toHaveBeenCalledWith(expect.objectContaining({ flatten: true }));
+    expect(
+      screen.getByText(
+        'Books are copied into the library, because "Read books in place" is off. Deleting a book from the library does not delete it from the folder.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('drops the copy warning once reading in place is on', () => {
+    setup({ initialReadInPlace: true });
+
+    expect(
+      screen.queryByText(
+        'Books are copied into the library, because "Read books in place" is off. Deleting a book from the library does not delete it from the folder.',
+      ),
+    ).toBeNull();
+  });
+
+  it('keeps the watch checkbox ticked on a locked external root', () => {
+    const { props } = setup({
+      isRegisteredExternalRoot: () => true,
+      initialAutoImport: true,
+    });
+
+    confirm();
+
+    // Read-in-place is forced on for a registered root; the watch choice rides
+    // along untouched.
+    expect(props.onConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({ readInPlace: true, autoImport: true }),
+    );
+  });
+});
+
+describe('Import-from-Folder dialog: folder structure modes', () => {
+  it('defaults to mirroring and reports the mode it was opened with', () => {
+    const { props } = setup({ initialFolderMode: 'mirror' });
+
+    confirm();
+
+    expect(props.onConfirm).toHaveBeenCalledWith(expect.objectContaining({ folderMode: 'mirror' }));
+  });
+
+  it('reports the author mode', () => {
+    const { props } = setup({ initialFolderMode: 'author' });
+
+    expect(screen.getByText('Group by author')).toBeTruthy();
+    confirm();
+
+    expect(props.onConfirm).toHaveBeenCalledWith(expect.objectContaining({ folderMode: 'author' }));
+  });
+
+  it('switches to a flat import', () => {
+    const { props } = setup({ initialFolderMode: 'colorless' as never });
+
+    fireEvent.click(screen.getByText('Import all into library'));
+    confirm();
+
+    expect(props.onConfirm).toHaveBeenCalledWith(expect.objectContaining({ folderMode: 'flat' }));
+  });
+});
+
+describe('Import-from-Folder dialog: the form describes the picked folder', () => {
+  /**
+   * The box used to keep whatever value the dialog opened with — seeded from the
+   * *last imported* folder. Picking a watched folder whose box read "off" then
+   * confirmed with `autoImport: false`, which stopped watching that folder and
+   * deleted its rule, silently.
+   */
+  it('ticks the watch box when the picked folder is watched', async () => {
+    const { props } = setup({
+      initialAutoImport: false,
+      resolveWatchedFolder: (dir) =>
+        dir === '/lib/watched' ? { mode: 'author', extensions: ['txt'], minSizeKB: 1 } : undefined,
+      onPickDirectory: vi.fn().mockResolvedValue('/lib/watched'),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choose a folder' }));
+    await screen.findByText('/lib/watched');
+
+    const checkbox = screen.getByRole('checkbox', { name: /Watch this folder for new books/ });
+    expect((checkbox as HTMLInputElement).checked).toBe(true);
+
+    confirm();
+    expect(props.onConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({ directory: '/lib/watched', autoImport: true }),
+    );
+  });
+
+  it('takes the picked folder structure, formats and size from its own rule', async () => {
+    const { props } = setup({
+      initialFolderMode: 'mirror',
+      resolveWatchedFolder: (dir) =>
+        dir === '/lib/watched' ? { mode: 'author', extensions: ['txt'], minSizeKB: 3 } : undefined,
+      onPickDirectory: vi.fn().mockResolvedValue('/lib/watched'),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choose a folder' }));
+    await screen.findByText('/lib/watched');
+
+    expect(screen.getByDisplayValue('3')).toBeTruthy();
+    confirm();
+
+    // Confirming must not overwrite the watched folder's rule with the values
+    // the dialog happened to open with.
+    expect(props.onConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        folderMode: 'author',
+        extensions: ['txt'],
+        minSizeKB: 3,
+      }),
+    );
+  });
+
+  it('unticks the box when the picked folder is not watched', async () => {
+    const { props } = setup({
+      initialAutoImport: true,
+      resolveWatchedFolder: () => undefined,
+      onPickDirectory: vi.fn().mockResolvedValue('/lib/plain'),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choose a folder' }));
+    await screen.findByText('/lib/plain');
+
+    const checkbox = screen.getByRole('checkbox', { name: /Watch this folder for new books/ });
+    expect((checkbox as HTMLInputElement).checked).toBe(false);
+
+    confirm();
+    expect(props.onConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({ directory: '/lib/plain', autoImport: false }),
+    );
+  });
+
+  it('keeps an explicit toggle made after picking', async () => {
+    const { props } = setup({
+      resolveWatchedFolder: (dir) =>
+        dir === '/lib/watched' ? { mode: 'author', extensions: ['txt'], minSizeKB: 1 } : undefined,
+      onPickDirectory: vi.fn().mockResolvedValue('/lib/watched'),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choose a folder' }));
+    await screen.findByText('/lib/watched');
+    fireEvent.click(screen.getByRole('checkbox', { name: /Watch this folder for new books/ }));
+
+    confirm();
+    expect(props.onConfirm).toHaveBeenCalledWith(expect.objectContaining({ autoImport: false }));
+  });
+});
+
+describe('Import-from-Folder dialog: watched folders entry', () => {
+  it('always offers the manager, even with nothing watched yet', () => {
+    const { props } = setup({ watchedFolderCount: 0, onManageWatchedFolders: vi.fn() });
+
+    expect(screen.getByText('None')).toBeTruthy();
+    fireEvent.click(screen.getByText('Watched Folders'));
+
+    expect(props.onManageWatchedFolders).toHaveBeenCalled();
+  });
+
+  it('reports how many folders are watched', () => {
+    setup({ watchedFolderCount: 3, onManageWatchedFolders: vi.fn() });
+
+    expect(screen.getByText('3 folder(s)')).toBeTruthy();
   });
 });

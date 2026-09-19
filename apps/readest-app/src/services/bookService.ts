@@ -1,4 +1,4 @@
-import { SystemSettings } from '@/types/settings';
+import { SystemSettings, WatchedFolderMode } from '@/types/settings';
 import { FileSystem, AppPlatform, BaseDir, DeleteAction, OsPlatform } from '@/types/system';
 import {
   Book,
@@ -151,21 +151,28 @@ export function selectNewImportableFiles(
 /**
  * Turn the newly-found entries of one watched folder into importer inputs.
  *
- * `flatten` mirrors the Import-from-Folder dialog's "Folder Structure" choice
- * for that folder. In the default "Create groups from subfolders" mode every
- * file carries the watched folder as `basePath` — that hint is what makes
+ * `mode` mirrors the Import-from-Folder dialog's "Folder Structure" choice for
+ * that folder. In the default `mirror` mode (and in `author` mode, which needs
+ * the same hint to tell which watched folder a file belongs to) every file
+ * carries the watched folder as `basePath` — that hint is what makes
  * `importBooks` derive a group from the subfolder the file lives in. Without it
  * auto-imported books piled up in the library root while the same folder's
  * initial import stayed grouped (issue #5423). Flattened folders ("Import all
  * into library") omit the hint so their books keep landing in the root.
+ *
+ * Every input is tagged with the folder it was scanned from: the manage dialog
+ * reports per-folder results ("3 new books" / "nothing new"), and the scan is
+ * the only place that knows the origin.
  */
 export function toWatchedFolderImports(
   folder: string,
   entries: ScannedFileEntry[],
-  flatten: boolean,
-): Array<{ path: string; basePath?: string }> {
+  mode: WatchedFolderMode,
+): Array<{ path: string; basePath?: string; watchedFolder: string }> {
   return entries.map(({ fullPath }) =>
-    flatten ? { path: fullPath } : { path: fullPath, basePath: folder },
+    mode === 'flat'
+      ? { path: fullPath, watchedFolder: folder }
+      : { path: fullPath, basePath: folder, watchedFolder: folder },
   );
 }
 
@@ -218,6 +225,38 @@ function displaceSourcePath(book: Book, nextFilePath: string, osPlatform?: OsPla
     paths.push(path);
   }
   book.altFilePaths = paths.length > 0 ? paths : undefined;
+}
+
+/**
+ * Remember `sourcePath` as another on-disk path this book came from, so the
+ * watched-folder scan recognizes it by path instead of re-parsing and
+ * re-hashing the file on every pass.
+ *
+ * Copy-mode imports set it apart from {@link displaceSourcePath}: there the
+ * source path takes over `filePath` and only the old path needs remembering,
+ * while here the copy keeps the `filePath` slot (or has none at all — a
+ * copy-mode book is read through `Books/<hash>/`) and the source is purely a
+ * ledger entry. The book object is mutated in place; the caller owns
+ * persistence and uses `onSourcePathRemembered` to know it must save.
+ *
+ * Idempotent by normalized key, and a no-op when the path is already the
+ * book's own `filePath` or one of its alternatives. Returns whether a path was
+ * actually added.
+ */
+function recordSourcePath(book: Book, sourcePath: string, osPlatform?: OsPlatform): boolean {
+  // Mirrors the in-place decision's guards (`shouldImportInPlace`): a URL is not
+  // a path, and an Android SAF `content://` URI is a *temporary* grant — neither
+  // belongs in a ledger that is consulted to decide "this file is known, skip
+  // it" on every later scan.
+  if (!sourcePath || isValidURL(sourcePath) || isContentURI(sourcePath)) return false;
+  const key = normalizeFilePathForIndex(sourcePath, osPlatform);
+  if (!key) return false;
+  if (book.filePath && normalizeFilePathForIndex(book.filePath, osPlatform) === key) return false;
+  for (const path of book.altFilePaths ?? []) {
+    if (path && normalizeFilePathForIndex(path, osPlatform) === key) return false;
+  }
+  book.altFilePaths = [...(book.altFilePaths ?? []), sourcePath];
+  return true;
 }
 
 export interface CoverContext {
@@ -613,13 +652,35 @@ export async function importBook(
       const wasDeleted = !!existingBook.deletedAt;
       if (wasDeleted || (await isBookAvailable(fs, existingBook))) {
         const revived: Book = wasDeleted
-          ? { ...existingBook, deletedAt: null, createdAt: Date.now(), updatedAt: Date.now() }
+          ? {
+              ...existingBook,
+              deletedAt: null,
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+              // 显式复活的标记，给书库保存的"防复活"护栏看（见
+              // libraryService.mergeLibraryRows）：没有它，这次保存会被当作
+              // "陈旧窗口想复活已删的书"整行丢弃，书重启后再消失一次。
+              revivedAt: Date.now(),
+            }
           : existingBook;
         if (wasDeleted) {
           // B-6：数组与索引槽位都换成复活后的副本，同批后续文件才看得见它。
           const bi = books.findIndex((b) => b.hash === hash);
           if (bi >= 0) books[bi] = revived;
           lookupIndex?.byHash.set(hash, revived);
+        }
+        // 复制模式的重扫全部命中这里（`filePathUnchanged` 在复制模式下恒为真），
+        // 所以源路径账本必须在这一处补记：否则本次改动之前导入的老书永远是
+        // "路径未知"，每次回前台都要把整个目录重新解析 + 重算 partialMD5。
+        // 原地改动既有记录是有意的——调用方拿到 onSourcePathRemembered 后落盘。
+        if (
+          options.rememberSourcePath &&
+          !transient &&
+          !inPlace &&
+          typeof file === 'string' &&
+          recordSourcePath(revived, file, osPlatform)
+        ) {
+          options.onSourcePathRemembered?.();
         }
         options.onDedupHit?.(wasDeleted ? 'revived' : 'already-in-library');
         perfMark('importBook', 'total', t0);
@@ -630,12 +691,16 @@ export async function importBook(
     // 必须在下面清 deletedAt / importRejectedAt 之前取值：探针条件要靠它决定
     // "这条既有记录要不要重新问一次"，晚了读到的就是被清空后的 null。
     const cameFromRejected = !!existingBook?.importRejectedAt;
+    const cameFromDeleted = !!existingBook?.deletedAt;
     if (existingBook) {
       // B-6：已存在书的所有字段更新都写在副本上，成功后再提交 ——
       // 中途抛错不污染调用方传入的 library 数组 / lookupIndex 的原对象。
       existingBook = { ...existingBook };
       if (!transient) {
         existingBook.deletedAt = null;
+        // 同 hash 短路那处：这条记录是被导入路径显式带回书架的，盖上标记让
+        // 书库保存的"防复活"护栏放行（见 libraryService.mergeLibraryRows）。
+        if (cameFromDeleted) existingBook.revivedAt = Date.now();
         // 用户这次重新接受了它（无论随后选替换还是保留为两本），标记必须清掉，
         // 否则每次重导都要问一次。
         if (existingBook.importRejectedAt) existingBook.importRejectedAt = undefined;
@@ -856,6 +921,14 @@ export async function importBook(
             displaceSourcePath(existingBook, file, osPlatform);
           }
           existingBook.filePath = file;
+        }
+      } else if (options.rememberSourcePath && !transient && typeof file === 'string') {
+        // Copy mode: the book is read from its Books/<hash>/ copy, so the source
+        // path is only a ledger entry — `filePath` and the byFilePath index stay
+        // untouched (that index only serves the in-place fast path).
+        const ledgerBook = existingBook ?? book;
+        if (recordSourcePath(ledgerBook, file, osPlatform)) {
+          options.onSourcePathRemembered?.();
         }
       }
     }

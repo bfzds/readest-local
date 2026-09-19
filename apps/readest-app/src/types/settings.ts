@@ -349,6 +349,32 @@ export interface HardwarePageTurnerSettings {
   };
 }
 
+/**
+ * How a watched folder's books are grouped when they land in the library.
+ *   - `mirror`: keep the folder structure, with the watched folder itself as
+ *     the top-level group and every subfolder nested under it.
+ *   - `flat`: drop every book into the library root, no groups.
+ *   - `author`: only the watched folder plus the first directory level that
+ *     does not look like a download date — for `<Downloads>/Pixiv/<date>/<author>/<book>`
+ *     that yields `Pixiv/<author>` whether the date sits above or below the
+ *     author directory.
+ */
+export type WatchedFolderMode = 'mirror' | 'flat' | 'author';
+
+/**
+ * What a re-scan of one watched folder should do: folder structure mode plus
+ * the scan's own filters. Both filter fields are optional so a rule can record
+ * just the mode; absent values fall back to the defaults the Import-from-Folder
+ * dialog ships with (`SUPPORTED_BOOK_EXTS`, 20 KB).
+ */
+export interface WatchedFolderRule {
+  mode: WatchedFolderMode;
+  /** Lower-case extensions without the leading dot. Absent = `SUPPORTED_BOOK_EXTS`. */
+  extensions?: string[];
+  /** Minimum file size in KB. Absent = 20. */
+  minSizeKB?: number;
+}
+
 export interface SystemSettings {
   version: number;
   migrationVersion: number;
@@ -365,26 +391,43 @@ export interface SystemSettings {
    */
   externalLibraryFolders?: string[];
   /**
-   * Absolute paths of the external library folders the user has opted into
-   * auto-import for. On library open and whenever the app regains focus,
-   * Readest re-scans each of these and imports any newly-added book files.
-   * A subset of {@link externalLibraryFolders} (auto-import requires the
-   * folder to be read in place). Set per-folder from the Import-from-Folder
-   * dialog. Desktop + Android only. Device-local (paths are meaningful only
-   * on this filesystem) and excluded from cloud settings backups via
-   * `BACKUP_SETTINGS_BLACKLIST`.
+   * Absolute paths of the folders the user has opted into auto-import for.
+   * On library open and whenever the app regains focus, Readest re-scans each
+   * of these and imports any newly-added book files. Watching is independent of
+   * {@link externalLibraryFolders}: a watched folder that is NOT registered as
+   * an external library folder gets its books *copied* into `Books/<hash>/`
+   * instead of read in place, and the source path is remembered on the book
+   * (`altFilePaths`) so later scans recognize it by path instead of re-parsing
+   * and re-hashing every file. Set per-folder from the Import-from-Folder dialog
+   * and from the watched-folders manager. Desktop + Android only. Device-local
+   * (paths are meaningful only on this filesystem) and excluded from cloud
+   * settings backups via `BACKUP_SETTINGS_BLACKLIST`.
    */
   autoImportFolders?: string[];
   /**
    * The subset of {@link autoImportFolders} the user imported with "Import all
    * into library" (flatten). Auto-imported books from those folders go straight
    * to the library root; every other watched folder mirrors its subfolders as
-   * groups, matching the dialog's default "Create groups from subfolders" —
-   * which is also what a folder watched before this list existed falls back to.
-   * Device-local, and excluded from cloud settings backups alongside
-   * {@link autoImportFolders}.
+   * groups — which is also what a folder watched before this list existed falls
+   * back to.
+   *
+   * Read-compatibility only: new watches are recorded in
+   * {@link autoImportFolderRules}, which carries the whole rule (mode plus the
+   * scan's formats and minimum size). This array is still honoured for folders
+   * that have no entry there, so folders watched before the rules map existed
+   * keep behaving exactly as they did. Device-local, and excluded from cloud
+   * settings backups alongside {@link autoImportFolders}.
    */
   autoImportFlattenFolders?: string[];
+  /**
+   * Per-folder auto-import rules, keyed by the folder path exactly as it is
+   * stored in {@link autoImportFolders}. A folder with no entry falls back to
+   * {@link autoImportFlattenFolders} and then to the dialog's defaults, so
+   * existing libraries need no migration. Device-local (paths are meaningful
+   * only on this filesystem) and excluded from cloud settings backups alongside
+   * {@link autoImportFolders}.
+   */
+  autoImportFolderRules?: Record<string, WatchedFolderRule>;
 
   /**
    * 全局默认 TXT 章节识别的用户自定义正则（方向③）。非空时，导入的 TXT

@@ -39,6 +39,7 @@ export const BACKUP_SETTINGS_BLACKLIST = [
   'externalLibraryFolders',
   'autoImportFolders',
   'autoImportFlattenFolders',
+  'autoImportFolderRules',
   'savedBookCoverForLockScreenPath',
   // Per-device identity — restoring causes sync identity / HLC collisions.
   'replicaDeviceId',
@@ -240,6 +241,12 @@ export interface RevivedBook {
  * order — and thus the library's "Updated" sort — is preserved exactly.
  * `syncedAt` is cleared so the next push re-uploads them and corrects the
  * cloud rows. Mutates the `book` of each entry in place.
+ *
+ * `revivedAt` is stamped for the same reason the import path stamps it: the
+ * save's "don't let a stale window resurrect a deleted book" guard keys off the
+ * presence of a live record, and a restore-revived row looks exactly like that
+ * stale shape without it — the guard would drop the row and the restore would
+ * silently not take effect on disk (issue #4098's flow).
  */
 export function reviveRestoredBooks(revived: RevivedBook[], now: number = Date.now()): void {
   if (revived.length === 0) return;
@@ -252,10 +259,26 @@ export function reviveRestoredBooks(revived: RevivedBook[], now: number = Date.n
   const offset = Math.max(1, now - maxUpdatedAt);
   for (const { book, backup } of revived) {
     book.updatedAt += offset;
+    book.revivedAt = now;
     book.syncedAt = null;
     book.downloadedAt = backup.downloadedAt ?? book.downloadedAt ?? now;
     book.coverDownloadedAt = backup.coverDownloadedAt ?? book.coverDownloadedAt ?? now;
   }
+}
+
+/**
+ * Persist a restored library: stamp the restored-but-previously-deleted books
+ * as explicitly revived (the save's anti-resurrection guard needs it, or their
+ * rows would be dropped) and then save. The order matters — the stamp must be
+ * in place before the merge sees the rows.
+ */
+export async function persistRestoredLibrary(
+  appService: Pick<AppService, 'saveLibraryBooks'>,
+  books: Book[],
+  revived: RevivedBook[],
+): Promise<void> {
+  reviveRestoredBooks(revived);
+  await appService.saveLibraryBooks(books);
 }
 
 /** Library metadata files to skip from the directory scan. */
@@ -559,11 +582,10 @@ export async function restoreFromBackupZip(
   }
 
   // Make revived books out-rank the cloud's deletion tombstone in the
-  // next sync, without disturbing the library's "Updated" sort order.
-  reviveRestoredBooks(revivedBooks);
-
-  // Save merged library
-  await appService.saveLibraryBooks(currentBooks);
+  // next sync, without disturbing the library's "Updated" sort order,
+  // then save the merged library. The stamp must be in place before the
+  // save's anti-resurrection merge sees the rows.
+  await persistRestoredLibrary(appService, currentBooks, revivedBooks);
 
   // Restore global settings if the backup carries them. Blacklisted
   // fields are absent from the snapshot, so the current device keeps

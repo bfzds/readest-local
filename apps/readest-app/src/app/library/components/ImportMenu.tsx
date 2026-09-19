@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import { IoFileTray } from 'react-icons/io5';
+import { MdFolderSpecial } from 'react-icons/md';
 import { useTranslation } from '@/hooks/useTranslation';
 import MenuItem from '@/components/MenuItem';
 import Menu from '@/components/Menu';
@@ -9,6 +10,11 @@ export interface ImportMenuProps {
   setIsDropdownOpen?: (open: boolean) => void;
   onImportBooksFromFiles: () => void;
   onImportBooksFromDirectory?: () => void;
+  /**
+   * Open the manage-watched-folders dialog. Omitted where watching folders is
+   * not supported (e.g. the web build, which has no external directories).
+   */
+  onManageWatchedFolders?: () => void;
 }
 
 const ImportMenu: React.FC<ImportMenuProps> = ({
@@ -16,6 +22,7 @@ const ImportMenu: React.FC<ImportMenuProps> = ({
   setIsDropdownOpen,
   onImportBooksFromFiles,
   onImportBooksFromDirectory,
+  onManageWatchedFolders,
 }) => {
   const _ = useTranslation();
 
@@ -26,6 +33,11 @@ const ImportMenu: React.FC<ImportMenuProps> = ({
 
   const handleImportFromDirectory = () => {
     onImportBooksFromDirectory?.();
+    setIsDropdownOpen?.(false);
+  };
+
+  const handleManageWatchedFolders = () => {
+    onManageWatchedFolders?.();
     setIsDropdownOpen?.(false);
   };
 
@@ -47,6 +59,13 @@ const ImportMenu: React.FC<ImportMenuProps> = ({
           label={_('From Directory')}
           Icon={<IoFileTray className='h-5 w-5' />}
           onClick={handleImportFromDirectory}
+        />
+      )}
+      {onManageWatchedFolders && (
+        <MenuItem
+          label={_('Watched Folders')}
+          Icon={<MdFolderSpecial className='h-5 w-5' />}
+          onClick={handleManageWatchedFolders}
         />
       )}
     </Menu>

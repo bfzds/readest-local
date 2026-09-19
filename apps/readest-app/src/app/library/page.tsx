@@ -53,6 +53,17 @@ import {
 } from '@/services/versionConflictQueue';
 import { eventDispatcher } from '@/utils/event';
 import { getFilename, getFolderImportGroupName, joinScannedPath } from '@/utils/path';
+import {
+  DEFAULT_WATCHED_FOLDER_MIN_SIZE_KB,
+  findStoredWatchedFolderRule,
+  isWatchedFolderMode,
+  mergeRecordedExtensions,
+  resolveImportBatchFolderRule,
+  resolveWatchedFolderRule,
+  shouldRecordWatchedFilters,
+  withWatchedFolderRule,
+  withoutWatchedFolderRule,
+} from '@/utils/watchedFolders';
 import { parseOpenWithFiles } from '@/helpers/openWith';
 import { isTauriAppPlatform } from '@/services/environment';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
@@ -84,7 +95,7 @@ import {
   tauriSetWindowTitle,
 } from '@/utils/window';
 
-import { LibraryGroupByType } from '@/types/settings';
+import { LibraryGroupByType, WatchedFolderMode, WatchedFolderRule } from '@/types/settings';
 import { BookMetadata } from '@/libs/document';
 import { AboutWindow } from '@/components/AboutWindow';
 import { KeyboardShortcutsHelp } from '@/components/KeyboardShortcutsHelp';
@@ -119,8 +130,14 @@ import ImportMenuPopup from './components/ImportMenuPopup';
 import GroupHeader from './components/GroupHeader';
 import FailedImportsDialog, { FailedImport } from './components/FailedImportsDialog';
 import ImportFromFolderDialog, {
+  ALL_FORMAT_GROUP_EXTENSIONS,
+  formatGroupIdsForExtensions,
   ImportFromFolderResult,
 } from './components/ImportFromFolderDialog';
+import WatchedFoldersDialog, {
+  WatchedFolderRow,
+  WatchedFolderScanStatus,
+} from './components/WatchedFoldersDialog';
 import TxtChapterGuideDialog from './components/TxtChapterGuideDialog';
 import BookVersionConflictDialog from './components/BookVersionConflictDialog';
 import NowPlayingBar from './components/NowPlayingBar';
@@ -130,8 +147,56 @@ import { useCustomFonts } from '@/hooks/useCustomFonts';
 import DropIndicator from '@/components/DropIndicator';
 import SettingsDialog from '@/components/settings/SettingsDialog';
 
-/** Skip tiny non-book artifacts during folder auto-scan (matches the manual import dialog default). */
-const AUTO_IMPORT_MIN_SIZE_BYTES = 20 * 1024;
+/**
+ * Key used to persist the last scan result per watched folder (newest first —
+ * one timestamp covers the whole run), so the manage dialog can say "last
+ * refreshed 3 minutes ago, 2 new books" across sessions. Display-only state:
+ * it is never written into settings, which stay the source of truth for the
+ * folders themselves.
+ */
+const WATCHED_FOLDER_STATUS_KEY = 'readest:watchedFolderStatus';
+
+/**
+ * What one import batch reports back to its caller. The per-folder counts exist
+ * for the manage-watched-folders dialog, which reports each row's own result
+ * ("3 new books" / "nothing new"); files that did not come from a folder scan
+ * simply have no bucket.
+ */
+export interface ImportBooksResult {
+  failedPaths: string[];
+  /**
+   * Records that landed on the shelf — newly imported or revived — keyed by
+   * normalized watched-folder path.
+   */
+  importedByFolder: Record<string, number>;
+  /** Files the library already knew, same keying. */
+  knownByFolder: Record<string, number>;
+  /** Files that failed to import, same keying. */
+  failedByFolder: Record<string, number>;
+  /** How many books had a source path recorded into the copy-mode ledger. */
+  sourcePathsRecorded: number;
+}
+
+/** One folder's result from a scan, before it is stored for display. */
+interface WatchedFolderScanOutcome {
+  folder: string;
+  /** Books genuinely new to the library. */
+  imported: number;
+  /** Files the library already knew (dedup hit) — proof the ledger is working. */
+  known: number;
+  /** Files that failed to import. */
+  failed: number;
+  /** Set when the folder could not be scanned at all. */
+  error?: string;
+}
+
+const emptyImportBooksResult = (): ImportBooksResult => ({
+  failedPaths: [],
+  importedByFolder: {},
+  knownByFolder: {},
+  failedByFolder: {},
+  sourcePathsRecorded: 0,
+});
 const LIBRARY_SEARCH_MODES: LibrarySearchConfig['mode'][] = [
   'contains',
   'whole-words',
@@ -164,10 +229,21 @@ const getLibrarySearchConfig = (
 const LAST_IMPORT_FOLDER_KEY = 'readest:lastImportFolder';
 /**
  * Key used to persist the user's last "Folder Structure" choice
- * ('keep' vs 'flatten'). Restored as the default radio selection on
- * the next dialog open.
+ * (`mirror` / `flat` / `author`, or the older `keep` / `flatten`). Restored as
+ * the default radio selection on the next dialog open.
  */
 const LAST_IMPORT_FOLDER_MODE_KEY = 'readest:lastImportFolderMode';
+
+/**
+ * Restore the persisted "Folder Structure" choice. Values are the watched
+ * folder modes; the older `keep` / `flatten` strings (written before the third
+ * mode existed) still map to their equivalents so nobody's last choice is lost.
+ */
+const readLastImportFolderMode = (stored: string | null | undefined): WatchedFolderMode => {
+  if (stored === 'keep') return 'mirror';
+  if (stored === 'flatten') return 'flat';
+  return isWatchedFolderMode(stored) ? stored : 'mirror';
+};
 /**
  * Key used to persist the comma-separated list of FormatGroup ids the
  * user last ticked, e.g. "epub,pdf". Empty / missing falls back to the
@@ -232,7 +308,12 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   const { safeAreaInsets: insets, isRoundedWindow } = useThemeStore();
   const { clearBookData } = useBookDataStore();
   const { settings, setSettings, saveSettings } = useSettingsStore();
-  const { isSettingsDialogOpen, setSettingsDialogOpen } = useSettingsStore();
+  const {
+    isSettingsDialogOpen,
+    setSettingsDialogOpen,
+    isWatchedFoldersDialogOpen,
+    setWatchedFoldersDialogOpen,
+  } = useSettingsStore();
 
   // FoliateViewer hydration never runs without a book open.
   useCustomFonts();
@@ -299,12 +380,27 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   // enough for the platform's folder picker to overlay it.
   const [importFromFolderState, setImportFromFolderState] = useState<{
     initialDirectory: string;
-    initialFolderMode: 'keep' | 'flatten';
+    initialFolderMode: WatchedFolderMode;
     initialSelectedGroupIds?: string[];
     initialMinSizeKB?: number;
     initialReadInPlace?: boolean;
     initialAutoImport?: boolean;
   } | null>(null);
+  // "Manage watched folders" dialog. Holds no state of its own — it reads the
+  // folder list straight from settings so edits show up as soon as they are
+  // persisted. The open/closed flag lives in the settings store (destructured
+  // with the rest of that store above) because Settings → Custom opens the
+  // same dialog and cannot reach this component's state.
+  // Newest scan result per normalized folder path, for the dialog's status
+  // lines. Display-only, restored from localStorage when the dialog opens.
+  const [watchedFolderResults, setWatchedFolderResults] = useState<
+    Record<string, WatchedFolderScanStatus>
+  >({});
+  // `null` = idle, a folder path = that row is refreshing, `'all'` = refresh-all.
+  const [watchedFolderRefreshing, setWatchedFolderRefreshing] = useState<string | null>(null);
+  // Mirrors the state above for the guard: a second click lands before React
+  // re-renders, so `watchedFolderRefreshing` itself is still null in the closure.
+  const watchedFolderRefreshingRef = useRef(false);
   // TXT 目录识别失败的引导队列（一次处理一个文件）。
   const txtGuideQueueRef = useRef<TxtGuideItem[]>([]);
   const [guideItem, setGuideItem] = useState<TxtGuideItem | null>(null);
@@ -452,6 +548,13 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   // Tracks paths that failed to import in this session so auto-import does not
   // re-attempt (and re-toast) them on every subsequent folder scan.
   const autoImportFailedPathsRef = useRef<Set<string>>(new Set());
+  /**
+   * `true` while an import batch is running. Mirrors the `loading` state for
+   * callers that check it in the same tick a batch was started (React has not
+   * re-rendered yet, so the state they closed over is still `false`). Every
+   * place that gates on "is an import running" should read both.
+   */
+  const importingRef = useRef(false);
   // Folders whose fs/asset scopes were already granted this session. Each
   // `allowPathsInScopes` call makes tauri-plugin-persisted-scope rewrite its
   // whole state file on the main thread, so grant once, not on every focus
@@ -1077,8 +1180,14 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       // NativeBridgePlugin.swift); here we just sync Tauri's in-memory
       // scope set with the persisted intent.
       const externalRoots = settings.externalLibraryFolders ?? [];
-      if (externalRoots.length > 0 && appService.allowPathsInScopes) {
-        await appService.allowPathsInScopes(externalRoots, true);
+      // Watched folders need the same treatment even when they are NOT external
+      // library folders: watching a folder without reading it in place still
+      // reads every file in it (to copy it into the library), and the scan
+      // would fail with an fs_scope error without this grant.
+      const watchedRoots = settings.autoImportFolders ?? [];
+      const scopedRoots = [...new Set([...externalRoots, ...watchedRoots])];
+      if (scopedRoots.length > 0 && appService.allowPathsInScopes) {
+        await appService.allowPathsInScopes(scopedRoots, true);
         if (stale()) {
           bail();
           return;
@@ -1256,18 +1365,26 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   const importBooks = async (
     files: SelectedFile[],
     groupId?: string,
-    options: { silent?: boolean } = {},
-  ): Promise<{ failedPaths: string[] }> => {
+    options: {
+      silent?: boolean;
+      rememberSourcePath?: boolean;
+      folderRule?: WatchedFolderRule;
+    } = {},
+  ): Promise<ImportBooksResult> => {
     // Reject concurrent imports: two interleaved batch runs would overwrite
     // each other's progress and interleave store writes. The auto-import path
-    // already had this guard; the manual paths get it here.
-    if (loading) return { failedPaths: [] };
+    // already had this guard; the manual paths get it here. `importingRef`
+    // mirrors the state for the same-tick case: a second caller that arrives
+    // before React re-renders would still read `loading === false` here.
+    if (loading || importingRef.current) return emptyImportBooksResult();
+    importingRef.current = true;
     setLoading(true);
     try {
       return await runImportBooks(files, groupId, options);
     } finally {
       // 保存/收尾任一步抛错（如 Tauri ACL 拒绝、磁盘失败）都不能把全屏
       // 加载遮罩留在最上层卡死书库——复位必须发生在 finally 里。
+      importingRef.current = false;
       setLoading(false);
       setImportProgress(null);
     }
@@ -1276,8 +1393,12 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   const runImportBooks = async (
     files: SelectedFile[],
     groupId?: string,
-    options: { silent?: boolean } = {},
-  ): Promise<{ failedPaths: string[] }> => {
+    options: {
+      silent?: boolean;
+      rememberSourcePath?: boolean;
+      folderRule?: WatchedFolderRule;
+    } = {},
+  ): Promise<ImportBooksResult> => {
     const totalFiles = files.length;
     let processedFiles = 0;
     setImportProgress({ done: 0, total: totalFiles });
@@ -1311,6 +1432,12 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     const revivedImports: string[] = [];
     // 本次真正新建的记录 hash，供批后二次探测在"本批新建"之间配对。
     const newImportHashes: string[] = [];
+    // 补记了源路径的书数（复制模式账本）。>0 就要落盘，见末尾的保存闸门。
+    let sourcePathsRecorded = 0;
+    // 按监控文件夹归类的计数，供管理页逐行显示结果。键是归一化后的文件夹路径。
+    const importedByFolder: Record<string, number> = {};
+    const knownByFolder: Record<string, number> = {};
+    const failedByFolder: Record<string, number> = {};
 
     // Readest's own Books/ prefix is resolved once at app init and persisted
     // in `settings.localBooksDir`. We hand it to `ingestFile` so the in-place
@@ -1331,8 +1458,18 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       let resolvedGroupName = groupId !== undefined ? getGroupName(groupId) : undefined;
       try {
         const { path, basePath } = selectedFile;
+        // 分组规则跟设置一起从 store 现取：`runFolderImport` 可能刚把这个文件夹
+        // 的规则写进设置，而组件闭包里的 `settings` 还是上一轮渲染的快照。
+        // `options.folderRule` 是本次导入对话框选的那套规则——它必须优先，因为
+        // "只导入不监控"时规则不会写进设置，只按设置解析会让「按作者分组」在
+        // 一次性导入里被静默忽略（书落到完整镜像分组）。
+        const liveSettings = useSettingsStore.getState().settings;
         if (resolvedGroupId === undefined && path && basePath) {
-          resolvedGroupName = getFolderImportGroupName(path, basePath);
+          resolvedGroupName = getFolderImportGroupName(
+            path,
+            basePath,
+            resolveImportBatchFolderRule(options.folderRule, basePath, liveSettings),
+          );
           resolvedGroupId = getGroupId(resolvedGroupName);
         }
         // Read settings from the store at call-time rather than the
@@ -1344,7 +1481,6 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         // settings, so `shouldImportInPlace` would see an empty
         // `externalLibraryFolders` and incorrectly fall back to copy
         // mode. Pulling the latest snapshot from zustand fixes this.
-        const liveSettings = useSettingsStore.getState().settings;
         const result = await ingestFile(
           {
             file,
@@ -1352,6 +1488,10 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
             lookupIndex,
             groupId: resolvedGroupId,
             groupName: resolvedGroupName,
+            // 文件夹导入两条通路（手动 / 受监视重扫）开账本：复制模式下记住源路径，
+            // 之后的每次重扫才能按路径短路，不必重新解析 + 重算 partialMD5。
+            // 拖拽单文件导入不打开——那是一次性动作，没有账本需求。
+            ...(options.rememberSourcePath ? { rememberSourcePath: true } : {}),
             // 静默重扫（受监视文件夹）同样收集冲突——它和手动导入唯一的区别是
             // "什么时候问"：静默路径整批结束后只给一条可点击通知，不弹模态框
             // （那时用户正在做别的事）。判定与入队逻辑完全共用；上限与溢出标记
@@ -1372,6 +1512,23 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         } else {
           successfulImports.push(result.book.title);
           newImportHashes.push(result.book.hash);
+        }
+        // 账本变化必须落盘（见 runImportBooks 末尾的保存闸门）：重扫时命中的都是
+        // "已在书库"，只补记路径的那一次如果不保存，账本随进程消失，下次重扫又把
+        // 整个目录重新解析一遍。
+        if (result.sourcePathRemembered) sourcePathsRecorded += 1;
+        // 按监控文件夹归类本次结果，供管理页逐行显示"新增 N 本 / 失败 N 个"。
+        const originFolder = selectedFile.watchedFolder
+          ? normalizeRoot(selectedFile.watchedFolder)
+          : undefined;
+        if (originFolder) {
+          // 复活也算"书架多了一本"：用户删过、源文件还在，重扫把它带回来。
+          // 只统计真正新建的记录会让这次刷新报告"无新增"，而书明明回来了。
+          if (result.outcome === 'imported' || result.outcome === 'revived') {
+            importedByFolder[originFolder] = (importedByFolder[originFolder] ?? 0) + 1;
+          } else {
+            knownByFolder[originFolder] = (knownByFolder[originFolder] ?? 0) + 1;
+          }
         }
         // 按作者自动归组：仅当用户没有明确指定目标分组、目录导入也没推导出
         // 分组（书本来会落在根目录）时才生效。优先级：
@@ -1477,6 +1634,10 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         }
         const errorMessage = error instanceof Error ? _(getImportErrorMessage(error.message)) : '';
         failedImports.push({ filename: baseFilename, errorMessage });
+        if (selectedFile.watchedFolder) {
+          const originFolder = normalizeRoot(selectedFile.watchedFolder);
+          failedByFolder[originFolder] = (failedByFolder[originFolder] ?? 0) + 1;
+        }
         console.error('Failed to import book:', filename, error);
         return null;
       }
@@ -1536,8 +1697,10 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
 
     // Persist the full library once after every file in the batch is done.
     // 复活也算改动（清了墓碑），必须落盘，否则重启后那本书又是"已删除"。
+    // 账本同理：重扫只补记源路径时 `successfulImports`/`revivedImports` 都是空的，
+    // 不把它算进闸门的话这次补记根本不会写盘，下次重扫又要整目录重新解析。
     let saveFailed = false;
-    if (successfulImports.length > 0 || revivedImports.length > 0) {
+    if (successfulImports.length > 0 || revivedImports.length > 0 || sourcePathsRecorded > 0) {
       const finalLibrary = useLibraryStore.getState().library;
       const finalAppService = await envConfig.getAppService();
       try {
@@ -1665,7 +1828,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         drainVersionConflicts();
       }
     }
-    return { failedPaths };
+    return { failedPaths, importedByFolder, knownByFolder, failedByFolder, sourcePathsRecorded };
   };
 
   /**
@@ -1788,47 +1951,62 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   };
 
   /**
-   * Re-scan the given watched folders (the user's `autoImportFolders`) and
-   * import any newly-added books. Reuses the same in-place import + dedup as
-   * manual folder import, but stays quiet: unreadable folders are skipped (no
-   * toast), and `importBooks` runs only when genuinely-new files exist (its
-   * success toast then fires).
+   * Re-scan the given watched folders and import any newly-added books, one
+   * rule per folder (structure mode, formats, minimum size). Reuses the same
+   * dedup as manual folder import but stays quiet: unreadable folders are
+   * recorded as that folder's error rather than aborting the others, and
+   * `importBooks` runs only when genuinely-new files exist.
+   *
+   * Returns one outcome per folder so both callers can report it — the silent
+   * focus-triggered scan stores them for the manage dialog, the manual
+   * "refresh" turns them into a toast. `null` means the scan was skipped
+   * because an import batch was already running.
    */
-  const autoImportFromWatchedFolders = async (folders: string[]) => {
-    if (!appService || loading) return;
+  const scanWatchedFolders = async (
+    folders: string[],
+  ): Promise<WatchedFolderScanOutcome[] | null> => {
+    if (!appService || folders.length === 0) return null;
+    // A batch already in flight owns the import path (and the full-screen
+    // loading overlay). Report "busy" instead of silently importing nothing —
+    // a manual refresh that claimed "nothing new" would be a lie. Checked with
+    // the ref as well as the state: a batch that started in this same tick has
+    // not re-rendered yet.
+    if (loading || importingRef.current) return null;
     const { library } = useLibraryStore.getState();
     const osPlatform = appService.osPlatform;
+    const liveSettings = useSettingsStore.getState().settings;
     // Known local source paths — live AND soft-deleted (files the user deleted
     // but whose in-place source is still on disk), plus paths that already failed
     // to import this session — so we neither resurrect a deleted book nor
     // re-parse/re-toast a bad file on every focus.
     const existingPaths = collectKnownSourcePaths(library, osPlatform);
     for (const key of autoImportFailedPathsRef.current) existingPaths.add(key);
+    const outcomes: WatchedFolderScanOutcome[] = [];
     const newFiles: SelectedFile[] = [];
     for (const folder of folders) {
+      let error: string | undefined;
       try {
         if (!autoImportGrantedFoldersRef.current.has(folder)) {
           await appService.allowPathsInScopes?.([folder], true);
           autoImportGrantedFoldersRef.current.add(folder);
         }
-        const items = await appService.readDirectory(folder, 'None', SUPPORTED_BOOK_EXTS);
+        const rule = resolveWatchedFolderRule(folder, liveSettings);
+        const items = await appService.readDirectory(folder, 'None', rule.extensions);
         const entries = items.map((item) => ({
           fullPath: joinScannedPath(folder, item.path),
           size: item.size,
         }));
         const fresh = selectNewImportableFiles(entries, {
-          extensions: SUPPORTED_BOOK_EXTS,
-          minSizeBytes: AUTO_IMPORT_MIN_SIZE_BYTES,
+          extensions: rule.extensions,
+          minSizeBytes: Math.max(0, Math.floor(rule.minSizeKB)) * 1024,
           existingPaths,
           osPlatform,
         });
-        // Reproduce the folder's own "Folder Structure" choice: unless it was
-        // imported flat, each file carries the watched folder as `basePath` so
-        // `importBooks` seats the book in the group its subfolder implies —
-        // the same group the folder's initial import used (issue #5423).
-        newFiles.push(
-          ...toWatchedFolderImports(folder, fresh, isFlattenedAutoImportFolder(folder)),
-        );
+        // Reproduce the folder's own "Folder Structure" rule: unless it is
+        // flattened, each file carries the watched folder as `basePath` so
+        // `importBooks` seats the book in the group the rule implies — the same
+        // group the folder's initial import used (issue #5423).
+        newFiles.push(...toWatchedFolderImports(folder, fresh, rule.mode));
         for (const entry of fresh) {
           // Prevent the same file matching again via a later overlapping folder.
           const key = normalizeFilePathForIndex(entry.fullPath, osPlatform);
@@ -1838,14 +2016,116 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         // One unreadable/temporarily-missing folder must not abort the others
         // or nag the user (unlike the manual path, which nudges a re-pick).
         console.error('Auto-import: failed to scan folder', folder, e);
+        error = e instanceof Error ? e.message : String(e);
       }
+      outcomes.push({ folder, imported: 0, failed: 0, known: 0, ...(error ? { error } : {}) });
     }
+
     if (newFiles.length > 0) {
-      const { failedPaths } = await importBooks(newFiles, undefined, { silent: true });
-      for (const p of failedPaths) {
+      // The directory walk above awaits, so an import batch can have started
+      // since the check at the top of this function. Being here again means
+      // `importBooks` would refuse the batch and hand back an empty result,
+      // which every caller would then report as "no new books" — wrong on both
+      // counts. Report "busy" instead.
+      if (loading || importingRef.current) return null;
+      const result = await importBooks(newFiles, undefined, {
+        silent: true,
+        // 复制模式也要记住源路径，否则这一批书每次回前台都要重新解析 + 重算 md5。
+        rememberSourcePath: true,
+      });
+      for (const p of result.failedPaths) {
         const key = normalizeFilePathForIndex(p, osPlatform);
         if (key) autoImportFailedPathsRef.current.add(key);
       }
+      for (const outcome of outcomes) {
+        const key = normalizeRoot(outcome.folder);
+        outcome.imported = result.importedByFolder[key] ?? 0;
+        outcome.known = result.knownByFolder[key] ?? 0;
+        outcome.failed = result.failedByFolder[key] ?? 0;
+      }
+    }
+    return outcomes;
+  };
+
+  /** Store the newest scan result per folder (state + localStorage, display only). */
+  const recordWatchedFolderResults = useCallback((outcomes: WatchedFolderScanOutcome[]) => {
+    if (outcomes.length === 0) return;
+    const at = Date.now();
+    setWatchedFolderResults((prev) => {
+      const next: Record<string, WatchedFolderScanStatus> = { ...prev };
+      for (const outcome of outcomes) {
+        next[normalizeRoot(outcome.folder)] = {
+          at,
+          imported: outcome.imported,
+          failed: outcome.failed,
+          ...(outcome.error ? { error: outcome.error } : {}),
+        };
+      }
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.setItem(WATCHED_FOLDER_STATUS_KEY, JSON.stringify(next));
+        } catch (e) {
+          console.error('Failed to persist watched folder status:', e);
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  /**
+   * The focus-triggered auto-import. Runs in the background while the user is
+   * doing something else, so it never toasts: results land in the manage
+   * dialog's per-folder status lines instead.
+   */
+  const autoImportFromWatchedFolders = async (folders: string[]) => {
+    const outcomes = await scanWatchedFolders(folders);
+    if (outcomes) recordWatchedFolderResults(outcomes);
+  };
+
+  /**
+   * Manual refresh from the manage dialog (one row or every folder). Same scan
+   * as the background path, but with visible feedback and a busy guard so a
+   * double-click can't start two batches.
+   */
+  const refreshWatchedFolders = async (folder?: string) => {
+    if (watchedFolderRefreshingRef.current) return;
+    const targets = folder
+      ? [folder]
+      : (useSettingsStore.getState().settings.autoImportFolders ?? []);
+    if (targets.length === 0) return;
+    watchedFolderRefreshingRef.current = true;
+    setWatchedFolderRefreshing(folder ?? 'all');
+    try {
+      const outcomes = await scanWatchedFolders(targets);
+      if (!outcomes) {
+        // Skipped: an import batch is already running (manual import or a
+        // background scan). Say so rather than reporting a false "nothing new".
+        eventDispatcher.dispatch('toast', {
+          type: 'info',
+          timeout: 3000,
+          message: _('Another import is still running. Try again in a moment.'),
+        });
+        return;
+      }
+      recordWatchedFolderResults(outcomes);
+      const imported = outcomes.reduce((sum, o) => sum + o.imported, 0);
+      const failed = outcomes.reduce((sum, o) => sum + o.failed, 0);
+      const unreadable = outcomes.filter((o) => o.error).length;
+      const message =
+        imported > 0
+          ? _('Successfully imported {{count}} book(s)', { count: imported })
+          : _('No new books found.');
+      eventDispatcher.dispatch('toast', {
+        type: imported > 0 && failed === 0 && unreadable === 0 ? 'success' : 'info',
+        timeout: 4000,
+        message:
+          failed > 0 || unreadable > 0
+            ? `${message} ${_('{{count}} item(s) could not be imported.', { count: failed + unreadable })}`
+            : message,
+      });
+    } finally {
+      watchedFolderRefreshingRef.current = false;
+      setWatchedFolderRefreshing(null);
     }
   };
 
@@ -1979,24 +2259,30 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     // the dialog. Manual menu invocations always go through the dialog
     // so users can pick formats and a size threshold before scanning.
     if (dirPath) {
-      await runFolderImport({
-        directory: dirPath,
-        extensions: SUPPORTED_BOOK_EXTS.slice(),
-        // The non-dialog path is invoked by URL ingress / drag-drop
-        // replay, where the user never picked any filter — keep the
-        // synthetic values minimal and non-restrictive.
-        selectedGroupIds: [],
-        minSizeKB: 0,
-        flatten: false,
-        // URL ingress / drag-drop don't go through the dialog and so
-        // can't set this. Default to the legacy "copy" behaviour;
-        // already-registered external roots will still be detected
-        // by `runFolderImport` itself via the prefix check, so books
-        // under a registered folder are imported in-place either way.
-        readInPlace: false,
-        // Non-dialog path never opts into auto-import.
-        autoImport: false,
-      });
+      await runFolderImport(
+        {
+          directory: dirPath,
+          extensions: SUPPORTED_BOOK_EXTS.slice(),
+          // The non-dialog path is invoked by URL ingress / drag-drop
+          // replay, where the user never picked any filter — keep the
+          // synthetic values minimal and non-restrictive.
+          selectedGroupIds: [],
+          minSizeKB: 0,
+          folderMode: 'mirror',
+          // URL ingress / drag-drop don't go through the dialog and so
+          // can't set this. Default to the legacy "copy" behaviour;
+          // already-registered external roots will still be detected
+          // by `runFolderImport` itself via the prefix check, so books
+          // under a registered folder are imported in-place either way.
+          readInPlace: false,
+          // Non-dialog path never opts into auto-import.
+          autoImport: false,
+        },
+        // Nobody asked about this folder here: it neither starts nor stops
+        // watching it, and the synthetic "mirror" above must not overwrite the
+        // structure a watched folder already records for itself.
+        { manageWatching: false },
+      );
       return;
     }
 
@@ -2019,16 +2305,32 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       storedMinSize !== null && storedMinSize !== undefined
         ? Number.parseInt(storedMinSize, 10)
         : undefined;
+    // A watched folder's own rule wins over the generic "last used" values:
+    // re-opening the dialog on folder A must show A's structure, formats and
+    // size floor, or confirming would quietly rewrite A's rule with whatever
+    // folder B was last imported with. Only a folder that is *not* watched
+    // takes the last-used values — those describe the import the user is about
+    // to start.
+    //
+    // Resolved, not stored: a folder watched before per-folder rules existed
+    // has no entry in the rules map, and seeding from `undefined` would leave
+    // the dialog showing the last-import formats and mode for it — then
+    // confirming would narrow that folder's scans (dropping formats it used to
+    // take) and could flip a flattened folder back to grouping.
+    const watched = isAutoImportFolder(storedDirectory);
+    const watchedRule = watched ? resolveWatchedFolderRule(storedDirectory, settings) : undefined;
+    const watchedGroupIds = watchedRule ? formatGroupIdsForExtensions(watchedRule.extensions) : [];
     setImportFromFolderState({
       initialDirectory: storedDirectory,
-      initialFolderMode: storedMode === 'flatten' ? 'flatten' : 'keep',
-      initialSelectedGroupIds: parsedFormats,
+      initialFolderMode: watchedRule?.mode ?? readLastImportFolderMode(storedMode),
+      initialSelectedGroupIds: watchedGroupIds.length > 0 ? watchedGroupIds : parsedFormats,
       initialMinSizeKB:
-        parsedMinSize !== undefined && Number.isFinite(parsedMinSize) && parsedMinSize >= 0
+        watchedRule?.minSizeKB ??
+        (parsedMinSize !== undefined && Number.isFinite(parsedMinSize) && parsedMinSize >= 0
           ? parsedMinSize
-          : undefined,
+          : undefined),
       initialReadInPlace: storedReadInPlace === '1',
-      initialAutoImport: isAutoImportFolder(storedDirectory),
+      initialAutoImport: watched,
     });
   };
 
@@ -2095,31 +2397,17 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   };
 
   /**
-   * `true` when auto-imports from `directory` should go straight to the library
-   * root because the user imported it with "Import all into library". Read from
-   * the live store: the scan runs long after the dialog wrote the setting, and
-   * the component closure can still hold the pre-write snapshot. A folder
-   * watched before this list existed isn't in it and therefore keeps the
-   * dialog's default, "Create groups from subfolders".
-   */
-  /**
-   * The watched folders as the Import-from-Folder dialog's management sub-page
-   * wants them. Derived from `settings` (not the store snapshot) so removing or
+   * The watched folders as the manage dialog wants them: path plus the resolved
+   * rule (structure mode, formats, minimum size) and the folder's newest scan
+   * result. Derived from `settings` rather than the store snapshot so adding or
    * re-pointing a folder re-renders the list immediately.
    */
-  const watchedFolders = (settings.autoImportFolders ?? []).map((path) => ({
+  const watchedFolderRows: WatchedFolderRow[] = (settings.autoImportFolders ?? []).map((path) => ({
     path,
-    flatten: (settings.autoImportFlattenFolders ?? []).some(
-      (r) => normalizeRoot(r) === normalizeRoot(path),
-    ),
+    rule: resolveWatchedFolderRule(path, settings),
+    storedRule: findStoredWatchedFolderRule(path, settings),
+    status: watchedFolderResults[normalizeRoot(path)],
   }));
-
-  const isFlattenedAutoImportFolder = (directory: string): boolean => {
-    const target = normalizeRoot(directory);
-    if (!target) return false;
-    const roots = useSettingsStore.getState().settings.autoImportFlattenFolders ?? [];
-    return roots.some((r) => normalizeRoot(r) === target);
-  };
 
   /**
    * Add `directory` to `settings.externalLibraryFolders` (and persist
@@ -2151,9 +2439,13 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   /**
    * Add or remove `directory` from `settings.autoImportFolders` (and persist)
    * per the user's per-folder "Auto-import new books from this folder" choice.
-   * `flatten` records the same import's "Folder Structure" pick so later scans
-   * can group newly-found books exactly like this import did — it is tracked in
-   * a parallel list because only flattened folders need an entry. A no-op when
+   * `mode` records the same import's "Folder Structure" pick (plus the formats
+   * and minimum size that import used) so later scans reproduce it exactly.
+   *
+   * New writes go into `autoImportFolderRules`; the legacy
+   * `autoImportFlattenFolders` array is only read as a fallback for folders the
+   * new code has never touched, so any folder handled here is dropped from it
+   * (leaving a stale entry behind would keep overriding the rule). A no-op when
    * the folder is already in the desired state. Errors are swallowed — the
    * import itself still succeeds; we just won't watch (or stop watching) the
    * folder until the next successful settings write.
@@ -2161,31 +2453,43 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   const setAutoImportFolder = async (
     directory: string,
     enabled: boolean,
-    flatten: boolean,
+    mode: WatchedFolderMode,
+    filters?: { extensions: string[]; minSizeKB: number },
   ): Promise<void> => {
     const target = normalizeRoot(directory);
     if (!target) return;
     const liveSettings = useSettingsStore.getState().settings;
     const existing = liveSettings.autoImportFolders ?? [];
-    const existingFlatten = liveSettings.autoImportFlattenFolders ?? [];
     const present = existing.some((r) => normalizeRoot(r) === target);
-    const flattenPresent = existingFlatten.some((r) => normalizeRoot(r) === target);
-    const flattenWanted = enabled && flatten;
-    if (enabled === present && flattenWanted === flattenPresent) return;
+    const storedRule = findStoredWatchedFolderRule(directory, liveSettings);
+    const nextRule: WatchedFolderRule = {
+      ...storedRule,
+      mode,
+      ...(filters ? { extensions: filters.extensions, minSizeKB: filters.minSizeKB } : {}),
+    };
+    // Skip a redundant settings write when the folder is already exactly in the
+    // desired state — this runs on every row edit, and a no-op write would still
+    // re-render the list under the user's finger.
+    const ruleUnchanged =
+      !!storedRule &&
+      storedRule.mode === nextRule.mode &&
+      JSON.stringify(storedRule.extensions ?? null) ===
+        JSON.stringify(nextRule.extensions ?? null) &&
+      (storedRule.minSizeKB ?? null) === (nextRule.minSizeKB ?? null);
+    if (enabled === present && (enabled ? ruleUnchanged : !storedRule)) return;
     // Append only when the folder isn't listed yet: re-adding an existing entry
-    // would move it to the end and shuffle the Watched Folders list under the
-    // user's finger every time they flip a row's structure.
+    // would move it to the end and shuffle the managed list under the user's
+    // finger every time they flip a row's structure mode.
     const without = (roots: string[]) => roots.filter((r) => normalizeRoot(r) !== target);
     const next = enabled ? (present ? existing : [...existing, directory]) : without(existing);
-    const nextFlatten = flattenWanted
-      ? flattenPresent
-        ? existingFlatten
-        : [...existingFlatten, directory]
-      : without(existingFlatten);
+    const nextRules = enabled
+      ? withWatchedFolderRule(liveSettings.autoImportFolderRules, directory, nextRule)
+      : withoutWatchedFolderRule(liveSettings.autoImportFolderRules, directory);
     const nextSettings = {
       ...liveSettings,
       autoImportFolders: next,
-      autoImportFlattenFolders: nextFlatten,
+      autoImportFlattenFolders: without(liveSettings.autoImportFlattenFolders ?? []),
+      autoImportFolderRules: nextRules,
     };
     setSettings(nextSettings);
     try {
@@ -2194,6 +2498,72 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       console.error('Failed to persist autoImportFolders update:', e);
     }
   };
+
+  /** Stop watching `folder`; it stays readable in place if it was registered. */
+  const removeWatchedFolder = async (path: string) => {
+    await setAutoImportFolder(path, false, 'mirror');
+  };
+
+  /**
+   * Change one folder's scan rule from the manage dialog (structure mode,
+   * formats, minimum size), leaving the rest of its rule alone. The folder has
+   * to stay watched for the change to mean anything, so it is added back to
+   * `autoImportFolders` when it somehow isn't listed.
+   */
+  const updateWatchedFolderRule = async (
+    path: string,
+    patch: Partial<WatchedFolderRule>,
+  ): Promise<void> => {
+    const liveSettings = useSettingsStore.getState().settings;
+    const resolved = resolveWatchedFolderRule(path, liveSettings);
+    await setAutoImportFolder(path, true, patch.mode ?? resolved.mode, {
+      extensions: patch.extensions ?? resolved.extensions,
+      minSizeKB: patch.minSizeKB ?? resolved.minSizeKB,
+    });
+  };
+
+  /**
+   * "Add folder" in the manage dialog: pick a directory, start watching it with
+   * the dialog's defaults (mirror the structure, EPUB+PDF..., 20 KB), and scan
+   * it right away so the user sees the books arrive instead of waiting for the
+   * next focus event.
+   *
+   * Watching does NOT register the folder as an external library folder
+   * (R1): without "read books in place" its books are copied into the library,
+   * and the source path is remembered so later scans stay cheap.
+   */
+  const addWatchedFolder = async (): Promise<void> => {
+    const directory = await pickImportDirectory();
+    if (!directory) return;
+    await setAutoImportFolder(directory, true, 'mirror', {
+      extensions: [...SUPPORTED_BOOK_EXTS],
+      minSizeKB: DEFAULT_WATCHED_FOLDER_MIN_SIZE_KB,
+    });
+    await refreshWatchedFolders(directory);
+  };
+
+  /**
+   * Open the manager dialog. Both entry points (library import menu, Settings →
+   * Custom) go through the store flag; the effect below restores the persisted
+   * per-folder scan results whenever it flips open.
+   */
+  const openWatchedFolders = useCallback(() => {
+    useSettingsStore.getState().setWatchedFoldersDialogOpen(true);
+  }, []);
+
+  /** Restore the display-only per-folder scan results (never written to settings). */
+  useEffect(() => {
+    if (!isWatchedFoldersDialogOpen) return;
+    try {
+      const stored = window.localStorage.getItem(WATCHED_FOLDER_STATUS_KEY);
+      const parsed = stored ? JSON.parse(stored) : null;
+      if (parsed && typeof parsed === 'object') {
+        setWatchedFolderResults(parsed as Record<string, WatchedFolderScanStatus>);
+      }
+    } catch (e) {
+      console.error('Failed to restore watched folder status:', e);
+    }
+  }, [isWatchedFoldersDialogOpen]);
 
   /**
    * Recursively scan {@link result.directory}, keep files matching one
@@ -2209,9 +2579,12 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
    *      tri-state per the comment in `processFile`. An explicit
    *      string (including '') wins over basePath-derived grouping.
    *
-   * The two flatten/keep modes use these signals as follows:
+   * The three structure modes use these signals as follows:
    *   - keep    → omit basePath? no, *include* basePath; pass
    *               groupId=undefined so basePath wins.
+   *   - author  → same as keep (basePath is also how `processFile` finds this
+   *               folder's rule); the rule then trims the group to
+   *               `<folder>/<first non-date level>`.
    *   - flatten → omit basePath AND pass an explicit groupId equal to
    *               the user's currently-viewed group ('' = root). The
    *               omitted basePath alone wouldn't be enough on a
@@ -2219,8 +2592,19 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
    *               from prior sessions; the explicit groupId is what
    *               actually reseats them. Dropping basePath in flatten
    *               mode is therefore belt-and-suspenders.
+   * `options.manageWatching === false` marks a call that did NOT come from the
+   * import dialog (URL ingress / drag-drop replay). Those synthesize a folder
+   * description from nothing, so letting them drive the watch state would stop
+   * watching a folder — and, since the rule lives with the watch state, delete
+   * its structure/formats/size — just because a path arrived from outside. They
+   * also must not impose their synthetic `mirror` on the current batch's
+   * grouping, which is why `folderRule` is withheld too.
    */
-  const runFolderImport = async (result: ImportFromFolderResult) => {
+  const runFolderImport = async (
+    result: ImportFromFolderResult,
+    options: { manageWatching?: boolean } = {},
+  ) => {
+    const manageWatching = options.manageWatching !== false;
     if (!appService || !result.directory) return;
     // Last-chance sanity check. The dialog's own pickImportDirectory
     // already validates fresh picks, but `result.directory` can also
@@ -2242,10 +2626,48 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       await registerExternalLibraryFolder(result.directory);
     }
     // Opt this folder into (or out of) auto-import per the dialog's per-folder
-    // checkbox. `result.autoImport` already implies `readInPlace` (the dialog
-    // gates it), so registration above has run; unchecking removes the folder
-    // from the watched set while leaving it registered as read-in-place.
-    await setAutoImportFolder(result.directory, result.autoImport, result.flatten);
+    // checkbox. Watching is independent of "read in place": a watched folder
+    // that is not registered as an external library folder has its books copied
+    // into the library (see the copy notice in the dialog). The same pick also
+    // records the structure mode, formats and minimum size, so later scans
+    // reproduce exactly what this import just did.
+    //
+    // The dialog re-seeds its form from the picked folder (see
+    // `resolveWatchedFolder`), so the value written here always describes the
+    // folder it is written for — unticking the box means the user asked to stop
+    // watching *this* folder, not that some other folder was last imported with
+    // the box unticked.
+    if (manageWatching) {
+      // 规则里的格式/体积要在"用户确实改过"时才回写：老监控目录（规则表无条目）
+      // 解析出来的是完整支持列表，而对话框只会整组勾选、没有 md 的位置，未改动
+      // 也回写就等于把该目录的扫描范围悄悄收窄。见 shouldRecordWatchedFilters。
+      const liveSettings = useSettingsStore.getState().settings;
+      const resolvedRule = resolveWatchedFolderRule(result.directory, liveSettings);
+      const recordFilters = shouldRecordWatchedFilters({
+        hasStoredRule: !!findStoredWatchedFolderRule(result.directory, liveSettings),
+        resolvedGroupIds: formatGroupIdsForExtensions(resolvedRule.extensions),
+        resolvedMinSizeKB: resolvedRule.minSizeKB,
+        selectionGroupIds: result.selectedGroupIds,
+        selectionMinSizeKB: result.minSizeKB,
+      });
+      await setAutoImportFolder(
+        result.directory,
+        result.autoImport,
+        result.folderMode,
+        recordFilters
+          ? {
+              // 回写也要带上对话框表达不了的扩展名（md 没有对应格式组），
+              // 否则一旦回写就把它们从该目录的扫描范围里删掉了。
+              extensions: mergeRecordedExtensions({
+                selectionExtensions: result.extensions,
+                resolvedExtensions: resolvedRule.extensions,
+                groupExtensions: ALL_FORMAT_GROUP_EXTENSIONS,
+              }),
+              minSizeKB: result.minSizeKB,
+            }
+          : undefined,
+      );
+    }
 
     // Re-grant scopes for the directory before scanning. This matters
     // when `result.directory` came from somewhere the dialog plugin
@@ -2298,7 +2720,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     }));
     // Same mapping the auto-import scan uses, so a folder's later scans group
     // newly-found books exactly like this import does.
-    const toImportFiles = toWatchedFolderImports(result.directory, entries, result.flatten);
+    const toImportFiles = toWatchedFolderImports(result.directory, entries, result.folderMode);
     if (toImportFiles.length === 0) {
       eventDispatcher.dispatch('toast', {
         type: 'info',
@@ -2307,11 +2729,29 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       return;
     }
     // When flattening, route the books into whichever group the user
-    // is currently viewing (empty string == library root). When
-    // preserving structure we leave groupId undefined so importBooks
-    // derives nested groupNames from each file's basePath.
-    const targetGroupId = result.flatten ? searchParams?.get('group') || '' : undefined;
-    importBooks(toImportFiles, targetGroupId);
+    // is currently viewing (empty string == library root). In the other two
+    // modes we leave groupId undefined so importBooks derives the group from
+    // each file's basePath plus this folder's rule.
+    const targetGroupId =
+      result.folderMode === 'flat' ? searchParams?.get('group') || '' : undefined;
+    // `rememberSourcePath`: this folder may well be watched, and a watched
+    // folder's later scans need its books recognizable by path. Copy-mode books
+    // get their source recorded; in-place ones already store it on `filePath`.
+    // `folderRule`: group by what the dialog promised even when the folder is
+    // not watched (nothing was persisted in that case). A non-dialog call has
+    // no such promise, so it groups by the folder's own rule instead.
+    void importBooks(toImportFiles, targetGroupId, {
+      rememberSourcePath: true,
+      ...(manageWatching
+        ? {
+            folderRule: {
+              mode: result.folderMode,
+              extensions: result.extensions,
+              minSizeKB: result.minSizeKB,
+            },
+          }
+        : {}),
+    });
   };
 
   const handleSetSelectMode = (selectMode: boolean) => {
@@ -2453,6 +2893,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           onImportBooksFromDirectory={
             appService?.canReadExternalDir ? handleImportBooksFromDirectory : undefined
           }
+          onManageWatchedFolders={appService?.canReadExternalDir ? openWatchedFolders : undefined}
           onToggleSelectMode={() => handleSetSelectMode(!isSelectMode)}
           onSelectAll={handleSelectAll}
           onDeselectAll={handleDeselectAll}
@@ -2633,7 +3074,15 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           onClose={() => setImportMenuAnchor(null)}
           onImportBooksFromFiles={handleImportBooksFromFiles}
           onImportBooksFromDirectory={
-            appService?.canReadExternalDir ? handleImportBooksFromDirectory : undefined
+            appService?.canReadExternalDir ? () => void handleImportBooksFromDirectory() : undefined
+          }
+          onManageWatchedFolders={
+            appService?.canReadExternalDir
+              ? () => {
+                  setImportMenuAnchor(null);
+                  openWatchedFolders();
+                }
+              : undefined
           }
         />
       )}
@@ -2668,11 +3117,20 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           initialReadInPlace={importFromFolderState.initialReadInPlace}
           initialAutoImport={importFromFolderState.initialAutoImport}
           isRegisteredExternalRoot={isRegisteredExternalRoot}
-          watchedFolders={watchedFolders}
-          onUnwatchFolder={(path) => void setAutoImportFolder(path, false, false)}
-          onSetWatchedFolderFlatten={(path, flatten) =>
-            void setAutoImportFolder(path, true, flatten)
+          watchedFolderCount={watchedFolderRows.length}
+          resolveWatchedFolder={(directory) =>
+            // Resolved (not raw) rule, and only for folders actually watched:
+            // presence is what tells the dialog to tick the watch box. A folder
+            // watched before per-folder rules existed has no stored entry but is
+            // still watched, and must not be silently unwatched on confirm.
+            isAutoImportFolder(directory)
+              ? resolveWatchedFolderRule(directory, useSettingsStore.getState().settings)
+              : undefined
           }
+          onManageWatchedFolders={() => {
+            setImportFromFolderState(null);
+            openWatchedFolders();
+          }}
           onPickDirectory={pickImportDirectory}
           onCancel={() => setImportFromFolderState(null)}
           onConfirm={(result) => {
@@ -2685,10 +3143,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
               if (result.directory) {
                 window.localStorage.setItem(LAST_IMPORT_FOLDER_KEY, result.directory);
               }
-              window.localStorage.setItem(
-                LAST_IMPORT_FOLDER_MODE_KEY,
-                result.flatten ? 'flatten' : 'keep',
-              );
+              window.localStorage.setItem(LAST_IMPORT_FOLDER_MODE_KEY, result.folderMode);
               if (result.selectedGroupIds.length > 0) {
                 window.localStorage.setItem(
                   LAST_IMPORT_FOLDER_FORMATS_KEY,
@@ -2706,6 +3161,19 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
             }
             void runFolderImport(result);
           }}
+        />
+      )}
+      {isWatchedFoldersDialogOpen && (
+        <WatchedFoldersDialog
+          folders={watchedFolderRows}
+          // `null` when idle; `'all'` while a refresh-all is running, otherwise
+          // the path of the row being refreshed.
+          refreshingPath={watchedFolderRefreshing}
+          onAddFolder={addWatchedFolder}
+          onRemoveFolder={(path) => void removeWatchedFolder(path)}
+          onSetRule={(path, patch) => void updateWatchedFolderRule(path, patch)}
+          onRefresh={(path) => void refreshWatchedFolders(path)}
+          onClose={() => setWatchedFoldersDialogOpen(false)}
         />
       )}
       {versionConflicts && (

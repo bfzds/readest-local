@@ -42,6 +42,11 @@ interface ImportMenuPopupProps
   onClose: () => void;
 }
 
+/**
+ * Same menu as {@link ImportMenu}, positioned as a fixed overlay. The extra
+ * props (`onManageWatchedFolders` and the rest) are forwarded verbatim.
+ */
+
 const ImportMenuPopup: React.FC<ImportMenuPopupProps> = ({ anchor, onClose, ...menuProps }) => {
   const { safeAreaInsets: insets } = useThemeStore();
   const menuRef = useRef<HTMLDivElement>(null);

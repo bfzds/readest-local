@@ -11,7 +11,8 @@ import { saveViewSettings } from '@/helpers/settings';
 import { validateCSS, formatCSS } from '@/utils/css';
 import { getStyles } from '@/utils/style';
 import { parseChapterPatterns, validateChapterPattern } from '@/utils/txt';
-import { BoxedList } from './primitives';
+import { BoxedList, NavigationRow } from './primitives';
+import { eventDispatcher } from '@/utils/event';
 
 type CSSType = 'book' | 'reader';
 
@@ -24,7 +25,13 @@ const MiscPanel: React.FC<SettingsPanelPanelProp> = ({
   const { envConfig } = useEnv();
   // The app targets desktop only; Android input-focus handling is disabled.
   const isAndroidApp = false;
-  const { settings, setSettings, saveSettings } = useSettingsStore();
+  const {
+    settings,
+    setSettings,
+    saveSettings,
+    setSettingsDialogOpen,
+    setWatchedFoldersDialogOpen,
+  } = useSettingsStore();
   const { getView, getViewSettings, setViewSettings } = useReaderStore();
   const viewSettings = getViewSettings(bookKey) || settings.globalViewSettings;
 
@@ -40,6 +47,29 @@ const MiscPanel: React.FC<SettingsPanelPanelProp> = ({
   const uiTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const resetToDefaults = useResetViewSettings();
+
+  const watchedFolderCount = settings.autoImportFolders?.length ?? 0;
+
+  /**
+   * Close Settings and open the manage-watched-folders dialog.
+   *
+   * The dialog belongs to the library page, so the settings panel only asks
+   * for it through the store flag. Inside the reader there is no library page
+   * to render it (and no way to scan folders from there), so say where to find
+   * it instead of closing Settings on a dialog that never appears.
+   */
+  const handleManageWatchedFolders = () => {
+    if (bookKey) {
+      eventDispatcher.dispatch('toast', {
+        type: 'info',
+        timeout: 4000,
+        message: _('Open Watched Folders from the library: Import → Watched Folders.'),
+      });
+      return;
+    }
+    setSettingsDialogOpen(false);
+    setWatchedFoldersDialogOpen(true);
+  };
 
   const handleReset = () => {
     resetToDefaults({
@@ -278,6 +308,23 @@ const MiscPanel: React.FC<SettingsPanelPanelProp> = ({
         {txtChapterError && (
           <p className='whitespace-pre-line px-4 pb-2 text-xs text-error'>{txtChapterError}</p>
         )}
+      </BoxedList>
+
+      {/* Entry point to the watched-folders manager. Lives here as well as in
+          the library's import menu because watching a folder is a standing
+          arrangement, not a step of one import — this is the place users look
+          for it after they have stopped importing. */}
+      <BoxedList title={_('Watched Folders')}>
+        <NavigationRow
+          title={_('Watched Folders')}
+          status={
+            watchedFolderCount === 0
+              ? _('No folders are watched.')
+              : _('{{count}} folder(s)', { count: watchedFolderCount })
+          }
+          data-setting-id='settings.custom.watchedFolders'
+          onClick={handleManageWatchedFolders}
+        />
       </BoxedList>
 
       {renderCSSEditor(

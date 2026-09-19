@@ -114,6 +114,23 @@ export interface ImportBookOptions {
    * 不改任何东西，调用方据此区分"已在书库中"与"已从书库恢复"两种提示。
    */
   onDedupHit?: (kind: 'already-in-library' | 'revived') => void;
+  /**
+   * 复制模式导入时，把源文件路径记进这本书的 `altFilePaths`（见
+   * bookService 的 recordSourcePath）。默认 false，保持"复制模式只认副本路径"
+   * 的老行为。
+   *
+   * 只为「文件夹导入」两条通路开启（手动导入文件夹 / 受监视文件夹重扫）：那些
+   * 通路每次回前台都会重扫整个目录，只有记住源路径才能按路径短路，否则每本书
+   * 都要重新解析 + 重算 partialMD5。拖拽单文件导入不要开启——那是一次性动作，
+   * 没有账本需求，多记路径只会污染这个字段的语义。
+   */
+  rememberSourcePath?: boolean;
+  /**
+   * 确实新增了一条源路径记录时回调一次。调用方靠它决定要不要把书库落盘：
+   * 重扫命中"已在书库"不计入成功导入，只补记路径时不落盘的话，这次补记会
+   * 随进程消失，下次重扫又把整目录重新解析一遍。
+   */
+  onSourcePathRemembered?: () => void;
 }
 
 /**
@@ -173,10 +190,11 @@ export interface Book {
   // if Book is a transient local book we can load the book content via filePath
   filePath?: string;
   // Other on-disk paths that resolved to this same book — a watched folder
-  // holding the same file twice under different names, or a copy left behind
-  // after a rename. Only `filePath` is ever read from; these are remembered so
-  // the auto-import scan doesn't treat a known duplicate as a new file on every
-  // pass. Device-local like `filePath`: never published to peers.
+  // holding the same file twice under different names, a copy left behind
+  // after a rename, or (for a book imported in copy mode) the source file the
+  // copy was made from. Only `filePath` is ever read from; these are remembered
+  // so the auto-import scan doesn't treat a known file as new on every pass.
+  // Device-local like `filePath`: never published to peers.
   altFilePaths?: string[];
   // Partial md5 hash of the book file, used as the unique identifier
   hash: string;
@@ -204,6 +222,13 @@ export interface Book {
   createdAt: number;
   updatedAt: number;
   deletedAt?: number | null;
+  /**
+   * 这本书是被导入路径**显式复活**的（墓碑记录重新回到书架），写入的是复活
+   * 时刻。唯一用途是让书库保存的"防复活"护栏（`mergeLibraryRows`）能区分
+   * "刚被导入带回来的书"与"另一个窗口里过时的旧副本"：没有这个标记，复活那次
+   * 保存会被整行丢弃，书重启后又消失，一并补记的来源路径也丢。
+   */
+  revivedAt?: number;
 
   uploadedAt?: number | null;
   downloadedAt?: number | null;

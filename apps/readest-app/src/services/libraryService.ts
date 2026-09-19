@@ -24,7 +24,17 @@ export const mergeLibraryRows = (existing: Book[], incoming: Book[]): Book[] => 
   for (const book of incoming) {
     const onDisk = merged.get(book.hash);
     // 防复活：磁盘已软删，旧窗口陈旧 incoming（无 tombstone）不得覆盖回活。
-    if (onDisk && onDisk.deletedAt && !book.deletedAt) continue;
+    //
+    // 例外是**显式复活**：导入路径把一本墓碑书重新带回书架时，会在被清掉
+    // deletedAt 的同一条记录上盖 `revivedAt`（见 bookService 的 hash 命中短路）。
+    // 没有这个例外，那次保存会被这条护栏整行丢弃 —— 书在界面上回来了、重启后
+    // 又消失，而且这次一并补记的来源路径也丢掉，于是每次重扫都重新解析它。
+    // 用 revivedAt 而不是 updatedAt 做判据：陈旧窗口只要在别处删书之后又翻过
+    // 一页，它的 updatedAt 同样会更新，那样护栏就形同虚设。
+    if (onDisk && onDisk.deletedAt && !book.deletedAt) {
+      const revivedAfterDelete = !!book.revivedAt && book.revivedAt >= (onDisk.deletedAt ?? 0);
+      if (!revivedAfterDelete) continue;
+    }
     // LWW：双窗口同时改同一本书时，updatedAt 更新的记录保留。
     if (onDisk && !onDisk.deletedAt && !book.deletedAt) {
       if ((onDisk.updatedAt ?? 0) > (book.updatedAt ?? 0)) continue;
