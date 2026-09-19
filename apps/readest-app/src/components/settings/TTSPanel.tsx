@@ -11,7 +11,7 @@ import {
   TTSMediaMetadataMode,
   TTSPlayerStyle,
 } from '@/services/tts/types';
-import { BoxedList, SettingsRow, AdwaitaSelect } from './primitives';
+import { BoxedList, SettingsRow, AdwaitaSelect, SettingsSwitchRow } from './primitives';
 import TTSHighlightStyleEditor, { TTSHighlightStyle } from './theme/TTSHighlightStyleEditor';
 
 const TTSPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset }) => {
