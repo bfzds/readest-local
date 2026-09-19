@@ -58,3 +58,15 @@
 `docs/reports/handover-epub-virtual-toc-2026-09-11-round2.md`、
 `docs/superpowers/plans/2026-09-11-epub-virtual-toc.md` 里出现过真实的用户目录路径。
 清理它们需要重写已推送的历史，收益（一个目录名）不抵风险，故保留；**新内容不要再重复它们**。
+
+## 5. 语言支持范围（只维护中英）
+
+界面语言只有三种：**`zh-CN`（基准全集）、`zh-TW`（必须与简体键集对齐）、`en`（只存复数形态与专名）**。
+
+- **新增 UI 字符串只写 `zh-CN` + `zh-TW`**（`en` 仅在需要正确单复数时补）。两条硬护栏在
+  `apps/readest-app/src/__tests__/i18n/locale-key-diff.test.ts`：`zh-TW ⊇ zh-CN`，以及
+  `zh-CN` 覆盖源码里所有 `_()` 字面量。
+- `i18n-langs.json` 里**其余 31 个语言是上游遗产**：保持原样，不新增、不维护、不删除
+  （删除会在每次上游同步时产生大批 modify/delete 冲突）。它们不含本分支新增的字符串，回落英文。
+- **不要运行 `pnpm i18n:extract`**（会删在用词条并写占位符）。细节见 `apps/readest-app/docs/i18n.md` 的
+  「本分支的语言支持范围」。

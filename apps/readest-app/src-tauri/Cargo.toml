@@ -1,7 +1,7 @@
 [package]
 name = "Readest"
 version = "0.2.2"
-description = "Your online library"
+description = "Local-only offline e-reader"
 authors = ["Bilingify LLC"]
 license = ""
 repository = ""

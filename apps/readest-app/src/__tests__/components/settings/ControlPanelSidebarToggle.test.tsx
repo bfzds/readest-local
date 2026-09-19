@@ -74,11 +74,6 @@ vi.mock('@/utils/share', () => ({
   canShareText: () => true,
 }));
 
-vi.mock('@/utils/telemetry', () => ({
-  optInTelemetry: vi.fn(),
-  optOutTelemetry: vi.fn(),
-}));
-
 vi.mock('@/components/settings/PageTurnerSettings', () => ({
   default: () => null,
 }));

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.bilingify.readest</id>
+  <id>com.local.readest</id>
 
   <name>Readest</name>
   <summary>Modern, feature-rich ebook reader</summary>
@@ -51,13 +51,7 @@
     <keyword>sync</keyword>
   </keywords>
 
-  <url type="homepage">https://github.com/readest/readest</url>
-  <url type="bugtracker">https://github.com/readest/readest/issues</url>
-  <url type="help">https://github.com/readest/readest/wiki</url>
-  <url type="donation">https://github.com/sponsors/readest</url>
-  <url type="vcs-browser">https://github.com/readest/readest</url>
-
-  <launchable type="desktop-id">com.bilingify.readest.desktop</launchable>
+  <launchable type="desktop-id">com.local.readest.desktop</launchable>
 
   <requires>
     <display_length compare="ge">360</display_length>
@@ -230,28 +224,9 @@
   <metadata_license>FSFAP</metadata_license>
   <project_license>AGPL-3.0-or-later</project_license>
 
-  <developer id="com.readest">
+  <developer>
     <name>Readest Team</name>
   </developer>
-
-  <screenshots>
-    <screenshot type="default">
-      <caption>Readest main interface with annotation</caption>
-      <image type="source">https://raw.githubusercontent.com/readest/readest/refs/heads/main/data/screenshots/annotations.png</image>
-    </screenshot>
-    <screenshot>
-      <caption>Reading interface with dark mode</caption>
-      <image type="source">https://raw.githubusercontent.com/readest/readest/refs/heads/main/data/screenshots/dark_mode.png</image>
-    </screenshot>
-    <screenshot>
-      <caption>Reading with TTS speak out</caption>
-      <image type="source">https://raw.githubusercontent.com/readest/readest/refs/heads/main/data/screenshots/tts_speak_aloud.png</image>
-    </screenshot>
-    <screenshot>
-      <caption>Reading tools with Wikipedia integration</caption>
-      <image type="source">https://raw.githubusercontent.com/readest/readest/refs/heads/main/data/screenshots/wikipedia_vertical.png</image>
-    </screenshot>
-  </screenshots>
 
   <content_rating type="oars-1.1">
     <content_attribute id="social-info">moderate</content_attribute>
