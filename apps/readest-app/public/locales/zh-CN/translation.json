@@ -2098,5 +2098,6 @@
   "Skip Parenthetical Readings": "跳过括号内的读音",
   "Do not speak kana or Han readings shown after Han text": "不朗读汉字文本后显示的假名或汉字读音",
   "Includes {{count}} orphaned book file(s) not in your library_other": "包含 {{count}} 个不在书库中的孤立书籍文件",
-  "This will delete all cached files and orphaned book files not in your library. This cannot be undone.": "这将删除所有缓存文件以及不在书库中的孤立书籍文件，此操作无法撤销。"
+  "This will delete all cached files and orphaned book files not in your library. This cannot be undone.": "这将删除所有缓存文件以及不在书库中的孤立书籍文件，此操作无法撤销。",
+  "Cannot open the library folder \"{{path}}\". Reconnect it, or choose another folder in Settings.": "无法打开书库文件夹「{{path}}」。请重新连接该文件夹，或在设置中另选一个文件夹。"
 }

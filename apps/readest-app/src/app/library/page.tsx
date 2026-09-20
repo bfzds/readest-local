@@ -66,7 +66,7 @@ import {
   withoutWatchedFolderRule,
 } from '@/utils/watchedFolders';
 import { parseOpenWithFiles } from '@/helpers/openWith';
-import { isTauriAppPlatform } from '@/services/environment';
+import { getInitializedAppService, isTauriAppPlatform } from '@/services/environment';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
@@ -1261,10 +1261,18 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       console.error('Failed to initialize library:', error);
       bail();
       if (!stale()) {
+        // 数据目录被删/拔盘时 init 会在 appService 上留下 unavailableRootDir
+        // （#5789）：点名目录并指路设置里重选，而不是一句通用的加载失败。
+        const unavailableRootDir = getInitializedAppService()?.unavailableRootDir;
         eventDispatcher.dispatch('toast', {
           type: 'error',
-          message: _('Failed to load library'),
-          timeout: 2500,
+          message: unavailableRootDir
+            ? _(
+                'Cannot open the library folder "{{path}}". Reconnect it, or choose another folder in Settings.',
+                { path: unavailableRootDir },
+              )
+            : _('Failed to load library'),
+          timeout: 10000,
         });
       }
     });
