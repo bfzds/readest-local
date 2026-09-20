@@ -18,6 +18,17 @@ export const getDir = (book: Book) => {
 };
 
 /**
+ * The `<hash>` dir a Books/-relative path lives in, or undefined for a
+ * root-level file (library metadata). Accepts host separators, so a Windows
+ * `readDirectory` path (`hash\cover.png`) resolves the same as a POSIX one.
+ */
+export const getBookDirOfPath = (path: string) => {
+  const normalized = path.replace(/\\/g, '/');
+  const slashIdx = normalized.indexOf('/');
+  return slashIdx < 0 ? undefined : normalized.slice(0, slashIdx);
+};
+
+/**
  * TXT 先查重后转换：按原始 TXT 的 partialMD5 匹配已入库的 TXT 转换产物。
  * soft-deleted 条目不参与匹配——重导应走完整路径复活并重建文件。
  */

@@ -2096,5 +2096,7 @@
   "{{matched}} of {{total}}": "{{matched}} / {{total}} 項",
   "Speech": "語音",
   "Skip Parenthetical Readings": "略過括號內的讀音",
-  "Do not speak kana or Han readings shown after Han text": "不朗讀漢字文字後顯示的假名或漢字讀音"
+  "Do not speak kana or Han readings shown after Han text": "不朗讀漢字文字後顯示的假名或漢字讀音",
+  "Includes {{count}} orphaned book file(s) not in your library_other": "包含 {{count}} 個不在書庫中的孤立書籍檔案",
+  "This will delete all cached files and orphaned book files not in your library. This cannot be undone.": "這將刪除所有快取檔案以及不在書庫中的孤立書籍檔案，此操作無法撤銷。"
 }
