@@ -1556,7 +1556,6 @@
   "{{count}} dictionary is unsupported and disabled_other": "{{count}} 個字典不受支援,已停用",
   "No new dictionaries were imported": "未匯入任何新字典",
   "Read books from their original folders instead of copying them into the library. Saves disk space; cloud auto-upload still works if enabled.": "直接從原始資料夾讀取書籍,不複製到書庫。可節省磁碟空間;若已啟用自動上傳,雲端同步仍正常運作。",
-  "This folder is an external library. Books here are always read in place.": "此資料夾是外部書庫,其中的書籍一律從原位置讀取。",
   "Swipe to Paginate": "滑動翻頁",
   "Share anonymous usage data so we can understand how Readest is used and make it better.": "分享匿名使用資料，協助我們了解 Readest 的使用情形並加以改進。",
   "Anonymous, aggregated feature usage": "匿名、聚合的功能使用資料",
@@ -2100,5 +2099,6 @@
   "Includes {{count}} orphaned book file(s) not in your library_other": "包含 {{count}} 個不在書庫中的孤立書籍檔案",
   "This will delete all cached files and orphaned book files not in your library. This cannot be undone.": "這將刪除所有快取檔案以及不在書庫中的孤立書籍檔案，此操作無法撤銷。",
   "Cannot open the library folder \"{{path}}\". Reconnect it, or choose another folder in Settings.": "無法開啟書庫資料夾「{{path}}」。請重新連接該資料夾，或在設定中另選一個資料夾。",
-  "Lock Horizontal Panning": "鎖定水平平移"
+  "Lock Horizontal Panning": "鎖定水平平移",
+  "This folder is an external library. Uncheck to stop reading its books in place; future imports will copy books into the library.": "此資料夾是外部書庫。取消勾選後將不再就地讀取其中的書籍；之後的匯入會把書籍複製到書庫中。"
 }
