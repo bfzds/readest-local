@@ -22,6 +22,7 @@ import {
   toWatchedFolderImports,
 } from '@/services/bookService';
 import { debounce } from '@/utils/debounce';
+import { createThrottledCheckpoint } from '@/utils/checkpoint';
 import { DEFAULT_NEARBY_WORDS } from '@/utils/searchConfig';
 import { clearLibrarySearchHistory, loadLibrarySearchHistory } from './utils/searchHistory';
 import { isStaleForwardTarget } from './utils/forwardStack';
@@ -155,6 +156,14 @@ import SettingsDialog from '@/components/settings/SettingsDialog';
  * folders themselves.
  */
 const WATCHED_FOLDER_STATUS_KEY = 'readest:watchedFolderStatus';
+
+/**
+ * How often the library index is persisted during a long import (#5601). A
+ * crash/kill mid-run loses at most this much work instead of the entire run;
+ * keep it long enough that the full-library serialization stays a rounding
+ * error next to the per-file parse/copy work.
+ */
+const IMPORT_CHECKPOINT_INTERVAL_MS = 15 * 1000;
 
 /**
  * What one import batch reports back to its caller. The per-folder counts exist
@@ -1682,17 +1691,37 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     }
     if (currentBatch.length > 0) batches.push(currentBatch);
 
-    for (const batch of batches) {
-      const importedBooks = (await Promise.all(batch.map(processFile))).filter((book) => !!book);
-      // Update store state per batch (so the UI can render imported books
-      // incrementally) but defer disk persistence until the entire batch is
-      // done — saving library.json once per batch of 4 books was the dominant
-      // cost for large imports.
-      if (importedBooks.length > 0) {
-        await updateBooks(envConfig, importedBooks, { skipSave: true });
+    // Periodically persist the library index while the run is in flight so a
+    // crash/kill mid-import (#5601) loses at most one interval of work instead
+    // of the whole run — the book dirs are written per file, and index rows
+    // that never reach disk are what re-imports and duplicate rows are made
+    // of. Saving per book would bring back the "library.json save dominates
+    // large imports" cost, hence the throttle.
+    const checkpoint = createThrottledCheckpoint(async () => {
+      const currentLibrary = useLibraryStore.getState().library;
+      const currentAppService = await envConfig.getAppService();
+      await currentAppService.saveLibraryBooks(currentLibrary);
+    }, IMPORT_CHECKPOINT_INTERVAL_MS);
+
+    try {
+      for (const batch of batches) {
+        const importedBooks = (await Promise.all(batch.map(processFile))).filter((book) => !!book);
+        // Update store state per batch (so the UI can render imported books
+        // incrementally) but defer disk persistence until the entire batch is
+        // done — saving library.json once per batch of 4 books was the dominant
+        // cost for large imports.
+        if (importedBooks.length > 0) {
+          await updateBooks(envConfig, importedBooks, { skipSave: true });
+          checkpoint.touch();
+        }
+        processedFiles += batch.length;
+        setImportProgress({ done: processedFiles, total: totalFiles });
       }
-      processedFiles += batch.length;
-      setImportProgress({ done: processedFiles, total: totalFiles });
+    } finally {
+      // Persist whatever the last checkpoint hasn't covered, also on a
+      // mid-run exception (the batch loop's per-file errors are caught inside
+      // processFile; this guards anything the loop itself might throw).
+      await checkpoint.flush();
     }
 
     // Persist the full library once after every file in the batch is done.
