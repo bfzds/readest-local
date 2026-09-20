@@ -372,26 +372,16 @@ async function wireMdictAudioOnclick(
         // leading `audio/` directory. Try each in order; first hit wins.
         const candidates: string[] = [];
         for (const ext of AUDIO_EXTS) candidates.push(`${key}${ext}`, `audio/${key}${ext}`);
-        console.log(
-          `[MDD-AUDIO] probe key=${key} candidates=${candidates.length} mdds=${mdds.length}`,
-        );
         outer: for (const path of candidates) {
           for (let i = 0; i < mdds.length; i++) {
             const mdd = mdds[i]!;
             try {
-              const t = performance.now();
               const located = await mdd.locateBytes(path);
-              const dt = (performance.now() - t).toFixed(0);
               if (located.data) {
-                console.log(
-                  `[MDD-AUDIO] HIT path="${path}" mdd[${i}] ${dt}ms bytes=${located.data.byteLength}`,
-                );
                 url = URL.createObjectURL(audioBlobFor(path, new Uint8Array(located.data)));
                 trackedUrls.push(url);
                 el.setAttribute('data-mdd-audio', url);
                 break outer;
-              } else {
-                console.log(`[MDD-AUDIO] miss path="${path}" mdd[${i}] ${dt}ms`);
               }
             } catch (err) {
               console.warn(
@@ -404,8 +394,6 @@ async function wireMdictAudioOnclick(
         if (!url) {
           console.warn(`[MDD-AUDIO] not found for key=${key} after ${candidates.length} probes`);
         }
-      } else {
-        console.log(`[MDD-AUDIO] cache hit key=${key}`);
       }
       if (!url) return;
       playDictAudio(audio, url, key);
