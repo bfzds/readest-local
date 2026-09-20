@@ -66,7 +66,7 @@ import {
   withoutWatchedFolderRule,
 } from '@/utils/watchedFolders';
 import { parseOpenWithFiles } from '@/helpers/openWith';
-import { getInitializedAppService, isTauriAppPlatform } from '@/services/environment';
+import { getUnavailableLibraryRoot, isTauriAppPlatform } from '@/services/environment';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
@@ -1263,7 +1263,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       if (!stale()) {
         // 数据目录被删/拔盘时 init 会在 appService 上留下 unavailableRootDir
         // （#5789）：点名目录并指路设置里重选，而不是一句通用的加载失败。
-        const unavailableRootDir = getInitializedAppService()?.unavailableRootDir;
+        const unavailableRootDir = getUnavailableLibraryRoot();
         eventDispatcher.dispatch('toast', {
           type: 'error',
           message: unavailableRootDir
@@ -1711,6 +1711,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       await currentAppService.saveLibraryBooks(currentLibrary);
     }, IMPORT_CHECKPOINT_INTERVAL_MS);
 
+    let checkpointFailed = false;
     try {
       for (const batch of batches) {
         const importedBooks = (await Promise.all(batch.map(processFile))).filter((book) => !!book);
@@ -1728,16 +1729,32 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     } finally {
       // Persist whatever the last checkpoint hasn't covered, also on a
       // mid-run exception (the batch loop's per-file errors are caught inside
-      // processFile; this guards anything the loop itself might throw).
-      await checkpoint.flush();
+      // processFile; this guards anything the loop itself might throw). A
+      // failed flush must not escape: the finalization below (full save, its
+      // failure toast, the post-batch version-conflict dialog) still has to
+      // run, and it is better at reporting a save failure than an escaping
+      // rejection from a fire-and-forget import would be.
+      try {
+        await checkpoint.flush();
+      } catch (error) {
+        checkpointFailed = true;
+        console.error('Failed to persist library checkpoint:', error);
+      }
     }
 
     // Persist the full library once after every file in the batch is done.
     // 复活也算改动（清了墓碑），必须落盘，否则重启后那本书又是"已删除"。
     // 账本同理：重扫只补记源路径时 `successfulImports`/`revivedImports` 都是空的，
     // 不把它算进闸门的话这次补记根本不会写盘，下次重扫又要整目录重新解析。
+    // A failed checkpoint counts as "可能有未落盘的改动" even when those
+    // counters are empty, so the save below still runs and reports.
     let saveFailed = false;
-    if (successfulImports.length > 0 || revivedImports.length > 0 || sourcePathsRecorded > 0) {
+    if (
+      checkpointFailed ||
+      successfulImports.length > 0 ||
+      revivedImports.length > 0 ||
+      sourcePathsRecorded > 0
+    ) {
       const finalLibrary = useLibraryStore.getState().library;
       const finalAppService = await envConfig.getAppService();
       try {

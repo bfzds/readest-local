@@ -31,6 +31,13 @@ export interface EnvConfigType {
 }
 
 let nativeAppService: AppService | null = null;
+/**
+ * The library root the last `init` recorded as unusable, kept outside the
+ * singleton: when the root is unreachable the init itself can throw, and the
+ * service is deliberately not published then — but the reason still has to
+ * reach the library page's error message (#5789).
+ */
+let unavailableRootDirFromFailedInit: string | null = null;
 const getNativeAppService = async () => {
   if (!nativeAppService) {
     const { NativeAppService } = await import('@/services/nativeAppService');
@@ -39,7 +46,15 @@ const getNativeAppService = async () => {
     // got it back without re-running init, and `getInitializedAppService`
     // handed synchronous callers an object whose paths were never resolved.
     const service = new NativeAppService();
-    await service.init();
+    try {
+      await service.init();
+    } catch (error) {
+      // The probe may already have named the bad root before the throw; keep it
+      // so the failure is reported by folder, not as a generic load error.
+      unavailableRootDirFromFailedInit = service.unavailableRootDir;
+      throw error;
+    }
+    unavailableRootDirFromFailedInit = service.unavailableRootDir;
     nativeAppService = service;
   }
   return nativeAppService;
@@ -75,5 +90,16 @@ const environmentConfig: EnvConfigType = {
  * where the singleton is guaranteed to exist.
  */
 export const getInitializedAppService = (): AppService | null => nativeAppService;
+
+/**
+ * The library root recorded as unusable by the last init attempt, whether that
+ * init succeeded (the service is published and still carries the value) or
+ * threw (see {@link unavailableRootDirFromFailedInit}). Null when the root is
+ * fine or nothing has been probed yet. Synchronous, for the library page's
+ * error message — the reader-facing capability checks above keep using
+ * {@link getInitializedAppService}, which never hands back a half-built service.
+ */
+export const getUnavailableLibraryRoot = (): string | null =>
+  nativeAppService?.unavailableRootDir ?? unavailableRootDirFromFailedInit;
 
 export default environmentConfig;
