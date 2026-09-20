@@ -216,21 +216,22 @@ describe('TTSPlayerSheet', () => {
     expect(saveSettings).toHaveBeenCalled();
   });
 
-  test('rate-derived pauses keep sub-second precision instead of collapsing to zero', () => {
-    // The gaps are sub-second by design (0.15s / 0.3s), so rounding them to a
-    // whole number erases both at every speed - no pause between sentences or
-    // paragraphs, and no control left to restore one. See #5414.
+  test('stores the base pauses unscaled when the rate changes', () => {
+    // The sheet stores the base gaps and the rate separately; the single
+    // rate-scaling point is scaleGapForRate, applied where the pause is
+    // scheduled (#5750). Pre-scaling here as well shrank every pause twice —
+    // and the gaps stay sub-second on purpose, so a rounding mistake on either
+    // side erases them entirely (#5414, covered by tts-gap.test.ts).
     const props = makeProps();
     render(<TTSPlayerSheet {...props} />);
     fireEvent.click(screen.getByLabelText('Speed'));
     const slider = screen.getByRole('slider', { name: 'Speed' });
     fireEvent.change(slider, { target: { value: '1.5' } });
     fireEvent.pointerUp(slider);
-    // Faster speech shortens the pauses, it must not erase them.
-    expect(props.onSetSentenceGap).toHaveBeenCalledWith(0.12);
-    expect(props.onSetParagraphGap).toHaveBeenCalledWith(0.24);
-    expect(viewSettings['ttsSentenceGap']).toBe(0.12);
-    expect(viewSettings['ttsParagraphGap']).toBe(0.24);
+    expect(props.onSetSentenceGap).toHaveBeenCalledWith(0.15);
+    expect(props.onSetParagraphGap).toHaveBeenCalledWith(0.3);
+    expect(viewSettings['ttsSentenceGap']).toBe(0.15);
+    expect(viewSettings['ttsParagraphGap']).toBe(0.3);
   });
 
   test('voice button drills into the voice list and selects a voice', async () => {
