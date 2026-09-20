@@ -17,6 +17,7 @@
  * `meta.encrypt`) and surfaces as `unsupported`.
  */
 import { eventDispatcher } from '@/utils/event';
+import { SILENCE_DATA } from '@/services/tts/TTSData';
 import { stubTranslation as _ } from '@/utils/misc';
 import { getDictStyles } from '@/utils/style';
 import type { DictionaryProvider, ImportedDictionary } from '../types';
@@ -98,8 +99,7 @@ async function resolveImageResources(
             const located = await mdd.locateBytes(key);
             if (signal.aborted) return;
             if (located.data) {
-              const blob = new Blob([new Uint8Array(located.data)]);
-              const url = URL.createObjectURL(blob);
+              const url = URL.createObjectURL(imageBlobFor(key, new Uint8Array(located.data)));
               trackedUrls.push(url);
               img.setAttribute('src', url);
               return;
@@ -202,8 +202,7 @@ async function resolveCssUrls(
           const located = await mdd.locateBytes(path);
           if (signal.aborted) return;
           if (located.data) {
-            const blob = new Blob([new Uint8Array(located.data)]);
-            const url = URL.createObjectURL(blob);
+            const url = URL.createObjectURL(imageBlobFor(path, new Uint8Array(located.data)));
             trackedUrls.push(url);
             resolved.set(path, url);
             return;
@@ -233,6 +232,103 @@ async function resolveCssUrls(
 // the same lookup ourselves from a CSP-safe click handler.
 const V0R_PLAY_RX = /v0r\.v\s*\(\s*this\s*,\s*['"]([^'"]+)['"]\s*\)/i;
 const AUDIO_EXTS = ['.mp3', '.m4a', '.aac', '.ogg', '.opus', '.wav'] as const;
+
+// Audio bytes come out of the MDD with no MIME type, and a media element given
+// a typeless blob URL refuses to decode it ("Format error") on WebKit, so the
+// type has to be recovered from the resource path — the same constraint EPUB
+// Media Overlays audio hits (see MediaOverlayClient).
+const AUDIO_MIME_TYPES: Record<string, string> = {
+  mp3: 'audio/mpeg',
+  mp4: 'audio/mp4',
+  m4a: 'audio/mp4',
+  aac: 'audio/aac',
+  ogg: 'audio/ogg',
+  oga: 'audio/ogg',
+  opus: 'audio/ogg',
+  wav: 'audio/wav',
+  flac: 'audio/flac',
+  webm: 'audio/webm',
+};
+
+// Same for the pictures an entry embeds: the bytes carry no type, and the
+// browser can only sniff a typeless blob by heuristics.
+const IMAGE_MIME_TYPES: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  svg: 'image/svg+xml',
+  avif: 'image/avif',
+};
+
+const mimeTypeOf = (path: string, types: Record<string, string>, fallback: string): string =>
+  types[path.split('.').pop()?.toLowerCase() ?? ''] ?? fallback;
+
+const audioBlobFor = (path: string, data: Uint8Array<ArrayBuffer>): Blob =>
+  new Blob([data], { type: mimeTypeOf(path, AUDIO_MIME_TYPES, 'audio/mpeg') });
+
+const imageBlobFor = (path: string, data: Uint8Array<ArrayBuffer>): Blob =>
+  new Blob([data], { type: mimeTypeOf(path, IMAGE_MIME_TYPES, 'application/octet-stream') });
+
+// One element for every dictionary pronunciation, module-scoped so the unlock
+// outlives the card that triggered it. WebKit only lets a media element start
+// from inside a user gesture, and reading the bytes out of the MDD is async: by
+// the time they arrive the gesture window has closed and a freshly constructed
+// `Audio` is rejected by the autoplay policy (#6018). Starting this element on
+// a silent source *synchronously* in the click handler unlocks it; swapping
+// `src` afterwards keeps playing on the already-unlocked element.
+let dictAudio: HTMLAudioElement | null = null;
+
+const primeDictAudio = (): HTMLAudioElement => {
+  if (!dictAudio) {
+    dictAudio = document.createElement('audio');
+    dictAudio.preload = 'auto';
+  }
+  dictAudio.src = SILENCE_DATA;
+  // jsdom's play() returns undefined; in browsers the promise rejects when the
+  // src swap below aborts this load, which must not surface as an unhandled
+  // rejection.
+  (dictAudio.play() as Promise<void> | undefined)?.catch(() => {});
+  return dictAudio;
+};
+
+const playDictAudio = (audio: HTMLAudioElement, url: string, label: string): void => {
+  audio.src = url;
+  (audio.play() as Promise<void> | undefined)?.catch((err) => {
+    console.warn('Dictionary audio playback failed', label, err);
+  });
+};
+
+const safeDecode = (value: string): string => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
+/**
+ * Jump to a fragment target inside the entry that is already rendered. MDict
+ * writes in-entry links as `entry://#anchor` (or a bare `#anchor`), which the
+ * part-of-speech switcher of Oxford-style dictionaries uses (#6018). The browser
+ * can't perform this jump itself: the body lives in a shadow root, which
+ * document fragment navigation never enters.
+ */
+const scrollToEntryFragment = (root: ParentNode, frag: string): void => {
+  let target: Element | null = null;
+  try {
+    target = root.querySelector(`#${CSS.escape(frag)}`);
+  } catch {
+    target = null;
+  }
+  // MDX bodies predate `id` and commonly mark sections with `<a name="...">`.
+  target ??=
+    Array.from(root.querySelectorAll('a[name]')).find((a) => a.getAttribute('name') === frag) ??
+    null;
+  target?.scrollIntoView({ block: 'start' });
+};
 
 async function wireMdictAudioOnclick(
   container: HTMLElement,
@@ -265,6 +361,8 @@ async function wireMdictAudioOnclick(
     el.addEventListener('click', async (e) => {
       e.preventDefault();
       e.stopPropagation();
+      // Unlock inside the gesture, before the first await (see primeDictAudio).
+      const audio = primeDictAudio();
 
       let url = el.getAttribute('data-mdd-audio');
       if (!url) {
@@ -288,8 +386,7 @@ async function wireMdictAudioOnclick(
                 console.log(
                   `[MDD-AUDIO] HIT path="${path}" mdd[${i}] ${dt}ms bytes=${located.data.byteLength}`,
                 );
-                const blob = new Blob([new Uint8Array(located.data)]);
-                url = URL.createObjectURL(blob);
+                url = URL.createObjectURL(audioBlobFor(path, new Uint8Array(located.data)));
                 trackedUrls.push(url);
                 el.setAttribute('data-mdd-audio', url);
                 break outer;
@@ -311,10 +408,7 @@ async function wireMdictAudioOnclick(
         console.log(`[MDD-AUDIO] cache hit key=${key}`);
       }
       if (!url) return;
-      const audio = new Audio(url);
-      audio.play().catch((err) => {
-        console.warn('[MDD-AUDIO] playback failed for key', key, err);
-      });
+      playDictAudio(audio, url, key);
     });
   }
 }
@@ -353,14 +447,17 @@ function wireMdxAnchors(
           return;
         }
 
+        // Unlock inside the gesture, before the first await (see primeDictAudio);
+        // kept after the .spx guard so a deprecated format does no audio work.
+        const audio = primeDictAudio();
+
         let url = anchor.getAttribute('data-mdd-resolved');
         if (!url) {
           for (const mdd of mdds) {
             try {
               const located = await mdd.locateBytes(path);
               if (located.data) {
-                const blob = new Blob([new Uint8Array(located.data)]);
-                url = URL.createObjectURL(blob);
+                url = URL.createObjectURL(audioBlobFor(path, new Uint8Array(located.data)));
                 trackedUrls.push(url);
                 anchor.setAttribute('data-mdd-resolved', url);
                 break;
@@ -371,24 +468,33 @@ function wireMdxAnchors(
           }
         }
         if (!url) return;
-        const audio = new Audio(url);
-        audio.play().catch((err) => {
-          console.warn('Sound playback failed', path, err);
-        });
+        playDictAudio(audio, url, path);
       });
       continue;
     }
 
-    if (ENTRY_HREF_RX.test(raw)) {
-      if (!onNavigate) continue;
-      const rawTarget = raw.replace(ENTRY_HREF_RX, '');
-      let target: string;
-      try {
-        target = decodeURIComponent(rawTarget).trim();
-      } catch {
-        target = rawTarget.trim();
+    if (ENTRY_HREF_RX.test(raw) || raw.startsWith('#')) {
+      const rest = raw.startsWith('#') ? raw : raw.replace(ENTRY_HREF_RX, '');
+      const hashAt = rest.indexOf('#');
+      const target = safeDecode(hashAt < 0 ? rest : rest.slice(0, hashAt)).trim();
+      const frag = hashAt < 0 ? '' : safeDecode(rest.slice(hashAt + 1)).trim();
+
+      // No headword before the `#`: the target is a section of the entry that
+      // is already rendered, so jump to it instead of looking the fragment up
+      // as a headword.
+      if (!target) {
+        if (!frag) continue;
+        anchor.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          // Wiring runs before the body is moved into the card's shadow root,
+          // so resolve the search root from the anchor at click time.
+          scrollToEntryFragment((anchor.getRootNode() as ParentNode) ?? container, frag);
+        });
+        continue;
       }
-      if (!target) continue;
+
+      if (!onNavigate) continue;
       anchor.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
