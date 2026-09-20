@@ -607,6 +607,9 @@ describe('importBook same-file re-import', () => {
     const books: Book[] = [existing];
     const hits: string[] = [];
 
+    // 本地副本还在盘上：复活只需翻回记录，不必重新落盘（文件缺失的那条见
+    // 下面的「missing local copy」用例）。
+    makeManagedFileExist(fs);
     mockPartialMD5.mockResolvedValue('old-hash-123');
     setupMockBookDoc();
     const before = Date.now();
@@ -805,8 +808,36 @@ describe('importBook same-file re-import', () => {
 
   // 方案 B 的边界：只有弹窗里的「撤销导入」写标记。书库里的普通删除是"删掉这本
   // 书"，不是"拒绝这次导入"，重导照旧静默复活、不打扰。
+  it('restores the file when a tombstoned record has no local copy left', async () => {
+    // 用户删掉的书会在显式刷新监控文件夹时被重新提供（见 scanWatchedFolders 的
+    // manual 语义）。这条锁住：本地副本不在了就不能只翻记录——那样复活出来的书
+    // 打不开——而是走完整路径从源文件重新落盘。
+    const { service, fs } = makeService();
+    const existing = makeBook({ hash: 'old-hash-123', deletedAt: 999, updatedAt: 111 });
+    const books: Book[] = [existing];
+    const hits: string[] = [];
+
+    // exists 全 false：书文件与目录都不在盘上。
+    mockPartialMD5.mockResolvedValue('old-hash-123');
+    setupMockBookDoc();
+    const result = await service.importBook(
+      new File(['same bytes'], 'test.epub', { type: 'application/epub+zip' }),
+      books,
+      { onDedupHit: (kind) => hits.push(kind) },
+    );
+
+    // 仍然如实上报复活（调用方不会把它算成"多了一本新书"）。
+    expect(hits).toEqual(['revived']);
+    expect(result!.deletedAt).toBeNull();
+    expect(result!.revivedAt).toEqual(expect.any(Number));
+    // 文件确实被重新落盘，而不是只翻回一行记录（输入是 File 对象，落盘走写入
+    // 而非从某个源路径复制）。
+    expect(fs.writeFile).toHaveBeenCalled();
+  });
+
   it('still revives a plain tombstone without asking', async () => {
     const { service, fs } = makeService();
+    makeManagedFileExist(fs);
     const kept = makeBook({
       hash: 'kept-hash',
       metaHash: getMetadataHash({ ...TEST_METADATA, identifier: 'old-uuid' }),

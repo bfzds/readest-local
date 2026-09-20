@@ -2018,6 +2018,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
    */
   const scanWatchedFolders = async (
     folders: string[],
+    opts: { manual?: boolean } = {},
   ): Promise<WatchedFolderScanOutcome[] | null> => {
     if (!appService || folders.length === 0) return null;
     // A batch already in flight owns the import path (and the full-screen
@@ -2029,12 +2030,26 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     const { library } = useLibraryStore.getState();
     const osPlatform = appService.osPlatform;
     const liveSettings = useSettingsStore.getState().settings;
-    // Known local source paths — live AND soft-deleted (files the user deleted
-    // but whose in-place source is still on disk), plus paths that already failed
-    // to import this session — so we neither resurrect a deleted book nor
-    // re-parse/re-toast a bad file on every focus.
-    const existingPaths = collectKnownSourcePaths(library, osPlatform);
-    for (const key of autoImportFailedPathsRef.current) existingPaths.add(key);
+    const manual = !!opts.manual;
+    // Known local source paths. The quiet focus-triggered scan counts
+    // soft-deleted books as known (their in-place source is still on disk) so it
+    // does not resurrect a book the user deliberately removed on every focus.
+    // An explicit refresh — the manage dialog's "refresh", and adding a folder
+    // back to the watch list — does the opposite: the user asked for this folder
+    // to be reconciled with the library, so a file whose only row is a tombstone
+    // has to be offered again (the importer revives that row rather than making a
+    // duplicate). Keeping tombstones in the known set here is what made a deleted
+    // book impossible to bring back by refreshing, and made a removed-then-
+    // re-added watched folder import nothing at all.
+    const existingPaths = collectKnownSourcePaths(library, osPlatform, {
+      includeDeleted: !manual,
+    });
+    // The session's failed-import memo exists so the quiet path does not
+    // re-parse and re-toast a bad file on every focus; a refresh the user asked
+    // for retries it.
+    if (!manual) {
+      for (const key of autoImportFailedPathsRef.current) existingPaths.add(key);
+    }
     const outcomes: WatchedFolderScanOutcome[] = [];
     const newFiles: SelectedFile[] = [];
     for (const folder of folders) {
@@ -2137,9 +2152,11 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   };
 
   /**
-   * Manual refresh from the manage dialog (one row or every folder). Same scan
-   * as the background path, but with visible feedback and a busy guard so a
-   * double-click can't start two batches.
+   * Manual refresh from the manage dialog (one row or every folder), and the
+   * scan "add folder" runs right after re-adding one. Runs the same walk as the
+   * background path but with visible feedback, a busy guard so a double-click
+   * can't start two batches, and `manual` semantics: books the user deleted
+   * from the library are importable again instead of counting as known.
    */
   const refreshWatchedFolders = async (folder?: string) => {
     if (watchedFolderRefreshingRef.current) return;
@@ -2150,7 +2167,9 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     watchedFolderRefreshingRef.current = true;
     setWatchedFolderRefreshing(folder ?? 'all');
     try {
-      const outcomes = await scanWatchedFolders(targets);
+      // An explicit refresh: tombstones are not "known" for it, so files the
+      // user deleted from the library come back (see scanWatchedFolders).
+      const outcomes = await scanWatchedFolders(targets, { manual: true });
       if (!outcomes) {
         // Skipped: an import batch is already running (manual import or a
         // background scan). Say so rather than reporting a false "nothing new".

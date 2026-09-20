@@ -180,17 +180,33 @@ export function toWatchedFolderImports(
  * Collect all known local source paths from the library into a normalized set.
  *
  * Unlike `buildBookLookupIndex(...).byFilePath`, this includes soft-deleted
- * books (`deletedAt` set) so that auto-import does not resurrect a book the
- * user intentionally removed from their library. `altFilePaths` is included
- * alongside `filePath`: several files in a watched folder can dedup into one
- * book (same bytes under two names, or two files sharing a metaHash), and a
- * path the importer folded away is just as "known" as the one it kept.
+ * books (`deletedAt` set) by default so that the quiet, focus-triggered
+ * auto-import does not resurrect a book the user intentionally removed from
+ * their library. Callers that act on an explicit user request — the manage
+ * dialog's "refresh" and adding a folder back to the watch list — pass
+ * `{ includeDeleted: false }`: the user asked for the folder's files to be
+ * reconciled with the library, and a file whose only row is a tombstone is
+ * that reconciliation's job (the importer revives the row rather than making a
+ * duplicate). Leaving tombstones in the known set there is what made a deleted
+ * book impossible to re-import by refreshing, and made a removed-then-re-added
+ * watched folder import nothing at all.
+ *
+ * `altFilePaths` is included alongside `filePath`: several files in a watched
+ * folder can dedup into one book (same bytes under two names, or two files
+ * sharing a metaHash), and a path the importer folded away is just as "known"
+ * as the one it kept.
  *
  * URL-backed entries (remote books) are excluded — only on-disk paths matter.
  */
-export function collectKnownSourcePaths(books: Book[], osPlatform?: OsPlatform): Set<string> {
+export function collectKnownSourcePaths(
+  books: Book[],
+  osPlatform?: OsPlatform,
+  opts?: { includeDeleted?: boolean },
+): Set<string> {
+  const includeDeleted = opts?.includeDeleted ?? true;
   const paths = new Set<string>();
   for (const book of books) {
+    if (!includeDeleted && book.deletedAt) continue;
     for (const path of [book.filePath, ...(book.altFilePaths ?? [])]) {
       if (!path || isValidURL(path)) continue;
       const key = normalizeFilePathForIndex(path, osPlatform);
@@ -650,7 +666,14 @@ export async function importBook(
       !inPlace || typeof file !== 'string' || existingBook?.filePath === file;
     if (existingBook && !transient && !overwrite && filePathUnchanged && !rejected) {
       const wasDeleted = !!existingBook.deletedAt;
-      if (wasDeleted || (await isBookAvailable(fs, existingBook))) {
+      // The cheap path only flips the row, so it is only right when the book is
+      // actually readable. A live book with a missing file already fell through
+      // to the full path; a tombstone must do the same now that an explicit
+      // watched-folder refresh can offer the source file of a book the user
+      // deleted — reviving the row alone would hand back a book that cannot be
+      // opened, while the full path re-copies it from that source (and keeps the
+      // local-file bookkeeping honest about what is on disk).
+      if (await isBookAvailable(fs, existingBook)) {
         const revived: Book = wasDeleted
           ? {
               ...existingBook,
@@ -989,10 +1012,10 @@ export async function importBook(
         }),
       });
     }
-    // 走完整路径的"撤销后重导"在调用方眼里就是一次复活（记录本来就还在，只是
-    // 变回了存活），提示语与普通墓碑统一；不报的话调用方会把这次算成"成功导入
-    // 一本新书"，而书架上并没有多出书来。
-    if (cameFromRejected) options.onDedupHit?.('revived');
+    // 走完整路径的墓碑重导（用户删掉的书被显式刷新/重导带回来，其本地副本按需
+    // 重新落盘）与"撤销后重导"在调用方眼里都是一次复活：记录本来就还在，只是变回
+    // 了存活。不报的话调用方会把这次算成"成功导入一本新书"，提示语也对不上。
+    if (cameFromRejected || cameFromDeleted) options.onDedupHit?.('revived');
     return importedBook;
   } catch (error) {
     console.error('Error importing book:', error);

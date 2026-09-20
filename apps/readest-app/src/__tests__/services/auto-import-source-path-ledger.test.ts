@@ -415,3 +415,65 @@ describe('copy-mode imports remember their source path', () => {
     expect(library.filter((b) => !b.deletedAt)).toHaveLength(1);
   });
 });
+
+/**
+ * The known-path ledger has two modes, and they are what separates the quiet
+ * focus scan from an explicit refresh (see scanWatchedFolders): a tombstone is
+ * "known" to the former so a deleted book is not resurrected on every focus,
+ * and unknown to the latter so the user can actually bring it back — and so a
+ * watched folder that was removed and re-added imports anything the library no
+ * longer holds instead of reporting "nothing new".
+ */
+describe('known-path ledger modes', () => {
+  const live = (path: string, alt?: string[]): Book =>
+    ({ hash: `live-${path}`, filePath: path, altFilePaths: alt }) as unknown as Book;
+  const tombstone = (path: string, alt?: string[]): Book =>
+    ({
+      hash: `dead-${path}`,
+      filePath: path,
+      altFilePaths: alt,
+      deletedAt: 123,
+    }) as unknown as Book;
+
+  it('counts tombstones as known by default (the quiet scan must not resurrect)', () => {
+    const known = collectKnownSourcePaths([tombstone('/lib/a.epub')], 'linux');
+    expect(known.has(normalizeFilePathForIndex('/lib/a.epub', 'linux'))).toBe(true);
+  });
+
+  it('drops tombstones, including their ledger entries, when asked', () => {
+    const known = collectKnownSourcePaths(
+      [live('/lib/live.epub'), tombstone('/lib/dead.epub', ['/lib/dead-alt.epub'])],
+      'linux',
+      { includeDeleted: false },
+    );
+
+    expect(known.has(normalizeFilePathForIndex('/lib/live.epub', 'linux'))).toBe(true);
+    expect(known.has(normalizeFilePathForIndex('/lib/dead.epub', 'linux'))).toBe(false);
+    expect(known.has(normalizeFilePathForIndex('/lib/dead-alt.epub', 'linux'))).toBe(false);
+  });
+
+  it('leaves a deleted file selectable for an explicit refresh', () => {
+    const books = [live('/lib/live.epub'), tombstone('/lib/dead.epub')];
+    const entries = [
+      { fullPath: '/lib/live.epub', size: 100 },
+      { fullPath: '/lib/dead.epub', size: 100 },
+      { fullPath: '/lib/new.epub', size: 100 },
+    ];
+
+    const quiet = selectNewImportableFiles(entries, {
+      extensions: ['epub'],
+      minSizeBytes: 0,
+      existingPaths: collectKnownSourcePaths(books, 'linux'),
+      osPlatform: 'linux',
+    });
+    const manual = selectNewImportableFiles(entries, {
+      extensions: ['epub'],
+      minSizeBytes: 0,
+      existingPaths: collectKnownSourcePaths(books, 'linux', { includeDeleted: false }),
+      osPlatform: 'linux',
+    });
+
+    expect(quiet.map((e) => e.fullPath)).toEqual(['/lib/new.epub']);
+    expect(manual.map((e) => e.fullPath)).toEqual(['/lib/dead.epub', '/lib/new.epub']);
+  });
+});
