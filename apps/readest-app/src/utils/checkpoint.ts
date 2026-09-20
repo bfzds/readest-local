@@ -52,9 +52,17 @@ export const createThrottledCheckpoint = (
     async flush() {
       while (saving || dirty) {
         if (saving) {
-          // A touch-initiated save: its own catch handler re-dirties on
-          // failure, so just wait it out and loop.
-          await saving.catch(() => undefined);
+          // Wait the in-flight save out, and re-dirty *here* if it failed
+          // rather than relying on touch()'s own catch handler: that handler is
+          // attached to the promise `runSave` derives from `.finally()`, so it
+          // runs a microtask after the save settles — the loop can re-check and
+          // exit before it does, and flush would then report success for a save
+          // that failed. Re-dirtying in this handler makes the retry (and the
+          // failure the caller sees) deterministic.
+          const inFlight = saving;
+          await inFlight.catch(() => {
+            dirty = true;
+          });
         } else {
           await runSave();
         }
