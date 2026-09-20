@@ -169,21 +169,16 @@ const TTSPlayerSheet = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, ttsLang]);
 
-  /* Scale a given `baseGap` based on a given `rate`. Gaps are sub-second
-   * (0.15s / 0.3s), so they have to keep two decimals — rounding to a whole
-   * number floors every one of them to 0 and silently removes the pauses
-   * along with any way to get them back (#5414). */
-  const scaleGap = (baseGap: number, rate: number) => {
-    const k = 0.6;
-    return Math.round((baseGap / Math.pow(rate, k)) * 100) / 100;
-  };
-
   const handleSelectRate = (value: number) => {
     setRate(value);
     onSetRate(value);
 
-    const gap = scaleGap(DEFAULT_SENTENCE_GAP_SEC, value);
-    const paragraphGap = scaleGap(DEFAULT_PARAGRAPH_GAP_SEC, value);
+    // Store the UNSCALED base gaps: the controller applies the rate scaling
+    // at the single point where the pause is scheduled (scaleGapForRate,
+    // #5750). Pre-scaling here as well shrank pauses twice — at 2x the
+    // paragraph pause collapsed from 0.3s towards 0.085s.
+    const gap = DEFAULT_SENTENCE_GAP_SEC;
+    const paragraphGap = DEFAULT_PARAGRAPH_GAP_SEC;
     onSetSentenceGap(gap);
     onSetParagraphGap(paragraphGap);
 

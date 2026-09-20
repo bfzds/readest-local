@@ -2,6 +2,7 @@ import { FoliateView, ViewTTS } from '@/types/view';
 import { AppService } from '@/types/system';
 import { SectionItem } from '@/libs/document';
 import { transformTTSSectionDocument } from './transformDoc';
+import { scaleGapForRate } from './gap';
 import { filterSSMLWithLang, parseSSMLMarks } from '@/utils/ssml';
 import { Overlayer } from 'foliate-js/overlayer.js';
 import {
@@ -730,7 +731,10 @@ export class TTSController extends EventTarget {
   }
 
   // Abortable delay inserted before auto-advancing to the next paragraph.
-  // Scales with rate like the sentence gap so pauses shrink with speed.
+  // Scales with rate like the sentence gap so pauses shrink with speed — the
+  // one and only scaling point (see scaleGapForRate): the stored gap is the
+  // unsaved base value, so scaling it here AND where it is set gave
+  // base/rate^1.6, 0.085s at 2x (#5750).
   // Races against `signal` so a stop()/pause() during the gap resolves
   // immediately instead of leaving a stray forward() to fire afterward.
   //
@@ -739,7 +743,7 @@ export class TTSController extends EventTarget {
   // silence the narrator did not leave and pushes the highlight behind the voice.
   async #delayParagraphGap(signal: AbortSignal): Promise<void> {
     if (this.ttsClient.getCapabilities().continuousTimeline) return;
-    const ms = (this.#paragraphGapSec / this.ttsRate) * 1000;
+    const ms = scaleGapForRate(this.#paragraphGapSec, this.ttsRate) * 1000;
     if (ms <= 0 || signal.aborted) return;
     await new Promise<void>((resolve) => {
       const onAbort = () => {
