@@ -34,6 +34,14 @@ license = "AGPL-3.0"
 categories = []
 edition = "2021"
 rust-version = "1.77.2"
+# 2026-09-19「与上游断开」把这两项从本表删除，但 vendored 子模块
+# （packages/tauri、packages/tauri-plugins）的 crate 仍以
+# `homepage.workspace = true` / `repository.workspace = true` 继承，键不存在
+# 会让 `cargo metadata` 直接失败、便携版构建连第一步都过不去。与
+# apps/readest-app/src-tauri/Cargo.toml 的既有做法一致，这里定义为空串：
+# 不冒充上游身份，同时满足 workspace 继承。
+homepage = ""
+repository = ""
 
 [patch.crates-io]
 tauri = { path = "packages/tauri/crates/tauri" }
