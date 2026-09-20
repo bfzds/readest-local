@@ -386,31 +386,32 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     const pointerUpFn = handlePointerUp.bind(null, doc, index) as unknown as EventListener;
     const selectionFn = handleSelectionchange.bind(null, doc, index) as unknown as EventListener;
     const pdfContextFn = (e: Event) => {
-      try {
-        const sel = doc.getSelection?.();
-        if (sel && !sel.isCollapsed) {
-          const range = sel.getRangeAt(0);
-          const text = sel.toString();
-          if (text.trim()) {
-            setSelection({
-              key: bookKey,
-              text,
-              range,
-              index,
-              cfi: view?.getCFI(index, range),
-              page: index + 1,
-            });
-            // Show translation popup preferentially for PDF right-click
-            setShowAnnotPopup(true);
-            setShowDictionaryPopup(false);
-          }
-        }
-      } catch (err) {
-        console.warn('PDF context menu translation failed:', err);
-      }
       // Prevent native menu to keep experience consistent
       e.preventDefault();
       e.stopPropagation();
+      try {
+        const sel = doc.getSelection?.();
+        if (!sel || sel.isCollapsed) return false;
+        const range = sel.getRangeAt(0);
+        // Same text as the toolbar path, with PDF line wraps joined (#5814)
+        // instead of pdf.js' one-line-per-printed-line `sel.toString()`.
+        void getAnnotationText(range).then((text) => {
+          if (!text.trim()) return;
+          setSelection({
+            key: bookKey,
+            text,
+            range,
+            index,
+            cfi: view?.getCFI(index, range),
+            page: index + 1,
+          });
+          // Show translation popup preferentially for PDF right-click
+          setShowAnnotPopup(true);
+          setShowDictionaryPopup(false);
+        });
+      } catch (err) {
+        console.warn('PDF context menu translation failed:', err);
+      }
       return false;
     };
 
