@@ -10,8 +10,10 @@ describe('fixed-layout paginated page-turn scroll reset', () => {
       computePaginatedScroll({
         elementWidth: 800,
         containerWidth: 800,
+        scrollLeft: 300,
         scrollTop: 1200,
         pageTurn: true,
+        lockPanX: false,
       }),
     ).toEqual({ scrollLeft: 0, scrollTop: 0 });
   });
@@ -21,8 +23,10 @@ describe('fixed-layout paginated page-turn scroll reset', () => {
       computePaginatedScroll({
         elementWidth: 800,
         containerWidth: 800,
+        scrollLeft: 300,
         scrollTop: 1200,
         pageTurn: false,
+        lockPanX: false,
       }),
     ).toEqual({ scrollLeft: 0, scrollTop: 1200 });
   });
@@ -32,8 +36,10 @@ describe('fixed-layout paginated page-turn scroll reset', () => {
       computePaginatedScroll({
         elementWidth: 1200,
         containerWidth: 800,
+        scrollLeft: 300,
         scrollTop: 0,
         pageTurn: true,
+        lockPanX: false,
       }),
     ).toEqual({ scrollLeft: 200, scrollTop: 0 });
   });
